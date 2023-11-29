@@ -1,0 +1,17 @@
+version: "3"
+services:
+  core-ndn:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - /lib/modules:/lib/modules
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ./dotcore:/root/.coregui
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    environment:
+      - DISPLAY
+      #- BACKEND
