@@ -1,0 +1,9 @@
+###### Requirements without Version Specifiers ######
+wasmtime
+uvicorn
+fastapi
+python-multipart
+requests
+psutil
+zeroconf
+python-ndn
