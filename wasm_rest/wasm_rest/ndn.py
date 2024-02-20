@@ -1,5 +1,6 @@
 import queue
 import subprocess
+import threading
 
 from ndn.appv2 import NDNApp, pass_all
 from ndn.encoding import Component
@@ -15,6 +16,7 @@ class NDN:
         if self.ndn is not None:
             self.shutdown()
         self.ndn = NDNApp(TcpFace(host, 6363))
+        threading.Thread(target=lambda: ndn_app.ndn.run_forever(ndn_app._loop())).start()
 
     def save_from_ndn(self, name: str, data_path: str) -> bool:
         error = queue.Queue(1)
@@ -24,7 +26,7 @@ class NDN:
     def shutdown(self):
         self.ndn_requests.put((None, None, None), block=True)
 
-    async def loop(self):
+    async def _loop(self):
         while True:
             error, name, path = self.ndn_requests.get(block=True)
             if not isinstance(error, queue.Queue):
@@ -32,12 +34,12 @@ class NDN:
                 return
             error: queue.Queue = error
             try:
-                error.put(await self.segment_fetcher(name, path), block=True)
+                error.put(await self._segment_fetcher(name, path), block=True)
             except OSError:
                 error.put(False, block=True)
                 continue
 
-    async def segment_fetcher(self, name: str, path: str):  # TODO smart implementation with asyncio tasks and congestion control
+    async def _segment_fetcher(self, name: str, path: str):  # TODO smart implementation with asyncio tasks and congestion control
         try:
             name, content, meta = await self.ndn.express(name, pass_all, can_be_prefix=True)
             if Component.get_type(name[-1]) != Component.TYPE_SEGMENT:
@@ -54,7 +56,7 @@ class NDN:
             return False
         return True
 
-    async def segment_alt(self, name: str, path: str) -> bool:
+    async def _segment_alt(self, name: str, path: str) -> bool:
         with open(path, "bw") as file:
             try:
                 res_name, content, _ = await self.ndn.express(name, pass_all)  # TODO real validator

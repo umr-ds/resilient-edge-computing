@@ -3,6 +3,7 @@ import os
 # import socket
 import threading
 import time
+import random
 from contextlib import asynccontextmanager
 from typing import cast
 
@@ -33,18 +34,17 @@ def register():
                     raise requests.exceptions.RequestException()
                 tries += 1
                 time.sleep(2)
+            break
         except requests.exceptions.RequestException:
             # signal.raise_signal(signal.SIGINT)
             # raise WasmRestException("Could not reach root server")
             broker = select_broker()
-        break
     asyncio.set_event_loop(asyncio.new_event_loop())
     ndn_app.connect(broker.host)
-    threading.Thread(target=lambda: ndn_app.ndn.run_forever(ndn_app.loop())).start()
 
 
 def select_broker() -> Broker:
-    return list(brokers.values())[0] if len(brokers) else None
+    return random.choice(list(brokers.values())) if len(brokers) else None
 
 
 def found_broker(
@@ -118,7 +118,7 @@ def make_dir(job_id: str, dirs: list[str]) -> None:
     job.mkdirs(dirs)
 
 
-@app.put("/run/{job_id}")
+@app.put("/run/{job_id}") # race condition
 def run_wasm(job_id: str, cmd: RunRequest, req: Capabilities) -> None:
     job = jobs.get(job_id)
     if job is None:
@@ -155,11 +155,12 @@ def get_job_result(job_id: str) -> FileResponse:
     job = jobs.get(job_id)
     if job is None:
         raise HTTPException(404, "")
-    if job.status == JobStatus.INIT:
+    if job.status is JobStatus.INIT:
         raise HTTPException(400, "Job has not been started")
-    if job.status == JobStatus.RUNNING:
+    if job.status is JobStatus.RUNNING:
         raise HTTPException(204, "Job is still running")
-
+    if not os.path.exists(job.result_path):
+        raise HTTPException(400, "Job failed to generate output")
     filename = job_id + ".zip"
     return FileResponse(job.result_path, media_type="application/zip", filename=filename)
 
@@ -173,6 +174,10 @@ def update_caps() -> Capabilities:
                         has_battery=(not (battery is None) and not battery.power_plugged),
                         power=battery.percent if battery else 100)
 
+#def max_caps() -> Capabilities:
+#    psutil.virtual_memory().total
+#    psutil.disk_usage(root_dir).total
+
 
 def start(_host: str, _port: int, rootdir: str) -> NodeRole:
     global root_dir, brokers, broker, host, port, uv_server
@@ -181,7 +186,7 @@ def start(_host: str, _port: int, rootdir: str) -> NodeRole:
     zeroconf = Zeroconf()
     services = ["_broker._tcp.local."]
     browser = ServiceBrowser(zeroconf, services, handlers=[found_broker])
-    time.sleep(10)
+    time.sleep(random.random() * 30)
     if not len(brokers):
         browser.cancel()
         brokers = {}

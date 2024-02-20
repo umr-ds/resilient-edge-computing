@@ -122,6 +122,7 @@ def run_cmd(command: Command):
             job.run(stdin_server, command.args, command.env, command.ndn_data, command.results, command.capabilities, command.result_addr)
             while True:
                 time.sleep(1)
+                log.info(f"polling {command.wasm_bin}")
                 result_id = job.result(command.result_path)
                 if result_id is not None:
                     return result_id

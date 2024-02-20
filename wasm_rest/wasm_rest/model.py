@@ -46,7 +46,7 @@ class Command(BaseModel):
     results: dict[str, str] = {"/": "/"}
     capabilities: Capabilities = Capabilities()
     result_path: str = "."
-    result_addr: Server = Server(host="localhost", port=8003)
+    result_addr: Server = Server(host="", port=8003)
 
 
 class Broker(Server):

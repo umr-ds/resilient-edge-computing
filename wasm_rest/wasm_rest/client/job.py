@@ -52,17 +52,17 @@ class Job(Server):
 
     def result(self, path: str):
         file_path = path
-        if os.path.isdir(file_path) or file_path.endswith(os.path.pathsep):
+        if os.path.isdir(file_path) or file_path.endswith(os.path.sep):
             file_path = os.path.join(file_path, f"{self.job_id}.zip")
-            try:
-                res = requests.get(f"http://{self.host}:{self.port}/result/{self.job_id}", stream=True)
-                if res.status_code == 200:
-                    with open(file_path, "bw") as file:
-                        for chunk in res.iter_content(chunk_size=65536):
-                            file.write(chunk)
-                    return file_path
-            except requests.exceptions.RequestException:
-                raise ServerException("Failed to communicate with server")
+        try:
+            res = requests.get(f"http://{self.host}:{self.port}/result/{self.job_id}", stream=True)
+            if res.status_code == 200:
+                with open(file_path, "bw") as file:
+                    for chunk in res.iter_content(chunk_size=65536):
+                        file.write(chunk)
+                return file_path
+        except requests.exceptions.RequestException:
+            raise ServerException("Failed to communicate with server")
         return None
 
     def delete(self) -> bool:

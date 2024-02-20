@@ -35,6 +35,10 @@ RUN apt update
 RUN apt install -y python3-pip
 RUN pip3 install python-ndn
 
+#Install wasm_rest dependencies
+RUN apt update
+RUN pip3 install wasmtime uvicorn fastapi python-multipart requests psutil zeroconf python-ndn
+
 RUN echo "custom_config_services_dir = /root/.coregui/custom_services" >> /etc/core/core.conf
 
 ENTRYPOINT ["core-daemon"]

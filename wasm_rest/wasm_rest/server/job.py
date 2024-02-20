@@ -15,6 +15,9 @@ from ..model import JobStatus, Server as ServerModel, RunRequest
 from ..ndn import ndn_app
 from ..util import prevent_break, put_file, zip_folder
 
+send_retry = 10
+send_timeout = 10
+
 
 class Job:
     id: str
@@ -54,13 +57,7 @@ class Job:
 
     def run(self, cmd: RunRequest) -> bool:
         cmd.job_id = self.id
-        try:
-            name = os.listdir(self.code_dir)
-            if len(name) == 1:
-                wasm_bin = os.path.join(self.code_dir, name[0])
-            else:
-                raise OSError
-        except OSError:
+        if not os.path.exists(self.wasm_binary):
             return False
 
         new_res = {}
@@ -74,17 +71,17 @@ class Job:
     def send_result(self, server: ServerModel):
         if server.host == "":
             return
-        for _ in range(0, 10):
+        for _ in range(0, send_retry):
             try:
                 with open(self.result_path, "br") as file:
                     res = requests.put(f"http://{server.host}:{server.port}/result/{self.id}",
                                        files={"data": file})
             except requests.exceptions.RequestException:
-                time.sleep(10)
+                time.sleep(send_timeout)
                 continue
             if res.ok or res.status_code == 404:
                 break
-            time.sleep(10)
+            time.sleep(send_timeout)
 
     def put_data(self, path: str, data: IO[bytes]) -> bool:
         return put_file(data, os.path.join(self.data_dir, path))
@@ -108,7 +105,7 @@ class Job:
                 self.status = JobStatus.ERROR
                 raise WasmRestException("ndn resource not found")
 
-        stdin_file = os.path.join(self.data_dir, cmd.stdin_file) if cmd.stdin_file else None
+        stdin_file = os.path.join(self.data_dir, prevent_break(cmd.stdin_file)) if cmd.stdin_file else None
 
         self.status = JobStatus.RUNNING
         error = multiprocessing.Queue(1)

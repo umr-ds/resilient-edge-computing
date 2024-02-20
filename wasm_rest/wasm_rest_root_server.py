@@ -48,7 +48,7 @@ def get_executor(caps: Capabilities) -> Executor:
 
 
 def select_executor(execs: list[Executor]):
-    return execs[0]
+    return random.choice(execs)
 
 
 def gen_node_id() -> str:
@@ -64,7 +64,7 @@ def start(host: str, port: int) -> NodeRole:
     info = ServiceInfo(
         "_broker._tcp.local.",
         f"_broker{gen_node_id()}._broker._tcp.local.",
-        addresses=[socket.inet_aton(socket.gethostbyname(socket.getfqdn()))],
+        addresses=[socket.inet_aton(host)],
         # socket.inet_aton(socket.gethostbyname(host))
         port=port,
         properties={"execs": len(executors).to_bytes(1, "big")}

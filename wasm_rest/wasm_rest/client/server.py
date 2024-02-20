@@ -1,3 +1,4 @@
+from typing import Union
 import requests
 
 from .job import Job
@@ -7,7 +8,7 @@ from ..model import Server as ServerModel, Capabilities
 
 class Server(ServerModel):
 
-    def submit(self, path: str):
+    def submit(self, path: str) -> Job:
         try:
             with open(path, "rb") as file:
                 res = requests.put(f"http://{self.host}:{self.port}/submit",
@@ -18,7 +19,7 @@ class Server(ServerModel):
             return Job(host=self.host, port=self.port, job_id=res.content.decode()[1:-1])
         raise_server_error(res.content, "submit")
 
-    def caps(self):
+    def caps(self) -> Union[Capabilities, None]:
         try:
             res = requests.get(f"http://{self.host}:{self.port}/caps")
             if res.ok:
