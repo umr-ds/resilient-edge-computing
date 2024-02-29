@@ -1,5 +1,7 @@
 import os
 import time
+import base64
+import random
 
 from zipfile import ZipFile
 
@@ -58,3 +60,7 @@ def wait_online(server: Server, endpoint: str, max_tries: int, wait_next_try: fl
                 return False
             tries += 1
         time.sleep(wait_next_try)
+
+
+def gen_node_id() -> str:
+    return base64.urlsafe_b64encode(random.randbytes(32)).decode()[:-1]

@@ -1,6 +1,6 @@
 import asyncio
 import os
-# import socket
+import socket
 import threading
 import time
 import random
@@ -12,18 +12,17 @@ import requests
 import uvicorn
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.responses import FileResponse
-from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange
+from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange, ServiceInfo, ServiceListener
 
-from wasm_rest.model import Capabilities, Executor, RunRequest, Broker, NodeRole, JobStatus
-from wasm_rest.ndn import ndn_app
+from wasm_rest.model import Capabilities, Executor, RunRequest, Broker, NodeRole, JobStatus, Command
 from wasm_rest.server.job import Job
-from wasm_rest.util import prevent_break
+from wasm_rest.util import prevent_break, gen_node_id
 
 
 def register():
     global broker
-    self_object = Executor(host=host, port=port, max_caps=update_caps(),
-                           cur_caps=update_caps())  # TODO max caps update time
+    self_object = Executor(host=host, port=port, node_id=node_id,
+                           cur_caps=update_caps())  # TODO update time
     broker = select_broker()
     while broker is not None:
         try:
@@ -39,32 +38,37 @@ def register():
             # signal.raise_signal(signal.SIGINT)
             # raise WasmRestException("Could not reach root server")
             broker = select_broker()
-    asyncio.set_event_loop(asyncio.new_event_loop())
-    ndn_app.connect(broker.host)
+    time.sleep(2)
+    info = zeroconf.get_service_info("_broker_wasm-rest._tcp.local.",
+                                     f"_broker{broker.node_id}._wasm-rest._tcp.local.")
+    print(info)
 
 
 def select_broker() -> Broker:
     return random.choice(list(brokers.values())) if len(brokers) else None
 
 
-def found_broker(
-        zeroconf: Zeroconf, service_type: str, name: str, state_change: ServiceStateChange
-) -> None:
-    global broker
-    if state_change is ServiceStateChange.Added:
-        info = zeroconf.get_service_info(service_type, name)
+class BrokerListener(ServiceListener):
+
+    def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+        pass
+
+    def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+        broker_id = brokers[name].node_id
+        del brokers[name]
+        if broker.node_id == broker_id:
+            threading.Thread(target=register).start()
+
+    def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+        info = zeroconf.get_service_info(type_, name)
         if info:
             addresses = info.parsed_scoped_addresses()
-            brokers[name] = Broker(id=name[7:-20], host=addresses[0], port=cast(int, info.port),
+            brokers[name] = Broker(node_id=info.decoded_properties["node_id"], host=addresses[0],
+                                   port=cast(int, info.port),
                                    execs=int.from_bytes(info.properties[b"execs"], "big"))
             print(brokers[name])
             if broker is None:
                 threading.Thread(target=register).start()
-    elif state_change is ServiceStateChange.Removed:
-        print("huh")
-        del brokers[name]
-        if broker.id == name[7:-20]:
-            threading.Thread(target=register).start()
 
 
 @asynccontextmanager
@@ -73,7 +77,6 @@ async def lifespan(_: FastAPI):
     os.makedirs(root_dir, exist_ok=True)
     threading.Thread(target=register).start()
     yield
-    ndn_app.shutdown()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -85,6 +88,8 @@ jobs_lock = threading.Lock()
 brokers: dict[str, Broker] = {}
 broker: Broker = False  # start with False so first broker is not first discovered broker
 uv_server: uvicorn.Server = None
+zeroconf = Zeroconf()
+node_id = gen_node_id()
 
 
 @app.put("/submit")
@@ -95,6 +100,12 @@ def submit_new_job(binary: UploadFile) -> str:
             jobs[job.id] = job
         return job.id
     raise HTTPException(500, "Failed to create job")
+
+
+@app.put("/submit2")
+def submit_pullable_job(command: Command):
+
+    pass
 
 
 @app.put("/upload/{job_id}/{path}")
@@ -118,7 +129,7 @@ def make_dir(job_id: str, dirs: list[str]) -> None:
     job.mkdirs(dirs)
 
 
-@app.put("/run/{job_id}") # race condition
+@app.put("/run/{job_id}")  # race condition
 def run_wasm(job_id: str, cmd: RunRequest, req: Capabilities) -> None:
     job = jobs.get(job_id)
     if job is None:
@@ -174,18 +185,29 @@ def update_caps() -> Capabilities:
                         has_battery=(not (battery is None) and not battery.power_plugged),
                         power=battery.percent if battery else 100)
 
-#def max_caps() -> Capabilities:
-#    psutil.virtual_memory().total
-#    psutil.disk_usage(root_dir).total
+
+def broadcast_capabilities():
+    self_object = Executor(host=host, port=port,
+                           cur_caps=update_caps())
+    info = ServiceInfo(
+        "_executor_wasm-rest._tcp.local.",
+        f"_executor{node_id}_wasm-rest._tcp.local.",
+        addresses=[socket.inet_aton(host)],
+        # socket.inet_aton(socket.gethostbyname(host))
+        port=port,
+        server=f"_broker{node_id}._wasm-rest._tcp.local.",
+        properties={"exec": self_object.model_dump_json()}
+    )
+    zeroconf.update_service(info)
 
 
 def start(_host: str, _port: int, rootdir: str) -> NodeRole:
     global root_dir, brokers, broker, host, port, uv_server
     host = _host
     port = _port
-    zeroconf = Zeroconf()
-    services = ["_broker._tcp.local."]
-    browser = ServiceBrowser(zeroconf, services, handlers=[found_broker])
+
+    services = ["_broker_wasm-rest._tcp.local."]
+    browser = ServiceBrowser(zeroconf, services, listener=BrokerListener())
     time.sleep(random.random() * 30)
     if not len(brokers):
         browser.cancel()

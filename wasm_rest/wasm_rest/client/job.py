@@ -40,7 +40,6 @@ class Job(Server):
                                            "stdin_file": stdin_file,
                                            "args": args,
                                            "env": env,
-                                           "ndn": ndn_data,
                                            "results": results,
                                            "res_destination": result_addr.model_dump()},
                                        "req": req.model_dump(),

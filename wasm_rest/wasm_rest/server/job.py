@@ -12,7 +12,6 @@ import requests
 from ..exceptions import WasmRestException
 from ..execute_wasm import run_wasmtime
 from ..model import JobStatus, Server as ServerModel, RunRequest
-from ..ndn import ndn_app
 from ..util import prevent_break, put_file, zip_folder
 
 send_retry = 10
@@ -69,19 +68,20 @@ class Job:
         return True
 
     def send_result(self, server: ServerModel):
-        if server.host == "":
-            return
-        for _ in range(0, send_retry):
-            try:
-                with open(self.result_path, "br") as file:
-                    res = requests.put(f"http://{server.host}:{server.port}/result/{self.id}",
-                                       files={"data": file})
-            except requests.exceptions.RequestException:
+        if server.host != "":
+            for _ in range(0, send_retry):
+                try:
+                    with open(self.result_path, "br") as file:
+                        res = requests.put(f"http://{server.host}:{server.port}/result/{self.id}",
+                                           files={"data": file})
+                except requests.exceptions.RequestException:
+                    time.sleep(send_timeout)
+                    continue
+                if res.ok or res.status_code == 404:
+                    break
                 time.sleep(send_timeout)
-                continue
-            if res.ok or res.status_code == 404:
-                break
-            time.sleep(send_timeout)
+
+
 
     def put_data(self, path: str, data: IO[bytes]) -> bool:
         return put_file(data, os.path.join(self.data_dir, path))
@@ -97,13 +97,6 @@ class Job:
         return True
 
     def _exec_wasm(self, cmd: RunRequest):  # TODO save errors
-        for name, file in cmd.ndn.items():
-            path = prevent_break(file)
-            data_path = os.path.join(self.data_dir, path)
-
-            if not ndn_app.save_from_ndn(name, data_path):
-                self.status = JobStatus.ERROR
-                raise WasmRestException("ndn resource not found")
 
         stdin_file = os.path.join(self.data_dir, prevent_break(cmd.stdin_file)) if cmd.stdin_file else None
 

@@ -13,7 +13,6 @@ class RunRequest(BaseModel):
     stdin_file: str = ""
     args: list[str] = []
     env: dict[str, str] = {}
-    ndn: dict[str, str] = {}
     results: dict[str, str] = {"/": "/"}
     res_destination: Server = Server(host="", port=0)
 
@@ -42,7 +41,6 @@ class Command(BaseModel):
     data: dict[str, str] = {}  # result%x:p means take file p from result of exec x
     args: list[str] = []
     env: dict[str, str] = {}
-    ndn_data: dict[str, str] = {}
     results: dict[str, str] = {"/": "/"}
     capabilities: Capabilities = Capabilities()
     result_path: str = "."
@@ -50,14 +48,20 @@ class Command(BaseModel):
 
 
 class Broker(Server):
-    id: str
+    node_id: str
     execs: int
 
 
 class Executor(Server):
-    max_caps: Capabilities = Capabilities()
+    node_id: str
     cur_caps: Capabilities = Capabilities()  # cache
     last_update: int = 0
+
+
+class Database(Server):
+    node_id: str
+    data_names: set[str]
+    free_storage: int
 
 
 class NodeRole(Enum):
