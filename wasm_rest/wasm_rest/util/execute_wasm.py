@@ -1,16 +1,33 @@
 import multiprocessing
 import os
 
-from typing import Union
+from typing import Union, Optional
 
 from wasmtime import Store, Module, Linker, WasiConfig, Trap, WasmtimeError
 
+from wasm_rest.exceptions import WasmRestException
 
-def run_wasmtime(exec_path: str, data_path: str, stdin_file: Union[str, None],
+
+def run_webassembly(exec_path: str, data_path: str, stdin_file: Optional[str],
+                    argv: list[str], env: dict[str, str],
+                    out_path: str) -> None:
+    error = multiprocessing.Queue(1)
+    wasm = multiprocessing.Process(target=run_wasmtime,
+                                   args=(exec_path, data_path,
+                                         stdin_file, argv, env,
+                                         out_path,
+                                         error), daemon=True)
+    wasm.start()
+    err_msg = error.get(block=True)
+    wasm.join()
+    if err_msg != "":
+        raise WasmRestException(err_msg)  # TODO right exception
+
+
+def run_wasmtime(exec_path: str, data_path: str, stdin_file: Optional[str],
                  argv: list[str], env: dict[str, str],
                  out_path: str, error: multiprocessing.Queue) -> None:
     try:
-        wasm = b""
         with open(exec_path, "br") as wasm_file:
             wasm = wasm_file.read()
         wasi_env_var = []
@@ -37,10 +54,10 @@ def run_wasmtime(exec_path: str, data_path: str, stdin_file: Union[str, None],
             function(store)
             error.put("")
         except Trap as t:
-            error.put(f"Encountered Webassembly Trap {t.message}")
+            error.put(f"Encountered Webassembly Trap: {t.message}")
             # raise WasmRestException(f"Encountered Webassembly Trap {t.message}")
-    except WasmtimeError:
-        error.put("Failed to set up Webassembly Runtime")
+    except WasmtimeError as e:
+        error.put(f"Failed to set up Webassembly Runtime: {e}")
         # raise WasmRestException("Failed to set up Webassembly Runtime")
     except OSError:
         error.put("Failed to open binary")

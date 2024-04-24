@@ -1,0 +1,140 @@
+import threading
+import time
+import random
+from typing import Any, Optional
+
+from fastapi import FastAPI, HTTPException
+from zeroconf import ServiceListener, Zeroconf
+
+from wasm_rest.model import NodeRole, Capabilities, JobInfo, Address
+from wasm_rest.nodes.broker.cache import Cache
+from wasm_rest.nodes.listeners.datastores import DatastoreListener
+from wasm_rest.nodes.node import Node
+from wasm_rest.nodetypes.datastore import Datastore
+from wasm_rest.nodetypes.executor import Executor
+from wasm_rest.util.util import generate_unique_id
+
+fastapi_app = FastAPI()
+node_object: Node
+
+datastore_listener = DatastoreListener()
+
+executors: dict[str, Executor] = {}
+executor_lock = threading.Lock()
+
+
+@fastapi_app.put("/executors/register")
+def register_executor(executor: Executor) -> None:
+    if executor.update_capabilities() is not None:
+        with executor_lock:
+            executors[executor.id] = executor
+    else:
+        raise HTTPException(400, "Could not request Capabilities")
+
+
+@fastapi_app.put("/executors/heartbeat/{exec_id}")
+def heartbeat_executor(exec_id: str, capabilities: Capabilities) -> None:
+    with executor_lock:
+        executor = executors.get(exec_id)
+        if executor is None:
+            raise HTTPException(404, "No such executor")
+        executor.cur_caps = capabilities
+        executor.last_update = time.time()
+
+
+@fastapi_app.get("/executors/count")
+def executor_count() -> int:
+    return len(executors)
+
+
+'''@fastapi_app.get("/datastore/{name:path}")
+def data_location(name: str) -> Datastore:
+    with datastore_lock:
+        for datastore in datastores.values():
+            if name in datastore.get_data_list():
+                return datastore
+    raise HTTPException(404, "Named data does not exist")'''
+
+
+job_datastore_cache = Cache()
+
+
+@fastapi_app.get("/datastore/{name:path}")
+def job_data_location(name: str, job_id: str = '', invalidate: bool = False) -> Datastore:
+    if invalidate:
+        job_datastore_cache.invalidate(name, job_id)
+    datastore = job_datastore_cache.get(name, job_id)
+    if datastore is not None:
+        return datastore
+    with datastore_listener.lock:
+        for datastore in datastore_listener.datastores.values():
+            page_number = 0
+            while True:
+                page_number += 1
+                if job_id != '':
+                    page = datastore.paginate_data_list(job_id=job_id, page_number=page_number)
+                    job_datastore_cache.set(page, datastore, job_id=job_id)
+                else:
+                    page = datastore.paginate_data_list(name)
+                    job_datastore_cache.set(page, datastore, name)
+                if name in page.items:
+                    return datastore
+                else:
+                    if len(page.items) == 0:
+                        break
+    raise HTTPException(404, "Named data does not exist")
+
+
+@fastapi_app.get("/datastore")
+def datastore_for_storage(required_storage: int) -> Datastore:
+    with datastore_listener.lock:
+        capable_datastores = [datastore for datastore in datastore_listener.datastores.values()
+                              if datastore.free_space() > required_storage]
+        if len(capable_datastores) != 0:
+            datastore = random.choice(capable_datastores)
+            return datastore
+        else:
+            raise HTTPException(503, "No datastore able to hold file")
+
+
+@fastapi_app.put("/job/submit/{job_id}")
+def submit_job(job_info: JobInfo, job_id: str) -> str:
+    executor = capable_executor(job_info.capabilities)
+    if executor is None:
+        raise HTTPException(503, "No capable Executor")
+    if executor.submit_job(job_id, job_info):
+        return job_id
+    else:
+        raise HTTPException(503, "Failed to submit Job")
+
+
+def capable_executor(capabilities: Capabilities) -> Optional[Executor]:
+    prune_executor_list()
+    with executor_lock:
+        capable_executors = [executor for executor in executors.values() if executor.cur_caps.is_capable(capabilities)]
+    if len(capable_executors):
+        return random.choice(capable_executors)
+    return None
+
+
+def prune_executor_list() -> None:
+    delete_list = []
+    current_time = time.time()
+    with executor_lock:
+        for _, executor in executors.items():
+            if (current_time - executor.last_update) > 120:
+                delete_list.append(executor)
+        for executor in delete_list:
+            del executors[executor.id]
+
+
+def run(host: str, port: int, uvicorn_args: dict[str, Any] = None) -> NodeRole:
+    global node_object
+    node_object = Node(host, port, "broker", fastapi_app, uvicorn_args)
+    node_object.zeroconf.add_service_listener(Node.zeroconf_service_type("datastore"), datastore_listener)
+    node_object.run()
+    return NodeRole.EXIT
+
+
+if __name__ == '__main__':
+    run("127.0.0.1", 8000)

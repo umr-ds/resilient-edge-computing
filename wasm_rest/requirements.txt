@@ -2,9 +2,9 @@
 wasmtime~=17.0.1
 uvicorn~=0.27.1
 fastapi~=0.109.2
+fastapi-pagination
 python-multipart
 requests~=2.31.0
 psutil~=5.9.8
 zeroconf~=0.131.0
-python-ndn
 pydantic~=2.6.1

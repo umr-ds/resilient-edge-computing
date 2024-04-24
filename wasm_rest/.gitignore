@@ -1,7 +1,4 @@
-__pycache__
-.venv
-.idea
-wasm_rest_server
-wasm_rest_database
-wasm_rest/__pycache__
+.gitignore
+datastore_dir
+executor_dir
 results
