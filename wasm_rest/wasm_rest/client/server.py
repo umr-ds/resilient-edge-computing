@@ -1,29 +1,29 @@
-from typing import Union
+from typing import Optional
 import requests
 
 from .job import Job
 from ..exceptions import ServerException, raise_server_error
-from ..model import Server as ServerModel, Capabilities
+from ..model import Capabilities
+from ..server.executor import Executor
 
 
-class Server(ServerModel):
+class Server:
+    executor: Executor
+
+    def __int__(self, executor: Executor):
+        self.executor = executor
 
     def submit(self, path: str) -> Job:
         try:
             with open(path, "rb") as file:
-                res = requests.put(f"http://{self.host}:{self.port}/submit",
+                res = requests.put(f"http://{self.executor.node.address.host}:{self.executor.node.address.port}/submit",
                                    files={"binary": file})
         except requests.exceptions.RequestException:
             raise ServerException("Failed to communicate with server")
         if res.ok:
-            return Job(host=self.host, port=self.port, job_id=res.content.decode()[1:-1])
+            return Job(host=self.executor.node.address.host, port=self.executor.node.address.port,
+                       job_id=res.content.decode()[1:-1])
         raise_server_error(res.content, "submit")
 
-    def caps(self) -> Union[Capabilities, None]:
-        try:
-            res = requests.get(f"http://{self.host}:{self.port}/caps")
-            if res.ok:
-                return Capabilities.model_validate_json(res.content)
-        except requests.exceptions.RequestException:
-            raise ServerException("Failed to communicate with server")
-        return None
+    def caps(self) -> Optional[Capabilities]:
+        return self.executor.update_capabilities()

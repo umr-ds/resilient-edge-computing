@@ -4,12 +4,12 @@ import os
 import requests
 
 from ..exceptions import ServerException, raise_server_error
-from ..model import Capabilities, Server
+from ..model import Capabilities, Address
 
 from typing import IO
 
 
-class Job(Server):
+class Job(Address):
     job_id: str
 
     def upload(self, file: IO[bytes], path: str):
@@ -31,7 +31,7 @@ class Job(Server):
             raise_server_error(res.content, "mkdir")
 
     def run(self, stdin_file: str, args: list[str], env: dict[str, str], ndn_data: dict[str, str],
-            results: dict[str, str], req: Capabilities, result_addr: Server):
+            results: dict[str, str], req: Capabilities, result_addr: Address):
         try:
             res = requests.put(f"http://{self.host}:{self.port}/run/{self.job_id}",
                                data=json.dumps(

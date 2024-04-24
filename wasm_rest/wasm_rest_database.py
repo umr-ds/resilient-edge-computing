@@ -5,8 +5,9 @@ import argparse
 
 import psutil
 
-from wasm_rest.util import put_file, gen_node_id, prevent_break
-from wasm_rest.model import Server
+from wasm_rest.server.database import Database
+from wasm_rest.util import put_file, gen_unique_id, prevent_break
+from wasm_rest.model import Address, Node
 
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.responses import FileResponse
@@ -17,14 +18,13 @@ app: FastAPI = FastAPI()
 uv_server: UVServer = None
 zeroconf: Zeroconf = Zeroconf()
 
-node_id = gen_node_id()
-address: Server = None
-
 root_dir: str = ""
 stored_data: dict[str, str] = {}
 
+self_object: Database
 
-@app.put("/data/{name}")
+
+@app.put("/data/{name:path}")
 def store_data(name: str, data: UploadFile):
     file_path = os.path.join(root_dir, prevent_break(name))
     if put_file(data.file, file_path):
@@ -34,14 +34,14 @@ def store_data(name: str, data: UploadFile):
         raise HTTPException(500, "Resource could not be created")
 
 
-@app.get("/data/{name}")
+@app.get("/data/{name:path}")
 def get_data(name: str) -> FileResponse:
     if name in stored_data.keys():
         return FileResponse(path=stored_data[name], filename=name)
     raise HTTPException(404, "Resource Not Found")
 
 
-@app.delete("/data/{name}")
+@app.delete("/data/{name:path}")
 def delete_data(name: str):
     del stored_data[name]
     os.remove(os.path.join(root_dir, prevent_break(name)))
@@ -61,12 +61,16 @@ def free_space():
 def gen_service_info() -> ServiceInfo:
     return ServiceInfo(
         "_database_wasm-rest._tcp.local.",
-        f"_database{node_id}._wasm-rest._tcp.local.",
-        addresses=[socket.inet_aton(address.host)],
-        port=int(address.port),
-        server=f"_database{node_id}._wasm-rest._tcp.local.",
-        properties={"node_id": node_id, "data": json.dumps(list(stored_data.keys())), "free_storage": free_space()}
+        f"_database{self_object.node.id}._wasm-rest._tcp.local.",
+        addresses=[socket.inet_aton(self_object.node.address.host)],
+        port=int(self_object.node.address.port),
+        server=f"_database{self_object.node.id}._wasm-rest._tcp.local.",
+        properties={"node_id": self_object.node.id, "data": json.dumps(list(stored_data.keys())), "free_storage": free_space()}
     )
+
+
+def valid_resource_name(name: str) -> bool:
+    return not name.startswith("/result/")
 
 
 def on_content_update():
@@ -83,12 +87,13 @@ def wasm_rest_parse_args():
 
 
 def main():
-    global uv_server, root_dir, address
+    global uv_server, root_dir, self_object
     args = wasm_rest_parse_args()
     os.makedirs(args.rootdir, exist_ok=True)
     root_dir = args.rootdir
     host, port = args.addr.split(":")
-    address = Server(host=host, port=port)
+    self_object = Database(node=Node(id=gen_unique_id(), address=Address(host=host, port=port)),
+                           free_storage=free_space(), data_names=set())
     info = gen_service_info()
     uv_server = UVServer(UVConfig(app, host="127.0.0.1", port=8002))
     zeroconf.register_service(info)

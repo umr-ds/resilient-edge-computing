@@ -7,7 +7,7 @@ from zipfile import ZipFile
 
 import requests
 
-from .model import Server
+from .model import Address
 from fastapi import HTTPException
 from typing import IO
 
@@ -49,7 +49,7 @@ def zip_folder(zip_file: ZipFile, host: str, to_zip: str):
                            os.path.join(to_zip, relpath))
 
 
-def wait_online(server: Server, endpoint: str, max_tries: int, wait_next_try: float) -> bool:
+def wait_online(server: Address, endpoint: str, max_tries: int, wait_next_try: float) -> bool:
     tries = 0
     while True:
         try:
@@ -62,5 +62,5 @@ def wait_online(server: Server, endpoint: str, max_tries: int, wait_next_try: fl
         time.sleep(wait_next_try)
 
 
-def gen_node_id() -> str:
+def gen_unique_id() -> str:
     return base64.urlsafe_b64encode(random.randbytes(32)).decode()[:-1]

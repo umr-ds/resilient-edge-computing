@@ -10,13 +10,12 @@ import threading
 from typing import cast
 from zipfile import ZipFile, BadZipFile
 
-import requests
-
 from wasm_rest.client.server import Server
 from wasm_rest.client.job import Job
 from wasm_rest.exceptions import ServerException, WasmRestException, ClientException
-from wasm_rest.model import Capabilities, Server as ServerModel, Command
+from wasm_rest.model import Capabilities, Command, Address
 from wasm_rest.util import wait_online
+from wasm_rest.server.broker import Broker
 from pydantic import ValidationError
 from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange
 
@@ -28,22 +27,10 @@ from fastapi import FastAPI, UploadFile, HTTPException
 from wasm_rest.util import put_file
 
 
-class Broker(ServerModel):
-
-    def capable_server(self, caps: Capabilities) -> Server:
-        try:
-            res = requests.get(f"http://{self.host}:{self.port}/executor",
-                               data=caps.model_dump_json())
-        except requests.exceptions.RequestException:
-            raise ServerException("Failed to communicate with broker")
-        if res.ok:
-            return Server.model_validate_json(res.content)
-
-
 results: list[str] = []
 broker: Broker = None
 brokers: list[Broker] = []
-reply_server: Server = Server(host="localhost", port=8003)
+reply_server: Address = Address(host="localhost", port=8003)
 pending_results: dict[str, Command] = {}
 log = logging.getLogger("wasm_rest_client")
 done: threading.Semaphore = threading.Semaphore(0)
@@ -51,7 +38,10 @@ uv_server: uvicorn.Server = None
 
 
 def capable_server(caps: Capabilities) -> Server:
-    return broker.capable_server(caps)
+    executor = broker.get_executor(caps)
+    if executor is None:
+        raise ServerException("Failed to communicate with broker")
+    return Server(executor)
 
 
 def upload_data(host_path: str, server_path: str, job: Job):
@@ -166,7 +156,7 @@ def main():
     parser.add_argument("-v", action="store_true")
     args = parser.parse_args()
     host, port = args.reply.split(":")
-    reply_server = Server(host=host, port=port)
+    reply_server = Address(host=host, port=port)
     select_broker()
     if args.v:
         log.setLevel(logging.INFO)

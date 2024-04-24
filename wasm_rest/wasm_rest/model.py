@@ -3,9 +3,17 @@ from enum import Enum
 from pydantic import BaseModel
 
 
-class Server(BaseModel):
+class Address(BaseModel):
     host: str = ""
     port: int = 0
+
+    def http_str(self, path: str):
+        return f"http://{self.host}:{self.port}{path}"
+
+
+class Node(BaseModel):
+    address: Address
+    id: str
 
 
 class RunRequest(BaseModel):
@@ -14,7 +22,7 @@ class RunRequest(BaseModel):
     args: list[str] = []
     env: dict[str, str] = {}
     results: dict[str, str] = {"/": "/"}
-    res_destination: Server = Server(host="", port=0)
+    res_destination: Address = Address(host="", port=0)
 
 
 class Capabilities(BaseModel):
@@ -37,31 +45,15 @@ class Capabilities(BaseModel):
 
 class Command(BaseModel):
     wasm_bin: str
-    stdin: dict[str, str] = {}  # local means take file at specified path, which already exists (e.g. uploaded through data field)
+    stdin: dict[
+        str, str] = {}  # local means take file at specified path, which already exists (e.g. uploaded through data field)
     data: dict[str, str] = {}  # result%x:p means take file p from result of exec x
     args: list[str] = []
     env: dict[str, str] = {}
     results: dict[str, str] = {"/": "/"}
     capabilities: Capabilities = Capabilities()
     result_path: str = "."
-    result_addr: Server = Server(host="", port=8003)
-
-
-class Broker(Server):
-    node_id: str
-    execs: int
-
-
-class Executor(Server):
-    node_id: str
-    cur_caps: Capabilities = Capabilities()  # cache
-    last_update: int = 0
-
-
-class Database(Server):
-    node_id: str
-    data_names: set[str]
-    free_storage: int
+    result_addr: Address = Address(host="", port=8003)
 
 
 class NodeRole(Enum):

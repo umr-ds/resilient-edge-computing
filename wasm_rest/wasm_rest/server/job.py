@@ -1,18 +1,16 @@
-import base64
 import multiprocessing
 import os
-import random
 import threading
 import time
-from typing import IO
+from typing import IO, Union
 from zipfile import ZipFile
 
 import requests
 
 from ..exceptions import WasmRestException
 from ..execute_wasm import run_wasmtime
-from ..model import JobStatus, Server as ServerModel, RunRequest
-from ..util import prevent_break, put_file, zip_folder
+from ..model import JobStatus, Address as ServerModel, RunRequest
+from ..util import prevent_break, put_file, zip_folder, gen_unique_id
 
 send_retry = 10
 send_timeout = 10
@@ -28,25 +26,30 @@ class Job:
     result_path: str
     status: JobStatus
 
-    def __init__(self, root_dir: str, file: IO[bytes], filename: str):
-        while True:
-            self.id = "id" + base64.urlsafe_b64encode(random.randbytes(32)).decode()[:-1]
-            self.dir = os.path.join(root_dir, self.id)
-            self.code_dir = os.path.join(self.dir, "code")
-            self.data_dir = os.path.join(self.dir, "data")
-            self.out_dir = os.path.join(self.dir, "out")
-            self.result_path = os.path.join(self.dir, self.id + ".zip")
-            self.wasm_binary = os.path.join(self.code_dir, filename)
-            self.status = JobStatus.INIT
-            try:
-                os.makedirs(self.code_dir)
-                os.makedirs(self.data_dir)
-                os.makedirs(self.out_dir)
-                break
-            except OSError:
-                pass  # TODO
-        if not put_file(file, self.wasm_binary):
+    def __init__(self, root_dir: str, file: Union[IO[bytes], str], filename: str, job_id: str = gen_unique_id()):
+        self.id = "id" + job_id
+        self.dir = os.path.join(root_dir, self.id)
+        self.code_dir = os.path.join(self.dir, "code")
+        self.data_dir = os.path.join(self.dir, "data")
+        self.out_dir = os.path.join(self.dir, "out")
+        self.result_path = os.path.join(self.dir, self.id + ".zip")
+        self.wasm_binary = os.path.join(self.code_dir, filename)
+        self.status = JobStatus.INIT
+        try:
+            os.makedirs(self.code_dir)
+            os.makedirs(self.data_dir)
+            os.makedirs(self.out_dir)
+        except OSError:
             self.status = JobStatus.ERROR
+            return
+        if type(file) is str:
+            try:
+                os.rename(file, self.wasm_binary)
+            except OSError:
+                self.status = JobStatus.ERROR
+        else:
+            if not put_file(file, self.wasm_binary):
+                self.status = JobStatus.ERROR
 
     def mkdirs(self, dirs: list[str]):
         for dir_to_create in dirs:
@@ -81,10 +84,11 @@ class Job:
                     break
                 time.sleep(send_timeout)
 
-
-
     def put_data(self, path: str, data: IO[bytes]) -> bool:
         return put_file(data, os.path.join(self.data_dir, path))
+
+    def open_data_for_writing(self, path: str) -> IO[bytes]:
+        return open(os.path.join(self.data_dir, path), "bw")
 
     def delete(self) -> bool:
         try:
