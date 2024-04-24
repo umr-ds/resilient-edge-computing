@@ -4,8 +4,6 @@ import time
 from typing import Callable
 from zipfile import ZipFile
 
-import requests
-
 from wasm_rest.exceptions import WasmRestException
 from wasm_rest.model import JobInfo, Address
 from wasm_rest.nodetypes.broker import Broker

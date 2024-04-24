@@ -1,6 +1,3 @@
-import json
-
-
 class WasmRestException(BaseException):
     msg: str
 

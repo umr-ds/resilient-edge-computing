@@ -7,15 +7,15 @@ from typing import Optional
 
 from fastapi import FastAPI, UploadFile, HTTPException
 from pydantic import ValidationError
-from zeroconf import ServiceListener, Zeroconf
+from zeroconf import Zeroconf
 
 from wasm_rest.exceptions import WasmRestException
-from wasm_rest.model import JobInfo, Address
-from wasm_rest.nodes.client.job import Job
+from wasm_rest.model import JobInfo
+from wasm_rest.nodes.clients.job import Job
+from wasm_rest.nodes.listeners.brokers import BrokerListener
 from wasm_rest.nodes.node import Node
 from wasm_rest.nodetypes.broker import Broker
 from wasm_rest.util.util import generate_unique_id, put_file
-from wasm_rest.nodes.listeners.brokers import BrokerListener
 
 broker: Broker
 node_obj: Node

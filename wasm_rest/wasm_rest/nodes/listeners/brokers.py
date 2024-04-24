@@ -3,8 +3,8 @@ import threading
 from zeroconf import ServiceListener, Zeroconf
 
 from wasm_rest.model import Address
-from wasm_rest.nodetypes.broker import Broker
 from wasm_rest.nodes.node import Node
+from wasm_rest.nodetypes.broker import Broker
 
 
 class BrokerListener(ServiceListener):

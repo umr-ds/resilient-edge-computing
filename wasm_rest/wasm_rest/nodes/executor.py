@@ -6,15 +6,14 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from io import BytesIO
-from typing import Any
+from typing import Any, Optional
 
 import psutil
 from fastapi import FastAPI, HTTPException
-from zeroconf import ServiceListener, Zeroconf
 
 from wasm_rest.exceptions import WasmRestException
-from wasm_rest.model import JobInfo, NodeRole, Address, Capabilities
-from wasm_rest.nodes.executor.job import Job
+from wasm_rest.model import JobInfo, NodeRole, Capabilities
+from wasm_rest.nodes.executors.job import Job
 from wasm_rest.nodes.listeners.brokers import BrokerListener
 from wasm_rest.nodes.node import Node
 from wasm_rest.nodetypes.broker import Broker
@@ -23,11 +22,12 @@ from wasm_rest.nodetypes.executor import Executor
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    threading.Thread(target=register_with_broker).start()
+    threading.Thread(target=register_with_broker, daemon=True, name="reg").start()
     yield
 
 
 heartbeat_scheduler = sched.scheduler()
+event: Optional[sched.Event] = None
 fastapi_app = FastAPI(lifespan=lifespan)
 node_object: Node
 self_object: Executor
@@ -41,7 +41,7 @@ root_dir: str = ""
 
 
 def register_with_broker() -> None:
-    global broker
+    global broker, event
     registered = False
     waited = 0
     while not registered:
@@ -57,8 +57,8 @@ def register_with_broker() -> None:
                 update_capabilities()
                 if broker.register_executor(self_object):
                     registered = True
-                    heartbeat_scheduler.enter(60, 1, heartbeat)
-                    threading.Thread(target=heartbeat_scheduler.run).start()
+                    event = heartbeat_scheduler.enter(60, 1, heartbeat)
+                    threading.Thread(target=heartbeat_scheduler.run, daemon=True, name="sched").start()
                     break
                 time.sleep(2)
 
@@ -127,10 +127,11 @@ def update_capabilities() -> Capabilities:
 
 
 def heartbeat() -> None:
+    global event
     if not broker.heartbeat_executor(self_object.id, update_capabilities()):
         register_with_broker()
         return
-    heartbeat_scheduler.enter(60, 1, heartbeat)
+    event = heartbeat_scheduler.enter(60, 1, heartbeat)
 
 
 def run(host: str, port: int, rootdir: str, uvicorn_args: dict[str, Any] = None) -> NodeRole:

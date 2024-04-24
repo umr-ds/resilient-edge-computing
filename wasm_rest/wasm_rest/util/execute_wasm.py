@@ -1,7 +1,6 @@
 import multiprocessing
 import os
-
-from typing import Union, Optional
+from typing import Optional
 
 from wasmtime import Store, Module, Linker, WasiConfig, Trap, WasmtimeError
 

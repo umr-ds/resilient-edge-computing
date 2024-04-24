@@ -2,9 +2,9 @@ import json
 from typing import IO
 
 import requests
+from fastapi_pagination import Page
 
 from wasm_rest.nodetypes.node import Node
-from fastapi_pagination import Page
 
 
 class Datastore(Node):

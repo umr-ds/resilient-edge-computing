@@ -48,7 +48,8 @@ def data_list() -> list[str]:
 
 @fastapi_app.get("/list/{name:path}")
 def paginate_data(name: Optional[str] = '', job_id: str = '') -> Page[str]:
-    return paginate([data_name for data_name in stored_data.keys() if data_name.startswith(job_id) and name in data_name])
+    return paginate(
+        [data_name for data_name in stored_data.keys() if data_name.startswith(job_id) and name in data_name])
 
 
 @fastapi_app.get("/free")
