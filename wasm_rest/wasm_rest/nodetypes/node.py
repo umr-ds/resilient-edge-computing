@@ -3,6 +3,7 @@ from typing import Optional
 import requests
 from pydantic import BaseModel
 
+from wasm_rest.exceptions import ConnectionTimeoutException
 from wasm_rest.model import Address
 
 
@@ -13,6 +14,8 @@ class Node(BaseModel):
     def get(self, path: str, **kwargs) -> Optional[requests.Response]:
         try:
             return requests.get(f"http://{self.address.host}:{self.address.port}{path}", **kwargs)
+        #except requests.exceptions.ConnectTimeout:
+        #    raise ConnectionTimeoutException("Could not reach Server")
         except requests.exceptions.RequestException:
             return None
 

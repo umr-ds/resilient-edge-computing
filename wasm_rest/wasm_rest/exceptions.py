@@ -7,3 +7,7 @@ class WasmRestException(BaseException):
 
     def __str__(self) -> str:
         return self.msg
+
+
+class ConnectionTimeoutException(WasmRestException):
+    """connection to a node timed out"""

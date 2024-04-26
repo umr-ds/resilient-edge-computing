@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Optional
 
@@ -19,4 +20,14 @@ class Executor(Node):
 
     def submit_job(self, job_id: str, job_info: JobInfo) -> bool:
         res = self.put(f"/submit/{job_id}", data=job_info.model_dump_json())
+        return res is not None and res.ok
+
+    def job_list(self) -> list[str]:
+        res = self.get("/job/list")
+        if res is not None and res.ok:
+            return json.loads(res.content)
+        return []
+
+    def job_delete(self, job_id: str) -> bool:
+        res = self.delete(f"/job/{job_id}")
         return res is not None and res.ok

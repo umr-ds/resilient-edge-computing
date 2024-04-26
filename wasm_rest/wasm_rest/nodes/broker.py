@@ -105,6 +105,17 @@ def submit_job(job_info: JobInfo, job_id: str) -> str:
         raise HTTPException(503, "Failed to submit Job")
 
 
+@fastapi_app.delete("/job/{job_id}")
+def delete_job(job_id: str) -> None:
+    with datastore_listener.lock:
+        for store in datastore_listener.datastores.values():
+            store.delete_job_data(job_id)
+    with executor_lock:
+        for executor in executors.values():
+            if executor.job_delete(job_id):
+                break
+
+
 def capable_executor(capabilities: Capabilities) -> Optional[Executor]:
     prune_executor_list()
     with executor_lock:

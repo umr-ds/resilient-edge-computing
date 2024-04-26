@@ -1,5 +1,5 @@
 import json
-from typing import IO
+from typing import IO, Optional
 
 import requests
 from fastapi_pagination import Page
@@ -30,9 +30,11 @@ class Datastore(Node):
 
     def delete_data(self, name: str) -> bool:
         res = self.delete(f"/data{name}")
-        if res is None:
-            return False
-        return res.ok
+        return res is not None and res.ok
+
+    def delete_job_data(self, job_id: str) -> bool:
+        res = self.delete(f"/job_data/{job_id}")
+        return res is not None and res.ok
 
     def get_data_list(self) -> list[str]:
         res = self.get("/list")

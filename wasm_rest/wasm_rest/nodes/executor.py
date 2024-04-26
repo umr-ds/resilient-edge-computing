@@ -36,7 +36,7 @@ broker_listener = BrokerListener()
 broker: Broker
 
 jobs_lock = threading.Lock()
-jobs: list[tuple[str, Job]] = []
+jobs: dict[str, Job] = {}
 root_dir: str = ""
 
 
@@ -80,7 +80,7 @@ def submit_job(job_id: str, job_info: JobInfo) -> None:
         time.sleep(10)
     if job.start():
         with jobs_lock:
-            jobs.append((job_id, job))
+            jobs[job_id] = job
             return
     raise HTTPException(500, "Failed to start Job")
 
@@ -88,6 +88,22 @@ def submit_job(job_id: str, job_info: JobInfo) -> None:
 @fastapi_app.get("/capabilities")
 def server_capabilities() -> Capabilities:
     return update_capabilities()
+
+
+@fastapi_app.get("/job/list")
+def job_list() -> list[str]:
+    with jobs_lock:
+        return [key for key in jobs.keys()]
+
+
+@fastapi_app.delete("/job/{job_id}")
+def job_delete(job_id: str) -> None:
+    with jobs_lock:
+        job = jobs.get(job_id, None)
+        if job:
+            job.delete()
+            del jobs[job_id]
+        raise HTTPException(404, "Job not found")
 
 
 def store_job_in_datastore(job: Job, sent_to_client: bool) -> None:
