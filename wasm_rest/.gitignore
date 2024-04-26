@@ -1,4 +1,4 @@
 .gitignore
-datastore_dir
-executor_dir
+datastore.d
+executor.d
 results
