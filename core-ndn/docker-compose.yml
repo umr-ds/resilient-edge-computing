@@ -9,6 +9,8 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ./dotcore:/root/.coregui
       - ../wasm_rest:/root/wasm_rest
+      - ../resources:/root/resources
+      - ../core-test-setups:/root/tests
     privileged: true
     cap_add:
       - NET_ADMIN
