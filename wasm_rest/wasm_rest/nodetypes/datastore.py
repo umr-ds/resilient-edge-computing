@@ -1,5 +1,5 @@
 import json
-from typing import IO, Optional
+from typing import IO, Optional, Iterator
 
 import requests
 from fastapi_pagination import Page
@@ -11,22 +11,23 @@ class Datastore(Node):
 
     def store_data(self, file: IO[bytes], name: str) -> bool:
         res = self.put(f"/data/{name}", files={"data": file})
-        if res is None:
-            return False
-        return res.ok
+        return res is not None and res.ok
 
     def get_data(self, file: IO[bytes], name: str) -> bool:
-        res = self.get(f"/data/{name}", stream=True)
-        if res is None:
-            return False
-        if res.status_code == 200:
-            try:
-                for chunk in res.iter_content(chunk_size=65536):
+        try:
+            it = self.get_data_iterator(name)
+            if it:
+                for chunk in it:
                     file.write(chunk)
-            except requests.RequestException:
-                return False
-            return True
-        return False
+        except requests.RequestException:
+            return False
+        return True
+
+    def get_data_iterator(self, name: str) -> Optional[Iterator]:
+        res = self.get(f"/data/{name}", stream=True)
+        if res is not None and res.status_code == 200:
+            return res.iter_content(65536)
+        return None
 
     def delete_data(self, name: str) -> bool:
         res = self.delete(f"/data{name}")

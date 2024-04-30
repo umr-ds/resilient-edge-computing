@@ -3,6 +3,7 @@ import os
 import random
 from typing import IO
 from zipfile import ZipFile
+import uuid
 
 from wasm_rest.nodetypes.broker import Broker
 
@@ -49,12 +50,14 @@ def generate_unique_id() -> str:
 
 
 def try_store_named_data(name: str, path: str, broker: Broker) -> bool:
-    result_size = os.stat(path).st_size
-    datastore = broker.datastore_for_storage(result_size)
-    if datastore is None:
-        return False
+    #result_size = os.stat(path).st_size
     with open(path, "br") as result_file:
-        return datastore.store_data(result_file, name)
+        return broker.store_data(result_file, name)
+    #datastore = broker.datastore_for_storage(result_size)
+    #if datastore is None:
+        #return False
+    #with open(path, "br") as result_file:
+        #return datastore.store_data(result_file, name)
     '''for _ in range(10):
         datastore = broker.datastore_for_storage(100)
         if datastore is None:
@@ -67,7 +70,15 @@ def try_store_named_data(name: str, path: str, broker: Broker) -> bool:
 def try_download_file(name: str, path: str, broker: Broker, job_id: str = '', invalidate: bool = False) -> bool:
     if os.path.exists(path):
         return True
-    datastore = broker.data_location(name, job_id, invalidate)
+    with open(path, "bw") as data_file:
+        if not broker.get_data(data_file, name):
+            try:
+                os.remove(path)
+            except OSError:
+                pass  # cleanup if failed
+            return False
+        return True
+    """datastore = broker.data_location(name, job_id, invalidate)
     if datastore is None:
         return False
     with open(path, "bw") as data_file:
@@ -77,4 +88,4 @@ def try_download_file(name: str, path: str, broker: Broker, job_id: str = '', in
             except OSError:
                 pass  # cleanup if failed
             return False
-        return True
+        return True"""

@@ -1,5 +1,5 @@
 import json
-from typing import Optional
+from typing import Optional, IO
 
 import requests
 
@@ -45,6 +45,25 @@ class Broker(Node):
             return Datastore.model_validate_json(res.content)
         else:
             return None
+
+    def store_data(self, file: IO[bytes], name: str) -> bool:
+        res = self.put(f"/data/{name}", files={"data": file})
+        return res is not None and res.ok
+
+    def get_data(self, file: IO[bytes], name: str) -> bool:
+        res = self.get(f"/data/{name}", stream=True)
+        if res:
+            try:
+                for chunk in res.iter_content(65536):
+                    file.write(chunk)
+            except requests.RequestException:
+                return False
+            return True
+        return False
+
+    def send_result(self, job_id: str, data: IO[bytes]):
+        res = self.put(f"/result/{job_id}", files={"data": data})
+        return res is not None and res.ok
 
     def submit_job(self, job_info: JobInfo, job_id: str) -> Optional[str]:
         try:

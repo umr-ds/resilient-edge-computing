@@ -6,7 +6,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from io import BytesIO
-from typing import Any, Optional
+from typing import Any
 
 import psutil
 from fastapi import FastAPI, HTTPException
@@ -22,12 +22,11 @@ from wasm_rest.nodetypes.executor import Executor
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    threading.Thread(target=register_with_broker, daemon=True, name="reg").start()
+    threading.Thread(target=register_with_broker, daemon=True, name="register").start()
     yield
 
 
 heartbeat_scheduler = sched.scheduler()
-event: Optional[sched.Event] = None
 fastapi_app = FastAPI(lifespan=lifespan)
 node_object: Node
 self_object: Executor
@@ -41,7 +40,7 @@ root_dir: str = ""
 
 
 def register_with_broker() -> None:
-    global broker, event
+    global broker
     registered = False
     waited = 0
     while not registered:
@@ -57,8 +56,8 @@ def register_with_broker() -> None:
                 update_capabilities()
                 if broker.register_executor(self_object):
                     registered = True
-                    event = heartbeat_scheduler.enter(60, 1, heartbeat)
-                    threading.Thread(target=heartbeat_scheduler.run, daemon=True, name="sched").start()
+                    heartbeat_scheduler.enter(60, 1, heartbeat)
+                    threading.Thread(target=heartbeat_scheduler.run, daemon=True, name="heartbeat").start()
                     break
                 time.sleep(2)
 
@@ -106,27 +105,25 @@ def job_delete(job_id: str) -> None:
         raise HTTPException(404, "Job not found")
 
 
-def store_job_in_datastore(job: Job, sent_to_client: bool) -> None:
+def store_job_in_datastore(job: Job) -> None:
     for _ in range(10):
         if job.store_named(broker):
             break
-    if sent_to_client:
-        return
-    result_size = os.stat(job.result_path).st_size
+    if job.job_info.result_addr.host != "":
+        for _ in range(10):
+            with open(job.result_path, "br") as result_file:
+                if broker.send_result(job.id, result_file):
+                    return
+                time.sleep(10)
     for _ in range(10):
-        datastore = broker.datastore_for_storage(result_size)
-        if datastore is None:
-            time.sleep(10)
-            continue
         with open(job.result_path, "br") as result_file:
-            if datastore.store_data(result_file, f"{job.id}/result"):
+            if broker.store_data(result_file, f"{job.id}/result"):
                 return
-    for _ in range(10):
-        datastore = broker.datastore_for_storage(100)
-        if datastore is None:
             time.sleep(10)
-            continue
-        datastore.store_data(BytesIO(b"Could not find datastore to store result: too big"), f"{job.id}/result")
+    for _ in range(10):
+        if broker.store_data(BytesIO(b"Could not find datastore to store result: too big"), f"{job.id}/result"):
+            return
+        time.sleep(10)
 
 
 def update_capabilities() -> Capabilities:
@@ -143,11 +140,10 @@ def update_capabilities() -> Capabilities:
 
 
 def heartbeat() -> None:
-    global event
     if not broker.heartbeat_executor(self_object.id, update_capabilities()):
         register_with_broker()
         return
-    event = heartbeat_scheduler.enter(60, 1, heartbeat)
+    heartbeat_scheduler.enter(60, 1, heartbeat)
 
 
 def run(host: str, port: int, rootdir: str, uvicorn_args: dict[str, Any] = None) -> NodeRole:
@@ -167,4 +163,4 @@ if __name__ == '__main__':
     parser.add_argument("--port", default=8001, type=int)
     args = parser.parse_args()
 
-    run("127.0.0.1", args.port, "../../executor_dir")
+    run("127.0.0.1", args.port, "../../executor.d")

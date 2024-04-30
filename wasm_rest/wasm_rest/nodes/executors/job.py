@@ -7,7 +7,6 @@ from zipfile import ZipFile
 from wasm_rest.exceptions import WasmRestException
 from wasm_rest.model import JobInfo, Address
 from wasm_rest.nodetypes.broker import Broker
-from wasm_rest.nodetypes.client import Client
 from wasm_rest.util.execute_wasm import run_webassembly
 from wasm_rest.util.util import prevent_breakout, zip_folder, try_download_file, try_store_named_data
 
@@ -24,12 +23,12 @@ class Job:
     result_path: str
     job_info: JobInfo
     __to_store_named: dict[str, str] = {}
-    __on_complete: Callable[['Job', bool], None]
+    __on_complete: Callable[['Job'], None]
 
     # status: JobStatus
 
     def __init__(self, root_dir: str, job_id: str, job_info: JobInfo,
-                 on_complete: Callable[['Job', bool], None]) -> None:
+                 on_complete: Callable[['Job'], None]) -> None:
         self.job_info = job_info
         self.__on_complete = on_complete
         self.id = job_id
@@ -86,7 +85,7 @@ class Job:
                                            for host_path, name in self.job_info.named_results.items()}
 
             self.__to_store_named = {name: path for name, path in self.job_info.named_results.items()}
-            self.job_info.args.insert(0, "")  # first argument typically program name empty here
+            self.job_info.args.insert(0, "exec.wasm")  # first argument typically program name "exec.wasm" here
         except ValueError as e:
             raise WasmRestException("Invalid Formatting") from e
 
@@ -119,19 +118,8 @@ class Job:
         threading.Thread(target=self.__exec_wasm).start()
         return True
 
-    def send_result(self, address: Address) -> None:
-        sent = False
-        if address.host != "":
-            client = Client(address=address, id='')
-            for _ in range(0, send_retry):
-                with open(self.result_path, "br") as file:
-                    if not client.send_result(self.id, file):
-                        time.sleep(send_timeout)
-                        continue
-                    else:
-                        sent = True
-                        break
-        self.__on_complete(self, sent)
+    def send_result(self) -> None:
+        self.__on_complete(self)
 
     def delete(self) -> bool:
         try:
@@ -185,4 +173,4 @@ class Job:
         #    self.status = JobStatus.ERROR
         # else:
         #    self.status = JobStatus.DONE
-        self.send_result(self.job_info.result_addr)
+        self.send_result()

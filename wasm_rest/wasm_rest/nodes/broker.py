@@ -3,12 +3,14 @@ import threading
 import time
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 
-from wasm_rest.model import NodeRole, Capabilities, JobInfo
+from wasm_rest.model import NodeRole, Capabilities, JobInfo, Address
 from wasm_rest.nodes.brokers.cache import Cache
 from wasm_rest.nodes.listeners.datastores import DatastoreListener
 from wasm_rest.nodes.node import Node
+from wasm_rest.nodetypes.client import Client
 from wasm_rest.nodetypes.datastore import Datastore
 from wasm_rest.nodetypes.executor import Executor
 
@@ -19,6 +21,8 @@ datastore_listener = DatastoreListener()
 
 executors: dict[str, Executor] = {}
 executor_lock = threading.Lock()
+pending_results: dict[str, Address] = {}
+job_datastore_cache = Cache()
 
 
 @fastapi_app.put("/executors/register")
@@ -43,17 +47,6 @@ def heartbeat_executor(exec_id: str, capabilities: Capabilities) -> None:
 @fastapi_app.get("/executors/count")
 def executor_count() -> int:
     return len(executors)
-
-
-'''@fastapi_app.get("/datastore/{name:path}")
-def data_location(name: str) -> Datastore:
-    with datastore_lock:
-        for datastore in datastores.values():
-            if name in datastore.get_data_list():
-                return datastore
-    raise HTTPException(404, "Named data does not exist")'''
-
-job_datastore_cache = Cache()
 
 
 @fastapi_app.get("/datastore/{name:path}")
@@ -94,12 +87,46 @@ def datastore_for_storage(required_storage: int) -> Datastore:
             raise HTTPException(503, "No datastore able to hold file")
 
 
+@fastapi_app.put("/data/{name:path}")
+def store_data(name: str, data: UploadFile) -> None:
+    datastore = datastore_for_storage(data.size)
+    if datastore:
+        datastore.store_data(data.file, name)
+    else:
+        raise HTTPException(503, "No capable datastore")
+
+
+@fastapi_app.get("/data/{name:path}")
+def get_data(name: str) -> StreamingResponse:
+    datastore = job_data_location(name)
+    if datastore:
+        data = datastore.get_data_iterator(name)
+        if data:
+            return StreamingResponse(data, media_type="application/octet-stream")
+        else:
+            raise HTTPException(404, "Error in Datastore")
+    else:
+        raise HTTPException(404, "Data location not known")
+
+
+@fastapi_app.put("/result/{job_id}")
+def send_result(job_id: str, data: UploadFile) -> None:
+    address = pending_results.get(job_id, None)
+    if address:
+        client = Client(address=address, id='')
+        if client.send_result(job_id, data.file):
+            del pending_results[job_id]
+        else:
+            raise HTTPException(503, "Result destination not known")
+
+
 @fastapi_app.put("/job/submit/{job_id}")
 def submit_job(job_info: JobInfo, job_id: str) -> str:
     executor = capable_executor(job_info.capabilities)
     if executor is None:
         raise HTTPException(503, "No capable Executor")
     if executor.submit_job(job_id, job_info):
+        pending_results[job_id] = job_info.result_addr
         return job_id
     else:
         raise HTTPException(503, "Failed to submit Job")

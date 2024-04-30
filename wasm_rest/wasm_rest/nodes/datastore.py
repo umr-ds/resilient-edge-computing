@@ -50,7 +50,7 @@ def delete_job_data(job_id: str) -> None:
     remove_list = []
     with data_lock:
         for data in stored_data:
-            if data.startswith(job_id):
+            if data.startswith(job_id) and not data.endswith("/result"):
                 remove_list.append(data)
         for data in remove_list:
             _delete_data(data)
@@ -102,4 +102,4 @@ def run(host: str, port: int, rootdir: str, uvicorn_args: dict[str, Any] = None)
 
 
 if __name__ == '__main__':
-    run("127.0.0.1", 8002, "../../datastore_dir")
+    run("127.0.0.1", 8002, "../../datastore.d")
