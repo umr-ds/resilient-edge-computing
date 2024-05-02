@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from wasm_rest.exceptions import WasmRestException
 from wasm_rest.model import JobInfo
 from wasm_rest.nodetypes.broker import Broker
@@ -5,13 +7,13 @@ from wasm_rest.util.util import try_store_named_data
 
 
 class Job:
-    id: str
+    id: UUID
 
-    def __init__(self, job_id: str) -> None:
+    def __init__(self, job_id: UUID) -> None:
         self.id = job_id
 
     def job_data_name(self, name: str) -> str:
-        return self.id + "/" + name
+        return f"{self.id}/{name}"
 
     def upload_job_file(self, name: str, path: str, broker: Broker) -> bool:
         return try_store_named_data(self.job_data_name(name), path, broker)

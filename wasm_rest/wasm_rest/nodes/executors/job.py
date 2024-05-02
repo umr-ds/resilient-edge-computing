@@ -1,6 +1,7 @@
 import os
 import threading
 from typing import Callable
+from uuid import UUID
 from zipfile import ZipFile
 
 from wasm_rest.exceptions import WasmRestException
@@ -14,7 +15,7 @@ send_timeout = 10
 
 
 class Job:
-    id: str
+    id: UUID
     dir: str
     code_dir: str
     data_dir: str
@@ -24,16 +25,16 @@ class Job:
     __to_store_named: dict[str, str] = {}
     __on_complete: Callable[['Job'], None]
 
-    def __init__(self, root_dir: str, job_id: str, job_info: JobInfo,
+    def __init__(self, root_dir: str, job_id: UUID, job_info: JobInfo,
                  on_complete: Callable[['Job'], None]) -> None:
         self.job_info = job_info
         self.__on_complete = on_complete
         self.id = job_id
-        self.dir = os.path.join(root_dir, self.id)
+        self.dir = os.path.join(root_dir, str(self.id))
         self.code_dir = os.path.join(self.dir, "code")
         self.data_dir = os.path.join(self.dir, "data")
         self.out_dir = os.path.join(self.dir, "out")
-        self.result_path = os.path.join(self.dir, self.id + ".zip")
+        self.result_path = os.path.join(self.dir, str(self.id) + ".zip")
         try:
             os.makedirs(self.code_dir)
             os.makedirs(self.data_dir)
@@ -106,7 +107,7 @@ class Job:
         return os.path.join(self.data_dir, prevent_breakout(path))
 
     def job_data_name(self, name: str) -> str:
-        return self.id + "/" + name
+        return f"{self.id}/{name}"
 
     def start(self) -> bool:
         if not os.path.exists(self.job_info.wasm_bin[1]):

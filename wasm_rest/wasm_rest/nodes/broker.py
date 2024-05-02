@@ -1,7 +1,9 @@
 import random
 import threading
 import time
+import uuid
 from typing import Any, Optional
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -19,9 +21,9 @@ node_object: Node
 
 datastore_listener = DatastoreListener()
 
-executors: dict[str, Executor] = {}
+executors: dict[UUID, Executor] = {}
 executor_lock = threading.Lock()
-pending_results: dict[str, Address] = {}
+pending_results: dict[UUID, Address] = {}
 job_datastore_cache = Cache()
 
 
@@ -35,7 +37,7 @@ def register_executor(executor: Executor) -> None:
 
 
 @fastapi_app.put("/executors/heartbeat/{exec_id}")
-def heartbeat_executor(exec_id: str, capabilities: Capabilities) -> None:
+def heartbeat_executor(exec_id: UUID, capabilities: Capabilities) -> None:
     with executor_lock:
         executor = executors.get(exec_id)
         if executor is None:
@@ -50,7 +52,7 @@ def executor_count() -> int:
 
 
 # @fastapi_app.get("/datastore/{name:path}")
-def job_data_location(name: str, job_id: str = '', invalidate: bool = False) -> Datastore:
+def job_data_location(name: str, job_id: Optional[UUID] = None, invalidate: bool = False) -> Datastore:
     if invalidate:
         job_datastore_cache.invalidate(name, job_id)
     datastore = job_datastore_cache.get(name, job_id)
@@ -111,10 +113,10 @@ def get_data(name: str) -> StreamingResponse:
 
 
 @fastapi_app.put("/result/{job_id}")
-def send_result(job_id: str, data: UploadFile) -> None:
+def send_result(job_id: UUID, data: UploadFile) -> None:
     address = pending_results.get(job_id, None)
     if address:
-        client = Client(address=address, id='')
+        client = Client(address=address, id=uuid.uuid4())
         if client.send_result(job_id, data.file):
             del pending_results[job_id]
         else:
@@ -122,7 +124,7 @@ def send_result(job_id: str, data: UploadFile) -> None:
 
 
 @fastapi_app.put("/job/submit/{job_id}")
-def submit_job(job_info: JobInfo, job_id: str) -> str:
+def submit_job(job_info: JobInfo, job_id: UUID) -> UUID:
     executor = capable_executor(job_info.capabilities)
     if executor is None:
         raise HTTPException(503, "No capable Executor")
@@ -134,7 +136,7 @@ def submit_job(job_info: JobInfo, job_id: str) -> str:
 
 
 @fastapi_app.delete("/job/{job_id}")
-def delete_job(job_id: str) -> None:
+def delete_job(job_id: UUID) -> None:
     with datastore_listener.lock:
         for store in datastore_listener.datastores.values():
             store.delete_job_data(job_id)

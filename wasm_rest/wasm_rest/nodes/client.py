@@ -4,6 +4,7 @@ import random
 import threading
 import time
 from typing import Optional
+from uuid import UUID
 
 from fastapi import FastAPI, UploadFile, HTTPException
 from pydantic import ValidationError
@@ -23,15 +24,15 @@ broker_listener = BrokerListener()
 zeroconf = Zeroconf()
 fastapi_app = FastAPI()
 result_dir = ''
-pending_results: dict[str, JobInfo] = {}
+pending_results: dict[UUID, JobInfo] = {}
 all_queued = False
 
 
 @fastapi_app.put("/result/{job_id}")
-def receive_result(job_id: str, data: UploadFile):
+def receive_result(job_id: UUID, data: UploadFile):
     if pending_results.pop(job_id, None) is None:
         raise HTTPException(404, "Result not expected")
-    if not put_file(data.file, os.path.join(result_dir, data.filename)):
+    if not put_file(data.file, os.path.join(result_dir, f"{job_id}.zip")):
         raise HTTPException(500, "File could not be stored")
     if all_queued and len(pending_results) == 0:
         node_obj.stop()

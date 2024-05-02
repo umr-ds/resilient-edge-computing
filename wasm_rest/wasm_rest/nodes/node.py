@@ -1,5 +1,6 @@
 import socket
 from typing import Any, Optional
+from uuid import UUID
 
 from fastapi import FastAPI
 from uvicorn import Server as UVServer, Config as UVConfig
@@ -14,7 +15,7 @@ class Node:
     uvicorn_server: Optional[UVServer]
     zeroconf: Zeroconf
     address: Address
-    id: str
+    id: UUID
     service_type: str
 
     def __init__(self, host: str, port: int, service_type: Optional[str] = None, fastapi_app: Optional[FastAPI] = None,
@@ -59,12 +60,12 @@ class Node:
         return f"_{service_type}._wasm-rest._tcp.local."
 
     @classmethod
-    def zeroconf_service_name(cls, service_type: str, node_id: str) -> str:
+    def zeroconf_service_name(cls, service_type: str, node_id: UUID) -> str:
         return f"_{service_type}{node_id}._wasm-rest._tcp.local."
 
     @classmethod
-    def id_from_name(cls, name: str):
-        return name[-66:-23]
+    def id_from_name(cls, name: str) -> UUID:
+        return UUID(name[-59:-23])
 
 
 if __name__ == '__main__':

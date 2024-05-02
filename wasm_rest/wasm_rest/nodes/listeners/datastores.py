@@ -1,4 +1,5 @@
 import threading
+from uuid import UUID
 
 from zeroconf import ServiceListener, Zeroconf
 
@@ -8,19 +9,21 @@ from wasm_rest.nodetypes.datastore import Datastore
 
 
 class DatastoreListener(ServiceListener):
-    datastores: dict[str, Datastore] = {}
+    datastores: dict[UUID, Datastore] = {}
     lock = threading.Lock()
 
     def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         pass
 
     def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+        node_id = Node.id_from_name(name)
         with self.lock:
-            del self.datastores[name]
+            del self.datastores[node_id]
 
     def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         info = zc.get_service_info(type_, name)
+        node_id = Node.id_from_name(name)
         if info:
             with self.lock:
-                self.datastores[name] = Datastore(id=Node.id_from_name(name),
-                                                  address=Address(host=info.parsed_addresses()[0], port=info.port))
+                self.datastores[node_id] = Datastore(id=node_id, address=Address(host=info.parsed_addresses()[0],
+                                                                                 port=info.port))

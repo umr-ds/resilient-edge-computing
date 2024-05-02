@@ -45,26 +45,13 @@ def zip_folder(zip_file: ZipFile, host: str, to_zip: str) -> None:
                            os.path.join(to_zip, relpath))
 
 
-def generate_unique_id() -> str:
-    return base64.urlsafe_b64encode(random.randbytes(32)).decode()[:-1]
+def generate_unique_id() -> uuid.UUID:
+    return uuid.uuid4()
 
 
 def try_store_named_data(name: str, path: str, broker: Broker) -> bool:
-    #result_size = os.stat(path).st_size
     with open(path, "br") as result_file:
         return broker.store_data(result_file, name)
-    #datastore = broker.datastore_for_storage(result_size)
-    #if datastore is None:
-        #return False
-    #with open(path, "br") as result_file:
-        #return datastore.store_data(result_file, name)
-    '''for _ in range(10):
-        datastore = broker.datastore_for_storage(100)
-        if datastore is None:
-            time.sleep(10)
-            continue
-        datastore.store_data(BytesIO(b"Could not find datastore to store result: too big"), name)'''
-    # TODO reasonable error
 
 
 def try_download_file(name: str, path: str, broker: Broker, job_id: str = '', invalidate: bool = False) -> bool:
@@ -78,14 +65,3 @@ def try_download_file(name: str, path: str, broker: Broker, job_id: str = '', in
                 pass  # cleanup if failed
             return False
         return True
-    """datastore = broker.data_location(name, job_id, invalidate)
-    if datastore is None:
-        return False
-    with open(path, "bw") as data_file:
-        if not datastore.get_data(data_file, name):
-            try:
-                os.remove(path)
-            except OSError:
-                pass  # cleanup if failed
-            return False
-        return True"""

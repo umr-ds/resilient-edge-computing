@@ -7,6 +7,7 @@ import time
 from contextlib import asynccontextmanager
 from io import BytesIO
 from typing import Any
+from uuid import UUID
 
 import psutil
 from fastapi import FastAPI, HTTPException
@@ -35,7 +36,7 @@ broker_listener = BrokerListener()
 broker: Broker
 
 jobs_lock = threading.Lock()
-jobs: dict[str, Job] = {}
+jobs: dict[UUID, Job] = {}
 root_dir: str = ""
 
 
@@ -68,7 +69,7 @@ def select_broker() -> Broker:
 
 
 @fastapi_app.put("/submit/{job_id}")
-def submit_job(job_id: str, job_info: JobInfo) -> None:
+def submit_job(job_id: UUID, job_info: JobInfo) -> None:
     try:
         job = Job(root_dir, job_id, job_info, store_job_in_datastore)
     except WasmRestException as e:
@@ -82,13 +83,13 @@ def server_capabilities() -> Capabilities:
 
 
 @fastapi_app.get("/job/list")
-def job_list() -> list[str]:
+def job_list() -> list[UUID]:
     with jobs_lock:
         return [key for key in jobs.keys()]
 
 
 @fastapi_app.delete("/job/{job_id}")
-def job_delete(job_id: str) -> None:
+def job_delete(job_id: UUID) -> None:
     with jobs_lock:
         job = jobs.get(job_id, None)
         if job:

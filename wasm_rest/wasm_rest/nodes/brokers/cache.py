@@ -1,5 +1,6 @@
 import time
 from typing import Optional
+from uuid import UUID
 
 from fastapi_pagination import Page
 from pydantic import BaseModel
@@ -14,16 +15,16 @@ class CachePage(BaseModel):
 
 
 class Cache:
-    cache: dict[str, dict[str, list[CachePage]]] = {}
+    cache: dict[Optional[UUID], dict[str, list[CachePage]]] = {}
 
-    def get(self, name: str, job_id: str) -> Optional[Datastore]:
+    def get(self, name: str, job_id: Optional[UUID] = None) -> Optional[Datastore]:
         res = self.__get_cache_place(name, job_id)
         if res is not None:
             cache_page, _, _ = res
             return cache_page.datastore
         return None
 
-    def set(self, page: Page, datastore: Datastore, search: str = '', job_id: str = '') -> None:
+    def set(self, page: Page, datastore: Datastore, search: str = '', job_id: Optional[UUID] = None) -> None:
         job_dict = self.cache.get(job_id, None)
         if job_dict is None:
             job_dict = {}
@@ -34,13 +35,13 @@ class Cache:
             job_dict[search] = search_list
         search_list.append(CachePage(datastore=datastore, page=page, time=time.time()))
 
-    def invalidate(self, name: str, job_id: str) -> None:
+    def invalidate(self, name: str, job_id: UUID) -> None:
         res = self.__get_cache_place(name, job_id)
         if res is not None:
             cache_page, job_id, search = res
             self.cache[job_id][search].remove(cache_page)
 
-    def __get_cache_place(self, name: str, job_id: str) -> Optional[tuple[CachePage, str, str]]:
+    def __get_cache_place(self, name: str, job_id: Optional[UUID]) -> Optional[tuple[CachePage, Optional[UUID], str]]:
         page = False
         job_dict = self.cache.get(job_id, None)
         if job_dict is None:

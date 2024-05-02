@@ -1,4 +1,5 @@
 from typing import Optional
+from uuid import UUID
 
 import requests
 from pydantic import BaseModel
@@ -9,7 +10,7 @@ from wasm_rest.model import Address
 
 class Node(BaseModel):
     address: Address
-    id: str
+    id: UUID
 
     def get(self, path: str, **kwargs) -> Optional[requests.Response]:
         try:

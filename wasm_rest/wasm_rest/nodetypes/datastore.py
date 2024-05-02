@@ -1,5 +1,6 @@
 import json
 from typing import IO, Optional, Iterator
+from uuid import UUID
 
 import requests
 from fastapi_pagination import Page
@@ -33,7 +34,7 @@ class Datastore(Node):
         res = self.delete(f"/data{name}")
         return res is not None and res.ok
 
-    def delete_job_data(self, job_id: str) -> bool:
+    def delete_job_data(self, job_id: UUID) -> bool:
         res = self.delete(f"/job_data/{job_id}")
         return res is not None and res.ok
 
@@ -45,9 +46,9 @@ class Datastore(Node):
             return json.loads(res.content)
         return []
 
-    def paginate_data_list(self, name: str = '', job_id: str = '', page_number: int = 1, page_size: int = 50) -> Page:
+    def paginate_data_list(self, name: str = '', job_id: Optional[UUID] = None, page_number: int = 1, page_size: int = 50) -> Page:
         params = {"page": page_number, "size": page_size}
-        if job_id != '':
+        if job_id:
             params["job_id"] = job_id
         res = self.get(f"/list/{name}", params=params)
         if res is None:

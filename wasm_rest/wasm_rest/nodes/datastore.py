@@ -1,6 +1,7 @@
 import os
 import threading
 from typing import Any, Optional
+from uuid import UUID
 
 import psutil
 from fastapi import FastAPI, UploadFile, HTTPException
@@ -46,11 +47,11 @@ def delete_data(name: str) -> None:
 
 
 @fastapi_app.delete("/job_data/{job_id}")
-def delete_job_data(job_id: str) -> None:
+def delete_job_data(job_id: UUID) -> None:
     remove_list = []
     with data_lock:
         for data in stored_data:
-            if data.startswith(job_id) and not data.endswith("/result"):
+            if data.startswith(str(job_id)) and not data.endswith("/result"):
                 remove_list.append(data)
         for data in remove_list:
             _delete_data(data)
@@ -63,7 +64,8 @@ def data_list() -> list[str]:
 
 
 @fastapi_app.get("/list/{name:path}")
-def paginate_data(name: Optional[str] = '', job_id: str = '') -> Page[str]:
+def paginate_data(name: Optional[str] = '', job_id: Optional[UUID] = None) -> Page[str]:
+    job_id = str(job_id) if job_id else ''
     with data_lock:
         return paginate(
             [data_name for data_name in stored_data.keys() if data_name.startswith(job_id) and name in data_name])

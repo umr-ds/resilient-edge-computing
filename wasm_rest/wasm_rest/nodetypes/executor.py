@@ -1,6 +1,7 @@
 import json
 import time
 from typing import Optional
+from uuid import UUID
 
 from wasm_rest.model import Capabilities, JobInfo
 from wasm_rest.nodetypes.node import Node
@@ -18,7 +19,7 @@ class Executor(Node):
         self.last_update = time.time()
         return self.cur_caps
 
-    def submit_job(self, job_id: str, job_info: JobInfo) -> bool:
+    def submit_job(self, job_id: UUID, job_info: JobInfo) -> bool:
         res = self.put(f"/submit/{job_id}", data=job_info.model_dump_json())
         return res is not None and res.ok
 
@@ -28,6 +29,6 @@ class Executor(Node):
             return json.loads(res.content)
         return []
 
-    def job_delete(self, job_id: str) -> bool:
+    def job_delete(self, job_id: UUID) -> bool:
         res = self.delete(f"/job/{job_id}")
         return res is not None and res.ok
