@@ -31,7 +31,7 @@ def register_executor(executor: Executor) -> None:
         with executor_lock:
             executors[executor.id] = executor
     else:
-        raise HTTPException(400, "Could not request Capabilities")
+        raise HTTPException(400, "Could not request Capabilities to verify")
 
 
 @fastapi_app.put("/executors/heartbeat/{exec_id}")
@@ -49,7 +49,7 @@ def executor_count() -> int:
     return len(executors)
 
 
-@fastapi_app.get("/datastore/{name:path}")
+# @fastapi_app.get("/datastore/{name:path}")
 def job_data_location(name: str, job_id: str = '', invalidate: bool = False) -> Datastore:
     if invalidate:
         job_datastore_cache.invalidate(name, job_id)
@@ -57,25 +57,26 @@ def job_data_location(name: str, job_id: str = '', invalidate: bool = False) -> 
     if datastore is not None:
         return datastore
     with datastore_listener.lock:
-        for datastore in datastore_listener.datastores.values():
-            page_number = 0
-            while True:
-                page_number += 1
-                if job_id != '':
-                    page = datastore.paginate_data_list(job_id=job_id, page_number=page_number)
-                    job_datastore_cache.set(page, datastore, job_id=job_id)
-                else:
-                    page = datastore.paginate_data_list(name)
-                    job_datastore_cache.set(page, datastore, name)
-                if name in page.items:
-                    return datastore
-                else:
-                    if len(page.items) == 0:
-                        break
+        datastores = [store for store in datastore_listener.datastores.values()]
+    for datastore in datastores:
+        page_number = 0
+        while True:
+            page_number += 1
+            if job_id != '':
+                page = datastore.paginate_data_list(job_id=job_id, page_number=page_number)
+                job_datastore_cache.set(page, datastore, job_id=job_id)
+            else:
+                page = datastore.paginate_data_list(name)
+                job_datastore_cache.set(page, datastore, name)
+            if name in page.items:
+                return datastore
+            else:
+                if len(page.items) == 0:
+                    break
     raise HTTPException(404, "Named data does not exist")
 
 
-@fastapi_app.get("/datastore")
+# @fastapi_app.get("/datastore")
 def datastore_for_storage(required_storage: int) -> Datastore:
     with datastore_listener.lock:
         capable_datastores = [datastore for datastore in datastore_listener.datastores.values()

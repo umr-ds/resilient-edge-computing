@@ -73,15 +73,7 @@ def submit_job(job_id: str, job_info: JobInfo) -> None:
         job = Job(root_dir, job_id, job_info, store_job_in_datastore)
     except WasmRestException as e:
         raise HTTPException(503, e.msg)
-    for _ in range(10):
-        if job.try_download_files(broker):
-            break
-        time.sleep(10)
-    if job.start():
-        with jobs_lock:
-            jobs[job_id] = job
-            return
-    raise HTTPException(500, "Failed to start Job")
+    start_job(job)
 
 
 @fastapi_app.get("/capabilities")
@@ -103,6 +95,16 @@ def job_delete(job_id: str) -> None:
             job.delete()
             del jobs[job_id]
         raise HTTPException(404, "Job not found")
+
+
+def start_job(job: Job):
+    for _ in range(10):
+        if job.try_download_files(broker):
+            break
+        time.sleep(10)
+    if job.start():
+        with jobs_lock:
+            jobs[job.id] = job
 
 
 def store_job_in_datastore(job: Job) -> None:

@@ -1,11 +1,10 @@
 import os
 import threading
-import time
 from typing import Callable
 from zipfile import ZipFile
 
 from wasm_rest.exceptions import WasmRestException
-from wasm_rest.model import JobInfo, Address
+from wasm_rest.model import JobInfo
 from wasm_rest.nodetypes.broker import Broker
 from wasm_rest.util.execute_wasm import run_webassembly
 from wasm_rest.util.util import prevent_breakout, zip_folder, try_download_file, try_store_named_data
@@ -25,8 +24,6 @@ class Job:
     __to_store_named: dict[str, str] = {}
     __on_complete: Callable[['Job'], None]
 
-    # status: JobStatus
-
     def __init__(self, root_dir: str, job_id: str, job_info: JobInfo,
                  on_complete: Callable[['Job'], None]) -> None:
         self.job_info = job_info
@@ -37,13 +34,11 @@ class Job:
         self.data_dir = os.path.join(self.dir, "data")
         self.out_dir = os.path.join(self.dir, "out")
         self.result_path = os.path.join(self.dir, self.id + ".zip")
-        # self.status = JobStatus.INIT
         try:
             os.makedirs(self.code_dir)
             os.makedirs(self.data_dir)
             os.makedirs(self.out_dir)
         except OSError:
-            # self.status = JobStatus.ERROR
             raise WasmRestException("failed create")
         self.__transform_job_info()
         self.mkdirs()
@@ -85,7 +80,8 @@ class Job:
                                            for host_path, name in self.job_info.named_results.items()}
 
             self.__to_store_named = {name: path for name, path in self.job_info.named_results.items()}
-            self.job_info.args.insert(0, "exec.wasm")  # first argument typically program name "exec.wasm" here
+
+            self.job_info.args.insert(0, os.path.basename(self.job_info.wasm_bin[1]))  # first argument program name
         except ValueError as e:
             raise WasmRestException("Invalid Formatting") from e
 
@@ -150,7 +146,6 @@ class Job:
 
     def __exec_wasm(self) -> None:  # TODO save errors
         try:
-            # self.status = JobStatus.RUNNING
             run_webassembly(self.job_info.wasm_bin[1], self.data_dir, self.job_info.stdin,
                             self.job_info.args, self.job_info.env, self.out_dir)
             try:
@@ -163,14 +158,9 @@ class Job:
                         if os.path.isdir(host_file):
                             zip_folder(zip_file, host_file, to_zip)
             except OSError:
-                # self.status = JobStatus.ERROR
                 raise WasmRestException("Failed to save")
         except WasmRestException as e:
             with open(os.path.join(self.out_dir, "stderr.txt"), "a") as file:
                 file.write(e.msg)
 
-        # if wasm.exitcode != 0:
-        #    self.status = JobStatus.ERROR
-        # else:
-        #    self.status = JobStatus.DONE
         self.send_result()
