@@ -100,8 +100,8 @@ def store_data(name: str, data: UploadFile) -> None:
 
 
 @fastapi_app.get("/data/{name:path}")
-def get_data(name: str) -> StreamingResponse:
-    datastore = job_data_location(name)
+def get_data(name: str, job_id: Optional[UUID] = None) -> StreamingResponse:
+    datastore = job_data_location(name, job_id)
     if datastore:
         data = datastore.get_data_iterator(name)
         if data:

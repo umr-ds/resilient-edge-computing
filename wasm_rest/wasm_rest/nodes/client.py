@@ -51,7 +51,7 @@ def files_to_upload(job_info: JobInfo) -> dict[str, str]:
         elif type(job_info.wasm_bin) is tuple[str, str]:
             to_upload[job_info.wasm_bin[0]] = job_info.wasm_bin[1]
         else:
-            raise WasmRestException("oops")  # TODO
+            raise WasmRestException("Invalid Formatting in wasm_bin")
         if type(job_info.stdin) is str:
             to_upload[job_info.stdin] = "stdin"
         elif type(job_info.stdin) is tuple:
@@ -60,7 +60,7 @@ def files_to_upload(job_info: JobInfo) -> dict[str, str]:
             else:
                 to_upload[job_info.stdin[0]] = job_info.stdin[1]
         else:
-            raise WasmRestException("oops")  # TODO
+            raise WasmRestException("Invalid Formatting in stdin")
 
         for host_path, path in job_info.job_data.items():
             to_upload[host_path] = path

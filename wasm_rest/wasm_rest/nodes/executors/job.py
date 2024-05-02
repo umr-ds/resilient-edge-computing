@@ -52,7 +52,7 @@ class Job:
                 self.job_info.wasm_bin = (self.job_info.wasm_bin[0],
                                           os.path.join(self.code_dir, prevent_breakout(self.job_info.wasm_bin[1])))
             else:
-                raise WasmRestException("oops")  # TODO
+                raise WasmRestException("Invalid Formatting in wasm_bin")
 
             if type(self.job_info.stdin) is str:
                 if self.job_info.stdin != "":
@@ -64,7 +64,7 @@ class Job:
                     self.job_info.job_data[self.job_data_name(self.job_info.stdin[0])] = self.job_info.stdin[1]
                 self.job_info.stdin = self.data_path(self.job_info.stdin[1])
             else:
-                raise WasmRestException("oops")  # TODO
+                raise WasmRestException("Invalid Formatting in stdin")
 
             self.job_info.directories = [self.data_path(directory) for directory in self.job_info.directories]
 
@@ -145,23 +145,27 @@ class Job:
                 del self.__to_store_named[name]
             return False
 
-    def __exec_wasm(self) -> None:  # TODO save errors
+    def __exec_wasm(self) -> None:
         try:
             run_webassembly(self.job_info.wasm_bin[1], self.data_dir, self.job_info.stdin,
                             self.job_info.args, self.job_info.env, self.out_dir)
-            try:
-                with ZipFile(self.result_path, "w") as zip_file:
-                    zip_file.write(os.path.join(self.out_dir, "stdout.txt"), "stdout.txt")
-                    zip_file.write(os.path.join(self.out_dir, "stderr.txt"), "stderr.txt")
-                    for host_file, to_zip in self.job_info.zip_results.items():
-                        if os.path.isfile(host_file):
-                            zip_file.write(host_file, to_zip)
-                        if os.path.isdir(host_file):
-                            zip_folder(zip_file, host_file, to_zip)
-            except OSError:
-                raise WasmRestException("Failed to save")
         except WasmRestException as e:
             with open(os.path.join(self.out_dir, "stderr.txt"), "a") as file:
                 file.write(e.msg)
+        try:
+            with ZipFile(self.result_path, "w") as zip_file:
+                zip_file.write(os.path.join(self.out_dir, "stdout.txt"), "stdout.txt")
+                zip_file.write(os.path.join(self.out_dir, "stderr.txt"), "stderr.txt")
+                for host_file, to_zip in self.job_info.zip_results.items():
+                    if os.path.isfile(host_file):
+                        zip_file.write(host_file, to_zip)
+                    if os.path.isdir(host_file):
+                        zip_folder(zip_file, host_file, to_zip)
+        except OSError:
+            try:
+                with ZipFile(self.result_path, "w") as zip_file:
+                    zip_file.writestr("err.txt", "Failed to save result")
+            except OSError:
+                raise WasmRestException("Failed to save")
 
         self.send_result()

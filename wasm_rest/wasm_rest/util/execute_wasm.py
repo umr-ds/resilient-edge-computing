@@ -20,7 +20,7 @@ def run_webassembly(exec_path: str, data_path: str, stdin_file: Optional[str],
     err_msg = error.get(block=True)
     wasm.join()
     if err_msg != "":
-        raise WasmRestException(err_msg)  # TODO right exception
+        raise WasmRestException(err_msg)
 
 
 def run_wasmtime(exec_path: str, data_path: str, stdin_file: Optional[str],

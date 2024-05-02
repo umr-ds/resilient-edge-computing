@@ -51,8 +51,11 @@ class Broker(Node):
         res = self.put(f"/data/{name}", files={"data": file})
         return res is not None and res.ok
 
-    def get_data(self, file: IO[bytes], name: str) -> bool:
-        res = self.get(f"/data/{name}", stream=True)
+    def get_data(self, file: IO[bytes], name: str, job_id: Optional[UUID] = None) -> bool:
+        params = {}
+        if job_id:
+            params["job_id"] = job_id
+        res = self.get(f"/data/{name}", params={}, stream=True)
         if res:
             try:
                 for chunk in res.iter_content(65536):

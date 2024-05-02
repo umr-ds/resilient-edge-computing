@@ -1,9 +1,8 @@
-import base64
 import os
-import random
-from typing import IO
-from zipfile import ZipFile
 import uuid
+from typing import IO, Optional
+from zipfile import ZipFile
+from uuid import UUID
 
 from wasm_rest.nodetypes.broker import Broker
 
@@ -45,20 +44,24 @@ def zip_folder(zip_file: ZipFile, host: str, to_zip: str) -> None:
                            os.path.join(to_zip, relpath))
 
 
-def generate_unique_id() -> uuid.UUID:
+def generate_unique_id() -> UUID:
     return uuid.uuid4()
 
 
 def try_store_named_data(name: str, path: str, broker: Broker) -> bool:
-    with open(path, "br") as result_file:
-        return broker.store_data(result_file, name)
+    try:
+        with open(path, "br") as result_file:
+            return broker.store_data(result_file, name)
+    except OSError:
+        return False
 
 
-def try_download_file(name: str, path: str, broker: Broker, job_id: str = '', invalidate: bool = False) -> bool:
+def try_download_file(name: str, path: str, broker: Broker, job_id: Optional[UUID] = None,
+                      invalidate: bool = False) -> bool:
     if os.path.exists(path):
         return True
     with open(path, "bw") as data_file:
-        if not broker.get_data(data_file, name):
+        if not broker.get_data(data_file, name, job_id):
             try:
                 os.remove(path)
             except OSError:

@@ -26,7 +26,7 @@ class Job:
                 job_info.wasm_bin = (self.job_data_name(job_info.wasm_bin[1]),
                                      job_info.wasm_bin[1])
             else:
-                raise WasmRestException("oops")  # TODO
+                raise WasmRestException("Invalid Formatting in wasm_bin")
 
             if type(job_info.stdin) is str:
                 job_info.job_data[self.job_data_name(job_info.stdin[1])] = "stdin"
@@ -38,7 +38,7 @@ class Job:
                     job_info.job_data[self.job_data_name(job_info.stdin[1])] = job_info.stdin[1]
                 job_info.stdin = (job_info.job_data[self.job_data_name(job_info.stdin[1])], job_info.stdin[1])
             else:
-                raise WasmRestException("oops")  # TODO
+                raise WasmRestException("Invalid Formatting in stdin")
 
             job_info.job_data = {self.job_data_name(path): path
                                  for _, path in job_info.job_data.items()}
