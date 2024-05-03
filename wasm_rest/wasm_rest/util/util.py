@@ -56,8 +56,7 @@ def try_store_named_data(name: str, path: str, broker: Broker) -> bool:
         return False
 
 
-def try_download_file(name: str, path: str, broker: Broker, job_id: Optional[UUID] = None,
-                      invalidate: bool = False) -> bool:
+def try_download_file(name: str, path: str, broker: Broker, job_id: Optional[UUID] = None) -> bool:
     if os.path.exists(path):
         return True
     with open(path, "bw") as data_file:

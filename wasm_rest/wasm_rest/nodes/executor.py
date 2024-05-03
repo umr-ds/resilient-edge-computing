@@ -74,7 +74,7 @@ def submit_job(job_id: UUID, job_info: JobInfo) -> None:
         job = Job(root_dir, job_id, job_info, store_job_in_datastore)
     except WasmRestException as e:
         raise HTTPException(503, e.msg)
-    start_job(job)
+    threading.Thread(target=start_job, args=[job]).start()
 
 
 @fastapi_app.get("/capabilities")
@@ -95,17 +95,18 @@ def job_delete(job_id: UUID) -> None:
         if job:
             job.delete()
             del jobs[job_id]
-        raise HTTPException(404, "Job not found")
+        else:
+            raise HTTPException(404, "Job not found")
 
 
-def start_job(job: Job):
+def start_job(job: Job) -> None:
     for _ in range(10):
         if job.try_download_files(broker):
             break
         time.sleep(10)
-    if job.start():
-        with jobs_lock:
-            jobs[job.id] = job
+    with jobs_lock:
+        jobs[job.id] = job
+    job.run()
 
 
 def store_job_in_datastore(job: Job) -> None:
@@ -127,16 +128,18 @@ def store_job_in_datastore(job: Job) -> None:
         if broker.store_data(BytesIO(b"Could not find datastore to store result: too big"), f"{job.id}/result"):
             return
         time.sleep(10)
+    # TODO do job.delete() here?
 
 
 def update_capabilities() -> Capabilities:
+    os.makedirs(root_dir, exist_ok=True)
     battery = psutil.sensors_battery()
     self_object.cur_caps = Capabilities(memory=psutil.virtual_memory().available,
                                         disk=psutil.disk_usage(root_dir).free,
                                         cpu_load=(psutil.getloadavg()[1] / psutil.cpu_count() * 100),
                                         # (1, 5, 15) minutes
                                         cpu_cores=psutil.cpu_count(),
-                                        has_battery=(not (battery is None) and not battery.power_plugged),
+                                        has_battery=(battery is not None and not battery.power_plugged),
                                         power=battery.percent if battery else 100)
     self_object.last_update = time.time()
     return self_object.cur_caps

@@ -26,7 +26,7 @@ def main():
     datastore_parser.set_defaults(prog=NodeRole.DATASTORE)
 
     client_parser = subparsers.add_parser("client", parents=[address_parser])
-    client_parser.add_argument("json", type=str, help="json file describing the jobs to run")
+    client_parser.add_argument("json", type=str, help="json file with the execution plan")
     client_parser.add_argument("--resultdir", type=str, default='', help="dir to store results in")
     client_parser.set_defaults(prog=NodeRole.CLIENT)
 

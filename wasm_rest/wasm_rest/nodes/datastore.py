@@ -73,6 +73,7 @@ def paginate_data(name: Optional[str] = '', job_id: Optional[UUID] = None) -> Pa
 
 @fastapi_app.get("/free")
 def free_space() -> int:
+    os.makedirs(root_dir, exist_ok=True)
     return psutil.disk_usage(root_dir).free
 
 
@@ -84,6 +85,7 @@ def _delete_data(name: str) -> bool:
     if path:
         try:
             os.remove(path)
+            os.removedirs(os.path.dirname(path))
             return True
         except OSError:
             pass

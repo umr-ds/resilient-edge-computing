@@ -1,4 +1,3 @@
-from io import BytesIO
 from typing import Optional, IO
 from uuid import UUID
 
@@ -50,3 +49,5 @@ class Job:
     def poll_finished(self, file: Optional[IO[bytes]], broker: Broker) -> bool:
         return broker.get_data(file, f"{self.id}/result", self.id)
 
+    def delete(self, broker: Broker):
+        broker.delete_job(self.id)

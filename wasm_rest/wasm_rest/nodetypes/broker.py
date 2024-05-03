@@ -5,7 +5,6 @@ from uuid import UUID
 import requests
 
 from wasm_rest.model import JobInfo, Capabilities
-from wasm_rest.nodetypes.datastore import Datastore
 from wasm_rest.nodetypes.executor import Executor
 from wasm_rest.nodetypes.node import Node
 
@@ -26,26 +25,6 @@ class Broker(Node):
             return 0
         if res.ok:
             return int(res.content)
-
-    def data_location(self, name: str, job_id: Optional[UUID] = None, invalidate: bool = False) -> Optional[Datastore]:
-        try:
-            res = self.get(f"/datastore/{name}", params={"job_id": job_id, "invalidate": invalidate})
-        except requests.exceptions.RequestException:
-            return None
-        if res is not None and res.ok:
-            return Datastore.model_validate_json(res.content)
-        else:
-            return None
-
-    def datastore_for_storage(self, required_storage: int) -> Optional[Datastore]:
-        try:
-            res = self.get("/datastore", params={"required_storage": required_storage})
-        except requests.exceptions.RequestException:
-            return None
-        if res is not None and res.ok:
-            return Datastore.model_validate_json(res.content)
-        else:
-            return None
 
     def store_data(self, file: IO[bytes], name: str) -> bool:
         res = self.put(f"/data/{name}", files={"data": file})
@@ -77,3 +56,7 @@ class Broker(Node):
             return None
         except requests.exceptions.RequestException:
             return None
+
+    def delete_job(self, job_id: UUID) -> bool:
+        res = self.delete(f"/job/{job_id}")
+        return res is not None and res.ok

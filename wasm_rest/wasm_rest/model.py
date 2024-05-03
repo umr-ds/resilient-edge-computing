@@ -31,7 +31,6 @@ class JobInfo(BaseModel):
     wasm_bin: Union[str, tuple[str, str]]  # name of bin
     stdin: Union[str, tuple[str, str]] = ("", "")  # name, path
     stdin_is_named: bool = False
-    # local means take file at specified path, which already exists
     job_data: dict[str, str] = {}
     named_data: dict[str, str] = {}
     directories: list[str] = []

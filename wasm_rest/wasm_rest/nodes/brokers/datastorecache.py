@@ -14,7 +14,7 @@ class CachePage(BaseModel):
     time: float
 
 
-class Cache:
+class DatastoreCache:
     cache: dict[Optional[UUID], dict[str, list[CachePage]]] = {}
 
     def get(self, name: str, job_id: Optional[UUID] = None) -> Optional[Datastore]:

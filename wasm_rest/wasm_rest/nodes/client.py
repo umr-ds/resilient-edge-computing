@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from zeroconf import Zeroconf
 
 from wasm_rest.exceptions import WasmRestException
-from wasm_rest.model import JobInfo, ExecutionPlan
+from wasm_rest.model import JobInfo, ExecutionPlan, NodeRole
 from wasm_rest.nodes.clients.job import Job
 from wasm_rest.nodes.listeners.brokers import BrokerListener
 from wasm_rest.nodes.node import Node
@@ -35,6 +35,7 @@ def receive_result(job_id: UUID, data: UploadFile):
     if not put_file(data.file, os.path.join(result_dir, f"{job_id}.zip")):
         raise HTTPException(500, "File could not be stored")
     del pending_results[job_id]
+    Job(job_id).delete(broker)
     if all_queued and len(pending_results) == 0:
         node_obj.stop()
 
@@ -54,11 +55,10 @@ def files_to_upload(job_info: JobInfo) -> dict[str, str]:
         else:
             raise WasmRestException("Invalid Formatting in wasm_bin")
         if type(job_info.stdin) is str:
-            to_upload[job_info.stdin] = "stdin"
+            if job_info.stdin != "":
+                to_upload[job_info.stdin] = "stdin"
         elif type(job_info.stdin) is tuple:
-            if job_info.stdin_is_named:
-                pass
-            else:
+            if not job_info.stdin_is_named and job_info.stdin[0] != "":
                 to_upload[job_info.stdin[0]] = job_info.stdin[1]
         else:
             raise WasmRestException("Invalid Formatting in stdin")
@@ -70,19 +70,23 @@ def files_to_upload(job_info: JobInfo) -> dict[str, str]:
     return to_upload
 
 
-def run_job(job_name: str, job_info: JobInfo) -> None:
+def run_job(job_name: str, job_info: JobInfo) -> bool:
     job_id = generate_unique_id()
     job = Job(job_id)
     to_upload = files_to_upload(job_info)
     for path, name in to_upload.items():
-        job.upload_job_file(name, path, broker)
+        if not job.upload_job_file(name, path, broker):
+            job.delete(broker)
+            return False
     job.transform_job_info_broker(job_info)
-    broker.submit_job(job_info, job_id)
-    if job_info.result_addr == node_obj.address:
-        pending_results[job_id] = job_name
+    if broker.submit_job(job_info, job_id) == job_id:
+        if job_info.result_addr == node_obj.address:
+            pending_results[job_id] = job_name
+            return True
+    return False
 
 
-def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = ''):
+def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '') -> NodeRole:
     global result_dir, node_obj, all_queued, broker
     result_dir = _result_dir
     node_obj = Node(host, port, fastapi_app=fastapi_app)
@@ -92,6 +96,9 @@ def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '')
 
     time.sleep(3)
     broker = select_broker()
+    if broker is None:
+        print("No broker found")
+        return NodeRole.EXIT
     print(broker)
 
     if os.path.isfile(json_path):
@@ -106,14 +113,19 @@ def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '')
                     print("Attempted to wait for Job that was not started")
                 while not cmd.wait.isdisjoint(pending_results.values()):
                     time.sleep(10)
-                run_job(cmd.cmd, plan.cmds[cmd.cmd])
-                started_jobs.add(cmd.cmd)
+                if run_job(cmd.cmd, plan.cmds[cmd.cmd]):
+                    started_jobs.add(cmd.cmd)
             except ValidationError:
                 print("Invalid Command")
         if len(pending_results):
             all_queued = True
         else:
             node_obj.stop()
+
+    else:
+        node_obj.stop()
+        print("Execution Plan not found")
+    return NodeRole.EXIT
 
 
 if __name__ == '__main__':

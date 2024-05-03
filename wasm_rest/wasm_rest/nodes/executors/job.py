@@ -94,7 +94,7 @@ class Job:
             os.makedirs(dir_to_create, exist_ok=True)
 
     def try_download_files(self, broker: Broker) -> bool:
-        if not try_download_file(*self.job_info.wasm_bin, broker):
+        if not try_download_file(self.job_info.wasm_bin[0], self.job_info.wasm_bin[1], broker):
             return False
 
         for name, path in self.job_info.job_data.items():
@@ -111,12 +111,6 @@ class Job:
 
     def job_data_name(self, name: str) -> str:
         return f"{self.id}/{name}"
-
-    def start(self) -> bool:
-        if not os.path.exists(self.job_info.wasm_bin[1]):
-            return False
-        threading.Thread(target=self.__exec_wasm).start()
-        return True
 
     def send_result(self) -> None:
         self.__on_complete(self)
@@ -148,7 +142,7 @@ class Job:
                 del self.__to_store_named[name]
             return False
 
-    def __exec_wasm(self) -> None:
+    def run(self) -> None:
         try:
             run_webassembly(self.job_info.wasm_bin[1], self.data_dir,
                             None if self.job_info.stdin == '' else self.job_info.stdin,
