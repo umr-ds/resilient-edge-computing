@@ -1,3 +1,5 @@
+from io import BytesIO
+from typing import Optional, IO
 from uuid import UUID
 
 from wasm_rest.exceptions import WasmRestException
@@ -29,14 +31,13 @@ class Job:
                 raise WasmRestException("Invalid Formatting in wasm_bin")
 
             if type(job_info.stdin) is str:
-                job_info.job_data[self.job_data_name(job_info.stdin[1])] = "stdin"
-                job_info.stdin = "stdin"
+                if not job_info.stdin_is_named:
+                    job_info.job_data[self.job_data_name(job_info.stdin[1])] = "stdin"
+                    job_info.stdin = "stdin"
             elif type(job_info.stdin) is tuple:
-                if job_info.stdin_is_named:
-                    pass
-                else:
+                if job_info.stdin[0] != '' and not job_info.stdin_is_named:
                     job_info.job_data[self.job_data_name(job_info.stdin[1])] = job_info.stdin[1]
-                job_info.stdin = (job_info.job_data[self.job_data_name(job_info.stdin[1])], job_info.stdin[1])
+                    job_info.stdin = (job_info.job_data[self.job_data_name(job_info.stdin[1])], job_info.stdin[1])
             else:
                 raise WasmRestException("Invalid Formatting in stdin")
 
@@ -45,3 +46,7 @@ class Job:
 
         except ValueError as e:
             raise WasmRestException("Invalid Formatting") from e
+
+    def poll_finished(self, file: Optional[IO[bytes]], broker: Broker) -> bool:
+        return broker.get_data(file, f"{self.id}/result", self.id)
+

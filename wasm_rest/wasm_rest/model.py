@@ -43,6 +43,17 @@ class JobInfo(BaseModel):
     result_addr: Address = Address()
 
 
+class Execution(BaseModel):
+    cmd: str
+    wait: set[str] = set()
+
+
+class ExecutionPlan(BaseModel):
+    exec: list[Execution]
+    cmds: dict[str, JobInfo]
+    named_data: dict[str, str] = []
+
+
 class NodeRole(Enum):
     EXIT = 0,
     BROKER = 1,

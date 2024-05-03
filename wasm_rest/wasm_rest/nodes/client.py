@@ -1,4 +1,3 @@
-import json
 import os
 import random
 import threading
@@ -11,12 +10,12 @@ from pydantic import ValidationError
 from zeroconf import Zeroconf
 
 from wasm_rest.exceptions import WasmRestException
-from wasm_rest.model import JobInfo
+from wasm_rest.model import JobInfo, ExecutionPlan
 from wasm_rest.nodes.clients.job import Job
 from wasm_rest.nodes.listeners.brokers import BrokerListener
 from wasm_rest.nodes.node import Node
 from wasm_rest.nodetypes.broker import Broker
-from wasm_rest.util.util import generate_unique_id, put_file
+from wasm_rest.util.util import generate_unique_id, put_file, try_store_named_data
 
 broker: Broker
 node_obj: Node
@@ -24,16 +23,18 @@ broker_listener = BrokerListener()
 zeroconf = Zeroconf()
 fastapi_app = FastAPI()
 result_dir = ''
-pending_results: dict[UUID, JobInfo] = {}
+pending_results: dict[UUID, str] = {}
 all_queued = False
+started_jobs: set[str] = set()
 
 
 @fastapi_app.put("/result/{job_id}")
 def receive_result(job_id: UUID, data: UploadFile):
-    if pending_results.pop(job_id, None) is None:
+    if pending_results.get(job_id, None) is None:
         raise HTTPException(404, "Result not expected")
     if not put_file(data.file, os.path.join(result_dir, f"{job_id}.zip")):
         raise HTTPException(500, "File could not be stored")
+    del pending_results[job_id]
     if all_queued and len(pending_results) == 0:
         node_obj.stop()
 
@@ -69,7 +70,7 @@ def files_to_upload(job_info: JobInfo) -> dict[str, str]:
     return to_upload
 
 
-def run_job(job_info: JobInfo) -> None:
+def run_job(job_name: str, job_info: JobInfo) -> None:
     job_id = generate_unique_id()
     job = Job(job_id)
     to_upload = files_to_upload(job_info)
@@ -78,7 +79,7 @@ def run_job(job_info: JobInfo) -> None:
     job.transform_job_info_broker(job_info)
     broker.submit_job(job_info, job_id)
     if job_info.result_addr == node_obj.address:
-        pending_results[job_id] = job_info
+        pending_results[job_id] = job_name
 
 
 def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = ''):
@@ -92,12 +93,21 @@ def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '')
     time.sleep(3)
     broker = select_broker()
     print(broker)
+
     if os.path.isfile(json_path):
         with open(json_path, "r") as file:
-            cmds = json.load(file)
-        for cmd in cmds:
+            plan = ExecutionPlan.model_validate_json(file.read())
+
+        for path, name in plan.named_data.items():
+            try_store_named_data(name, path, broker)
+        for cmd in plan.exec:
             try:
-                run_job(JobInfo.model_validate(cmd))
+                if not started_jobs.issuperset(cmd.wait):
+                    print("Attempted to wait for Job that was not started")
+                while not cmd.wait.isdisjoint(pending_results.values()):
+                    time.sleep(10)
+                run_job(cmd.cmd, plan.cmds[cmd.cmd])
+                started_jobs.add(cmd.cmd)
             except ValidationError:
                 print("Invalid Command")
         if len(pending_results):
@@ -107,4 +117,4 @@ def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '')
 
 
 if __name__ == '__main__':
-    run("../../resources/command.json", "127.0.0.1", 8004, "../../results")
+    run("../../resources/command2.json", "127.0.0.1", 8004, "../../results")

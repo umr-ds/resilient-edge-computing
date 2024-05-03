@@ -58,11 +58,14 @@ class Job:
                 if self.job_info.stdin != "":
                     self.job_info.stdin = self.data_path(self.job_info.stdin)
             elif type(self.job_info.stdin) is tuple:
-                if self.job_info.stdin_is_named:
-                    self.job_info.job_data[self.job_info.stdin[0]] = self.job_info.stdin[1]
+                if self.job_info.stdin[0] == '':
+                    self.job_info.stdin = ''
                 else:
-                    self.job_info.job_data[self.job_data_name(self.job_info.stdin[0])] = self.job_info.stdin[1]
-                self.job_info.stdin = self.data_path(self.job_info.stdin[1])
+                    if self.job_info.stdin_is_named:
+                        self.job_info.job_data[self.job_info.stdin[0]] = self.job_info.stdin[1]
+                    else:
+                        self.job_info.job_data[self.job_data_name(self.job_info.stdin[0])] = self.job_info.stdin[1]
+                    self.job_info.stdin = self.data_path(self.job_info.stdin[1])
             else:
                 raise WasmRestException("Invalid Formatting in stdin")
 
@@ -147,7 +150,8 @@ class Job:
 
     def __exec_wasm(self) -> None:
         try:
-            run_webassembly(self.job_info.wasm_bin[1], self.data_dir, self.job_info.stdin,
+            run_webassembly(self.job_info.wasm_bin[1], self.data_dir,
+                            None if self.job_info.stdin == '' else self.job_info.stdin,
                             self.job_info.args, self.job_info.env, self.out_dir)
         except WasmRestException as e:
             with open(os.path.join(self.out_dir, "stderr.txt"), "a") as file:
