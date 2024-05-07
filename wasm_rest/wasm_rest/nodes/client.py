@@ -48,20 +48,22 @@ def select_broker() -> Optional[Broker]:
 def files_to_upload(job_info: JobInfo) -> dict[str, str]:
     to_upload = {}
     try:
-        if type(job_info.wasm_bin) is str:
-            to_upload[job_info.wasm_bin] = "exec.wasm"
-        elif type(job_info.wasm_bin) is tuple[str, str]:
-            to_upload[job_info.wasm_bin[0]] = job_info.wasm_bin[1]
-        else:
-            raise WasmRestException("Invalid Formatting in wasm_bin")
-        if type(job_info.stdin) is str:
-            if job_info.stdin != "":
-                to_upload[job_info.stdin] = "stdin"
-        elif type(job_info.stdin) is tuple:
-            if not job_info.stdin_is_named and job_info.stdin[0] != "":
-                to_upload[job_info.stdin[0]] = job_info.stdin[1]
-        else:
-            raise WasmRestException("Invalid Formatting in stdin")
+        if not job_info.wasm_bin_is_named:
+            if type(job_info.wasm_bin) is str:
+                to_upload[job_info.wasm_bin] = "exec.wasm"
+            elif type(job_info.wasm_bin) is tuple[str, str]:
+                to_upload[job_info.wasm_bin[0]] = job_info.wasm_bin[1]
+            else:
+                raise WasmRestException("Invalid Formatting in wasm_bin")
+        if not job_info.stdin_is_named:
+            if type(job_info.stdin) is str:
+                if job_info.stdin != "":
+                    to_upload[job_info.stdin] = "stdin"
+            elif type(job_info.stdin) is tuple:
+                if job_info.stdin[0] != "":
+                    to_upload[job_info.stdin[0]] = job_info.stdin[1]
+            else:
+                raise WasmRestException("Invalid Formatting in stdin")
 
         for host_path, path in job_info.job_data.items():
             to_upload[host_path] = path

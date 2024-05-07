@@ -28,17 +28,16 @@ class Job:
                                      job_info.wasm_bin[1])
             else:
                 raise WasmRestException("Invalid Formatting in wasm_bin")
-
-            if type(job_info.stdin) is str:
-                if not job_info.stdin_is_named:
+            if not job_info.stdin_is_named:
+                if type(job_info.stdin) is str:
                     job_info.job_data[self.job_data_name(job_info.stdin[1])] = "stdin"
                     job_info.stdin = "stdin"
-            elif type(job_info.stdin) is tuple:
-                if job_info.stdin[0] != '' and not job_info.stdin_is_named:
-                    job_info.job_data[self.job_data_name(job_info.stdin[1])] = job_info.stdin[1]
-                    job_info.stdin = (job_info.job_data[self.job_data_name(job_info.stdin[1])], job_info.stdin[1])
-            else:
-                raise WasmRestException("Invalid Formatting in stdin")
+                elif type(job_info.stdin) is tuple:
+                    if job_info.stdin[0] != '':
+                        job_info.job_data[self.job_data_name(job_info.stdin[1])] = job_info.stdin[1]
+                        job_info.stdin = (job_info.job_data[self.job_data_name(job_info.stdin[1])], job_info.stdin[1])
+                else:
+                    raise WasmRestException("Invalid Formatting in stdin")
 
             job_info.job_data = {self.job_data_name(path): path
                                  for _, path in job_info.job_data.items()}

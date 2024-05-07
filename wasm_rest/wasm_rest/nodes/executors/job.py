@@ -1,3 +1,4 @@
+import glob
 import os
 import threading
 from typing import Callable
@@ -83,7 +84,7 @@ class Job:
             self.job_info.named_results = {self.data_path(host_path): name
                                            for host_path, name in self.job_info.named_results.items()}
 
-            self.__to_store_named = {name: path for name, path in self.job_info.named_results.items()}
+            self.__to_store_named = {path: name for path, name in self.job_info.named_results.items()}
 
             self.job_info.args.insert(0, os.path.basename(self.job_info.wasm_bin[1]))  # first argument program name
         except ValueError as e:
@@ -92,6 +93,37 @@ class Job:
     def mkdirs(self, dirs: list[str] = None) -> None:
         for dir_to_create in dirs if dirs is not None else self.job_info.directories:
             os.makedirs(dir_to_create, exist_ok=True)
+
+    def resolve_glob_data(self, broker: Broker):
+        to_add = {}
+        to_remove = []
+        for name, path in self.job_info.named_data.items():
+            if name.endswith("*") and path.endswith("*"):
+                names = broker.get_data_glob(name[:-1])
+                if names:
+                    for full_name in names:
+                        to_add[full_name] = path[:-1] + full_name[len(name) - 1:]
+                to_remove.append(name)
+        for name, path in to_add.items():
+            self.job_info.named_data[name] = path
+        for name in to_remove:
+            del self.job_info.named_data[name]
+
+    def resolve_glob_results(self):
+        to_add = {}
+        to_remove = []
+        for path, name in self.job_info.named_results.items():
+            if name.endswith("*") and path.endswith("*"):
+                paths = glob.glob(path)
+                for full_path in paths:
+                    to_add[full_path] = name[:-1] + full_path[len(path) - 1:]
+                to_remove.append(path)
+        for path, name in to_add.items():
+            self.job_info.named_results[path] = name
+            self.__to_store_named[path] = name
+        for path in to_remove:
+            del self.job_info.named_results[path]
+            del self.__to_store_named[path]
 
     def try_download_files(self, broker: Broker) -> bool:
         if not try_download_file(self.job_info.wasm_bin[0], self.job_info.wasm_bin[1], broker):
@@ -166,4 +198,5 @@ class Job:
             except OSError:
                 raise WasmRestException("Failed to save")
 
+        self.resolve_glob_results()
         self.send_result()

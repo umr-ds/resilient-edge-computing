@@ -1,11 +1,12 @@
 import random
 import threading
 import uuid
-from typing import Optional
+from typing import Optional, Callable, Any
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from fastapi_pagination import Page
 
 from wasm_rest.model import Address, JobInfo
 from wasm_rest.nodes.brokers.datastorecache import DatastoreCache
@@ -44,6 +45,12 @@ class DataBroker:
                 else:
                     raise HTTPException(404, "Data location not known")
 
+        @fastapi_app.get("/list/data/{name:path}")
+        def get_data_glob(name: str) -> list[str]:
+            result = []
+            self.iter_data(name, None, lambda page, datastore: result.extend(page.items))
+            return result
+
         @fastapi_app.put("/result/{job_id}")
         def send_result(job_id: UUID, data: UploadFile) -> None:
             with self.results_lock:
@@ -71,13 +78,14 @@ class DataBroker:
         datastore = self.job_datastore_cache.get(name, job_id)
         if datastore is not None:
             return datastore
-        with self.datastore_listener.lock:
+        self.iter_data(name, job_id, lambda page, store: store if name in page.items else None)
+        """with self.datastore_listener.lock:
             datastores = [store for store in self.datastore_listener.datastores.values()]
         for datastore in datastores:
             page_number = 0
             while True:
                 page_number += 1
-                if job_id != '':
+                if job_id:
                     page = datastore.paginate_data_list(job_id=job_id, page_number=page_number)
                     self.job_datastore_cache.set(page, datastore, job_id=job_id)
                 else:
@@ -87,8 +95,28 @@ class DataBroker:
                     return datastore
                 else:
                     if len(page.items) == 0:
-                        break
+                        break"""
         return None
+
+    def iter_data(self, name: str, job_id: Optional[UUID], for_page: Callable[[Page, Datastore], Any]):
+        with self.datastore_listener.lock:
+            datastores = [store for store in self.datastore_listener.datastores.values()]
+        for datastore in datastores:
+            page_number = 0
+            while True:
+                page_number += 1
+                if job_id:
+                    page = datastore.paginate_data_list(job_id=job_id, page_number=page_number)
+                    self.job_datastore_cache.set(page, datastore, job_id=job_id)
+                else:
+                    page = datastore.paginate_data_list(name, page_number=page_number)
+                    self.job_datastore_cache.set(page, datastore, name)
+                res = for_page(page, datastore)
+                if res:
+                    return res
+                else:
+                    if len(page.items) == 0:
+                        break
 
     def add_pending_job(self, job_id: UUID, job_info: JobInfo):
         with self.results_lock:

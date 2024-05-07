@@ -68,7 +68,8 @@ def paginate_data(name: Optional[str] = '', job_id: Optional[UUID] = None) -> Pa
     job_id = str(job_id) if job_id else ''
     with data_lock:
         return paginate(
-            [data_name for data_name in stored_data.keys() if data_name.startswith(job_id) and name in data_name])
+            [data_name for data_name in stored_data.keys()
+             if data_name.startswith(job_id) and data_name.startswith(name)])
 
 
 @fastapi_app.get("/free")

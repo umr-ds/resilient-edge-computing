@@ -29,6 +29,7 @@ class Capabilities(BaseModel):
 
 class JobInfo(BaseModel):
     wasm_bin: Union[str, tuple[str, str]]  # name of bin
+    wasm_bin_is_named: bool = False
     stdin: Union[str, tuple[str, str]] = ("", "")  # name, path
     stdin_is_named: bool = False
     job_data: dict[str, str] = {}

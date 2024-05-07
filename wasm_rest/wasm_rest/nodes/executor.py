@@ -100,6 +100,7 @@ def job_delete(job_id: UUID) -> None:
 
 
 def start_job(job: Job) -> None:
+    job.resolve_glob_data(broker)
     for _ in range(10):
         if job.try_download_files(broker):
             break

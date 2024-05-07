@@ -44,6 +44,12 @@ class Broker(Node):
             return True
         return False
 
+    def get_data_glob(self, name: str) -> list[str]:
+        res = self.get(f"/list/data/{name}")
+        if res is not None and res.ok:
+            return json.loads(res.content.decode())
+        return []
+
     def send_result(self, job_id: UUID, data: IO[bytes]):
         res = self.put(f"/result/{job_id}", files={"data": data})
         return res is not None and res.ok
