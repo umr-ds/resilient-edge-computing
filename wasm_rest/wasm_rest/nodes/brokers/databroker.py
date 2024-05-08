@@ -13,6 +13,7 @@ from wasm_rest.nodes.brokers.datastorecache import DatastoreCache
 from wasm_rest.nodes.listeners.datastores import DatastoreListener
 from wasm_rest.nodetypes.client import Client
 from wasm_rest.nodetypes.datastore import Datastore
+from wasm_rest.util.log import LOG
 
 
 class DataBroker:
@@ -25,14 +26,17 @@ class DataBroker:
 
         @fastapi_app.put("/data/{name:path}")
         def store_data(name: str, data: UploadFile) -> None:
+            LOG.debug(f"Storing data {name}")
             datastore = self.datastore_for_storage(data.size)
             if datastore:
                 datastore.store_data(data.file, name)
             else:
+                LOG.error(f"Could not find datastore to hold {name}")
                 raise HTTPException(503, "No capable datastore")
 
         @fastapi_app.get("/data/{name:path}")
         def get_data(name: str, job_id: Optional[UUID] = None) -> StreamingResponse:
+            LOG.debug(f"Retrieving data {name}")
             for _ in range(10):
                 datastore = self.job_data_location(name, job_id)
                 if datastore:
@@ -43,16 +47,19 @@ class DataBroker:
                         self.job_datastore_cache.invalidate(name, job_id)  # outdated value from cache
                         continue
                 else:
+                    LOG.error(f"Could not find location of {name}")
                     raise HTTPException(404, "Data location not known")
 
         @fastapi_app.get("/list/data/{name:path}")
         def get_data_glob(name: str) -> list[str]:
+            LOG.debug(f"Listing files starting with {name}")
             result = []
             self.iter_data(name, None, lambda page, datastore: result.extend(page.items))
             return result
 
         @fastapi_app.put("/result/{job_id}")
         def send_result(job_id: UUID, data: UploadFile) -> None:
+            LOG.debug(f"Sending result of job {job_id} to client")
             with self.results_lock:
                 address = self.pending_results.get(job_id, None)
                 if address:
@@ -60,6 +67,7 @@ class DataBroker:
                     if client.send_result(job_id, data.file):
                         del self.pending_results[job_id]
                     else:
+                        LOG.error(f"Could not connect to {address} to store result")
                         raise HTTPException(503, "Result destination not known")
 
     # @fastapi_app.get("/datastore")
@@ -71,6 +79,7 @@ class DataBroker:
                 datastore = random.choice(capable_datastores)
                 return datastore
             else:
+                LOG.error(f"Could not find datastore able to hold file of size {required_storage}")
                 raise HTTPException(503, "No datastore able to hold file")
 
     # @fastapi_app.get("/datastore/{name:path}")
@@ -78,27 +87,9 @@ class DataBroker:
         datastore = self.job_datastore_cache.get(name, job_id)
         if datastore is not None:
             return datastore
-        self.iter_data(name, job_id, lambda page, store: store if name in page.items else None)
-        """with self.datastore_listener.lock:
-            datastores = [store for store in self.datastore_listener.datastores.values()]
-        for datastore in datastores:
-            page_number = 0
-            while True:
-                page_number += 1
-                if job_id:
-                    page = datastore.paginate_data_list(job_id=job_id, page_number=page_number)
-                    self.job_datastore_cache.set(page, datastore, job_id=job_id)
-                else:
-                    page = datastore.paginate_data_list(name)
-                    self.job_datastore_cache.set(page, datastore, name)
-                if name in page.items:
-                    return datastore
-                else:
-                    if len(page.items) == 0:
-                        break"""
-        return None
+        return self.iter_data(name, job_id, lambda page, store: store if name in page.items else None)
 
-    def iter_data(self, name: str, job_id: Optional[UUID], for_page: Callable[[Page, Datastore], Any]):
+    def iter_data(self, name: str, job_id: Optional[UUID], for_page: Callable[[Page, Datastore], Any]) -> Any:
         with self.datastore_listener.lock:
             datastores = [store for store in self.datastore_listener.datastores.values()]
         for datastore in datastores:
@@ -116,7 +107,7 @@ class DataBroker:
                     return res
                 else:
                     if len(page.items) == 0:
-                        break
+                        return None
 
     def add_pending_job(self, job_id: UUID, job_info: JobInfo):
         with self.results_lock:

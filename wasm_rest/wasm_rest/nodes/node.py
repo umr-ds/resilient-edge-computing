@@ -7,6 +7,7 @@ from uvicorn import Server as UVServer, Config as UVConfig
 from zeroconf import Zeroconf, ServiceInfo
 
 from wasm_rest.model import Address
+from wasm_rest.util.log import LOG
 from wasm_rest.util.util import generate_unique_id
 
 
@@ -45,6 +46,7 @@ class Node:
             server=Node.zeroconf_service_name(self.service_type, self.id))
 
     def run(self) -> None:
+        LOG.debug(f"starting {self.service_type}: {self.id}")
         if self.service_type is not None:
             self.zeroconf.register_service(self.generate_service_info())
         if self.uvicorn_server is not None:

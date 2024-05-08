@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from wasm_rest.model import JobInfo, Capabilities
 from wasm_rest.nodetypes.executor import Executor
+from wasm_rest.util.log import LOG
 
 
 class ExecutorBroker:
@@ -22,34 +23,43 @@ class ExecutorBroker:
     def add_endpoints(self, fastapi_app: FastAPI) -> None:
         @fastapi_app.put("/executors/register")
         def register_executor(executor: Executor) -> None:
+            LOG.debug(f"Registering executor {executor.id}")
             if executor.update_capabilities() is not None:
                 with self.executor_lock:
+                    LOG.info(f"Executor {executor.id} registered")
                     self.executors[executor.id] = executor
             else:
+                LOG.error(f"Could not request Capabilities of executor {executor.id} to verify it's an executor")
                 raise HTTPException(400, "Could not request Capabilities to verify")
 
         @fastapi_app.put("/executors/heartbeat/{exec_id}")
         def heartbeat_executor(exec_id: UUID, capabilities: Capabilities) -> None:
+            LOG.debug(f"heartbeat from executor {exec_id}")
             with self.executor_lock:
                 executor = self.executors.get(exec_id)
                 if executor is None:
+                    LOG.error(f"Executor {exec_id} not registered")
                     raise HTTPException(404, "No such executor")
                 executor.cur_caps = capabilities
                 executor.last_update = time.time()
 
         @fastapi_app.get("/executors/count")
         def executor_count() -> int:
+            LOG.debug("Sending number of executors")
             return len(self.executors)
 
         @fastapi_app.put("/job/submit/{job_id}")
         def submit_job(job_info: JobInfo, job_id: UUID) -> UUID:
+            LOG.debug(f"Submitting job {job_id}")
             executor = self.capable_executor(job_info.capabilities)
             if executor is None:
+                LOG.error(f"Found not executor capable to run job {job_id}")
                 raise HTTPException(503, "No capable Executor")
             if executor.submit_job(job_id, job_info):
                 self.__on_job_started(job_id, job_info)
                 return job_id
             else:
+                LOG.error(f"Error when submitting job {job_id}")
                 raise HTTPException(503, "Failed to submit Job")
 
     def capable_executor(self, capabilities: Capabilities) -> Optional[Executor]:

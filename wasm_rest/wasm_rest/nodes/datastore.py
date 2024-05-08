@@ -10,6 +10,7 @@ from fastapi_pagination import Page, add_pagination, paginate
 
 from wasm_rest.model import NodeRole
 from wasm_rest.nodes.node import Node
+from wasm_rest.util.log import LOG
 from wasm_rest.util.util import prevent_breakout, put_file
 
 fastapi_app = FastAPI()
@@ -22,32 +23,40 @@ data_lock = threading.Lock()
 
 @fastapi_app.put("/data/{name:path}")
 def store_data(name: str, data: UploadFile) -> None:
+    LOG.debug(f"Storing data {name}")
     if psutil.disk_usage(root_dir).free < data.size:
+        LOG.error("Tried to create to big file")
         raise HTTPException(500, "Not Enough Space")
     file_path = os.path.join(root_dir, prevent_breakout(name))
     if put_file(data.file, file_path):
         with data_lock:
             stored_data[name] = file_path
     else:
+        LOG.error(f"Failed to create {name}")
         raise HTTPException(500, "Resource could not be created")
 
 
 @fastapi_app.get("/data/{name:path}")
 def get_data(name: str) -> FileResponse:
+    LOG.debug(f"Retrieving data {name}")
     with data_lock:
         if name in stored_data.keys():
             return FileResponse(path=stored_data[name], filename=os.path.basename(name))
+    LOG.error(f"Could not find {name}")
     raise HTTPException(404, "Resource Not Found")
 
 
 @fastapi_app.delete("/data/{name:path}")
 def delete_data(name: str) -> None:
+    LOG.debug(f"Deleting data {name}")
     if not _delete_data(name):
+        LOG.error(f"Could not find {name}")
         raise HTTPException(404, "No data of that name")
 
 
 @fastapi_app.delete("/job_data/{job_id}")
 def delete_job_data(job_id: UUID) -> None:
+    LOG.debug(f"Deleting job {job_id}")
     remove_list = []
     with data_lock:
         for data in stored_data:
@@ -59,12 +68,14 @@ def delete_job_data(job_id: UUID) -> None:
 
 @fastapi_app.get("/list")
 def data_list() -> list[str]:
+    LOG.debug("Listing all data")
     with data_lock:
         return list(stored_data.keys())
 
 
 @fastapi_app.get("/list/{name:path}")
 def paginate_data(name: Optional[str] = '', job_id: Optional[UUID] = None) -> Page[str]:
+    LOG.debug("paginating data")
     job_id = str(job_id) if job_id else ''
     with data_lock:
         return paginate(
@@ -74,6 +85,7 @@ def paginate_data(name: Optional[str] = '', job_id: Optional[UUID] = None) -> Pa
 
 @fastapi_app.get("/free")
 def free_space() -> int:
+    LOG.debug("Sending free space")
     os.makedirs(root_dir, exist_ok=True)
     return psutil.disk_usage(root_dir).free
 

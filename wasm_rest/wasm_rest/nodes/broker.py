@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from wasm_rest.model import NodeRole
 from wasm_rest.nodes.brokers.databroker import DataBroker
 from wasm_rest.nodes.brokers.executorbroker import ExecutorBroker
 from wasm_rest.nodes.node import Node
+from wasm_rest.util.log import LOG
 
 fastapi_app = FastAPI()
 node_object: Node
@@ -17,6 +19,7 @@ executor_broker = ExecutorBroker(data_broker.add_pending_job)
 
 @fastapi_app.delete("/job/{job_id}")
 def delete_job(job_id: UUID) -> None:
+    LOG.debug(f"deleting job {job_id}")
     data_broker.delete_job_data(job_id)
     executor_broker.delete_job_from_executor(job_id)
 

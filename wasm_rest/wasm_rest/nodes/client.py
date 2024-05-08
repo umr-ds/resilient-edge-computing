@@ -15,6 +15,7 @@ from wasm_rest.nodes.clients.job import Job
 from wasm_rest.nodes.listeners.brokers import BrokerListener
 from wasm_rest.nodes.node import Node
 from wasm_rest.nodetypes.broker import Broker
+from wasm_rest.util.log import LOG
 from wasm_rest.util.util import generate_unique_id, put_file, try_store_named_data
 
 broker: Broker
@@ -99,26 +100,31 @@ def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '')
     time.sleep(3)
     broker = select_broker()
     if broker is None:
-        print("No broker found")
+        LOG.error("No broker found")
+        node_obj.stop()
         return NodeRole.EXIT
-    print(broker)
+    LOG.info(f"Selected Broker {broker}")
 
     if os.path.isfile(json_path):
-        with open(json_path, "r") as file:
-            plan = ExecutionPlan.model_validate_json(file.read())
-
+        try:
+            with open(json_path, "r") as file:
+                plan = ExecutionPlan.model_validate_json(file.read())
+        except ValidationError as e:
+            LOG.error(f"Invalid Execution Plan: {e}")
+            node_obj.stop()
+            return NodeRole.EXIT
         for path, name in plan.named_data.items():
             try_store_named_data(name, path, broker)
         for cmd in plan.exec:
             try:
                 if not started_jobs.issuperset(cmd.wait):
-                    print("Attempted to wait for Job that was not started")
+                    LOG.error("Attempted to wait for Job that was not started")
                 while not cmd.wait.isdisjoint(pending_results.values()):
                     time.sleep(10)
                 if run_job(cmd.cmd, plan.cmds[cmd.cmd]):
                     started_jobs.add(cmd.cmd)
-            except ValidationError:
-                print("Invalid Command")
+            except WasmRestException as e:
+                LOG.error(f"Invalid Command {cmd.cmd}: {e.msg}")
         if len(pending_results):
             all_queued = True
         else:
@@ -126,7 +132,7 @@ def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '')
 
     else:
         node_obj.stop()
-        print("Execution Plan not found")
+        LOG.error("Execution Plan not found")
     return NodeRole.EXIT
 
 

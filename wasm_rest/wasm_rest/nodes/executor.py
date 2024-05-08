@@ -19,6 +19,7 @@ from wasm_rest.nodes.listeners.brokers import BrokerListener
 from wasm_rest.nodes.node import Node
 from wasm_rest.nodetypes.broker import Broker
 from wasm_rest.nodetypes.executor import Executor
+from wasm_rest.util.log import LOG
 
 
 @asynccontextmanager
@@ -70,65 +71,84 @@ def select_broker() -> Broker:
 
 @fastapi_app.put("/submit/{job_id}")
 def submit_job(job_id: UUID, job_info: JobInfo) -> None:
+    LOG.debug(f"Submitting job {job_id}")
     try:
         job = Job(root_dir, job_id, job_info, store_job_in_datastore)
     except WasmRestException as e:
+        LOG.error(e.msg)
         raise HTTPException(503, e.msg)
     threading.Thread(target=start_job, args=[job]).start()
 
 
 @fastapi_app.get("/capabilities")
 def server_capabilities() -> Capabilities:
+    LOG.debug("Sending Capabilities")
     return update_capabilities()
 
 
 @fastapi_app.get("/job/list")
 def job_list() -> list[UUID]:
+    LOG.debug("Sending list of all jobs")
     with jobs_lock:
         return [key for key in jobs.keys()]
 
 
 @fastapi_app.delete("/job/{job_id}")
 def job_delete(job_id: UUID) -> None:
+    LOG.debug(f"Deleting job {job_id}")
     with jobs_lock:
         job = jobs.get(job_id, None)
         if job:
             job.delete()
             del jobs[job_id]
         else:
+            LOG.error(f"Failed to delete job {job_id}")
             raise HTTPException(404, "Job not found")
 
 
 def start_job(job: Job) -> None:
+    LOG.debug(f"Resolving data globs for job {job.id}")
     job.resolve_glob_data(broker)
+    LOG.debug(f"Downloading data for job {job.id}")
     for _ in range(10):
         if job.try_download_files(broker):
             break
         time.sleep(10)
     with jobs_lock:
         jobs[job.id] = job
-    job.run()
+    try:
+        LOG.debug(f"Starting process for job {job.id}")
+        job.run()
+    except WasmRestException as e:
+        LOG.error(e.msg)
+        return
+    LOG.debug(f"Finished job {job.id}")
 
 
 def store_job_in_datastore(job: Job) -> None:
+    LOG.debug(f"Storing named results for job {job.id}")
     for _ in range(10):
         if job.store_named(broker):
             break
     if job.job_info.result_addr.host != "":
+        LOG.debug(f"Sending result for job {job.id} to client at {job.job_info.result_addr}")
         for _ in range(10):
             with open(job.result_path, "br") as result_file:
                 if broker.send_result(job.id, result_file):
                     return
                 time.sleep(10)
     for _ in range(10):
+        LOG.debug(f"Storing result for job {job.id}")
         with open(job.result_path, "br") as result_file:
             if broker.store_data(result_file, f"{job.id}/result"):
                 return
             time.sleep(10)
+    LOG.error(f"Failed to store result for job {job.id}")
     for _ in range(10):
         if broker.store_data(BytesIO(b"Could not find datastore to store result: too big"), f"{job.id}/result"):
             return
         time.sleep(10)
+    LOG.error(f"Failed to store error for job {job.id}")
     # TODO do job.delete() here?
 
 
@@ -147,9 +167,11 @@ def update_capabilities() -> Capabilities:
 
 
 def heartbeat() -> None:
+    LOG.debug(f"Trying to send heartbeat to broker {broker.id}")
     if not broker.heartbeat_executor(self_object.id, update_capabilities()):
         register_with_broker()
         return
+    LOG.debug(f"Sent heartbeat to broker {broker.id}")
     heartbeat_scheduler.enter(60, 1, heartbeat)
 
 

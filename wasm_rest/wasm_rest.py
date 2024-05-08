@@ -1,7 +1,9 @@
 #! /usr/bin/env python3
 
 import argparse
+import logging
 
+import wasm_rest.util.log
 from wasm_rest.model import NodeRole
 from wasm_rest.nodes import broker, executor, datastore, client
 
@@ -32,14 +34,17 @@ def main():
 
     args = parser.parse_args()
 
+    uvicorn_args = {"log_level": logging.INFO}
+    wasm_rest.util.log.LOG.setLevel(logging.INFO)
+
     if not hasattr(args, "prog") or args.prog is NodeRole.EXIT:
         parser.print_help()
     elif args.prog is NodeRole.BROKER:
-        broker.run(args.host, args.port)
+        broker.run(args.host, args.port, uvicorn_args=uvicorn_args)
     elif args.prog is NodeRole.EXECUTOR:
-        executor.run(args.host, args.port, args.rootdir)
+        executor.run(args.host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
     elif args.prog is NodeRole.DATASTORE:
-        datastore.run(args.host, args.port, args.rootdir)
+        datastore.run(args.host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
     elif args.prog is NodeRole.CLIENT:
         client.run(args.json, args.host, args.port, args.resultdir)
     else:
