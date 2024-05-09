@@ -31,6 +31,9 @@ class Node:
         if fastapi_app is None:
             self.uvicorn_server = None
         else:
+            @fastapi_app.get("/ping")
+            def ping() -> str:
+                return Node.zeroconf_service_name(self.service_type, self.id)
             config = UVConfig(**uvicorn_args)
             self.uvicorn_server = UVServer(config)
         self.zeroconf = Zeroconf()
