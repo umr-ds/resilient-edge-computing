@@ -36,7 +36,6 @@ def receive_result(job_id: UUID, data: UploadFile):
     if not put_file(data.file, os.path.join(result_dir, f"{job_id}.zip")):
         raise HTTPException(500, "File could not be stored")
     del pending_results[job_id]
-    Job(job_id).delete(broker)
     if all_queued and len(pending_results) == 0:
         node_obj.stop()
 

@@ -41,6 +41,7 @@ class JobInfo(BaseModel):
     named_results: dict[str, str] = {}
     capabilities: Capabilities = Capabilities()
     result_addr: Address = Address()
+    delete: bool = True
 
 
 class Execution(BaseModel):

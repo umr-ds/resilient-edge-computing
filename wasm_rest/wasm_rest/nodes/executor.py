@@ -127,8 +127,7 @@ def start_job(job: Job) -> None:
         return
     LOG.debug(f"Finished job {job.id}")
 
-
-def store_job_in_datastore(job: Job) -> None:
+def do_store_in_datastore(job: Job) -> None:
     LOG.debug(f"Storing named results for job {job.id}")
     for _ in range(10):
         if job.store_named(broker):
@@ -152,7 +151,12 @@ def store_job_in_datastore(job: Job) -> None:
             return
         time.sleep(10)
     LOG.error(f"Failed to store error for job {job.id}")
-    # TODO do job.delete() here?
+
+
+def store_job_in_datastore(job: Job) -> None:
+    do_store_in_datastore(job)
+    if job.job_info.delete:
+        broker.delete_job(job.id)
 
 
 def update_capabilities() -> Capabilities:
