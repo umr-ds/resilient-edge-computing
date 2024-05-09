@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import random
 
 import wasm_rest.util.log
 from wasm_rest.model import NodeRole
@@ -10,7 +11,13 @@ from wasm_rest.nodes import broker, executor, datastore, client
 
 def main():
     parser = argparse.ArgumentParser()
+
     subparsers = parser.add_subparsers()
+
+    log_levels = parser.add_mutually_exclusive_group()
+    log_levels.add_argument("-v", action="store_true", help="verbose logging")
+    log_levels.add_argument("-i", action="store_true", help="info level logging")
+    log_levels.add_argument("-e", action="store_true", help="error logging (default)")
 
     address_parser = argparse.ArgumentParser(add_help=False)
     address_parser.add_argument("--host", type=str, default="127.0.0.1", help="host ip address")
@@ -32,23 +39,35 @@ def main():
     client_parser.add_argument("--resultdir", type=str, default='', help="dir to store results in")
     client_parser.set_defaults(prog=NodeRole.CLIENT)
 
+    combined_parser = subparsers.add_parser("autobe",  parents=[executor_parser], add_help=False)
+    combined_parser.set_defaults(prog=NodeRole.AUTO)
+
     args = parser.parse_args()
 
-    uvicorn_args = {"log_level": logging.INFO}
-    wasm_rest.util.log.LOG.setLevel(logging.INFO)
+    log_level = logging.DEBUG if args.v else logging.INFO if args.i else logging.ERROR
+    uvicorn_args = {"log_level": log_level}
+    wasm_rest.util.log.LOG.setLevel(log_level)
 
     if not hasattr(args, "prog") or args.prog is NodeRole.EXIT:
         parser.print_help()
-    elif args.prog is NodeRole.BROKER:
-        broker.run(args.host, args.port, uvicorn_args=uvicorn_args)
-    elif args.prog is NodeRole.EXECUTOR:
-        executor.run(args.host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
-    elif args.prog is NodeRole.DATASTORE:
-        datastore.run(args.host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
-    elif args.prog is NodeRole.CLIENT:
-        client.run(args.json, args.host, args.port, args.resultdir)
-    else:
-        parser.print_help()
+        return
+
+    role = args.prog
+    while role is not NodeRole.EXIT:
+        if role == NodeRole.AUTO:
+            role = NodeRole.BROKER if random.random() < 0.1 else NodeRole.EXECUTOR
+
+        if role is NodeRole.BROKER:
+            role = broker.run(args.host, args.port, uvicorn_args=uvicorn_args)
+        elif role is NodeRole.EXECUTOR:
+            role = executor.run(args.host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
+        elif role is NodeRole.DATASTORE:
+            role = datastore.run(args.host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
+        elif role is NodeRole.CLIENT:
+            role = client.run(args.json, args.host, args.port, args.resultdir)
+        else:
+            parser.print_help()
+            return
 
 
 if __name__ == '__main__':

@@ -40,16 +40,19 @@ jobs_lock = threading.Lock()
 jobs: dict[UUID, Job] = {}
 root_dir: str = ""
 
+exit_code = NodeRole.EXIT
+
 
 def register_with_broker() -> None:
-    global broker
+    global broker, exit_code
     registered = False
     waited = 0
     while not registered:
         broker = select_broker()
         if broker is None:
             if waited == 10:
-                raise SystemExit(1)  # TODO handle finding no broker
+                exit_code = NodeRole.BROKER
+                node_object.stop()
             else:
                 time.sleep(10)
                 waited += 1
@@ -184,7 +187,7 @@ def run(host: str, port: int, rootdir: str, uvicorn_args: dict[str, Any] = None)
     update_capabilities()
     node_object.zeroconf.add_service_listener(Node.zeroconf_service_type("broker"), broker_listener)
     node_object.run()
-    return NodeRole.EXIT
+    return exit_code
 
 
 if __name__ == '__main__':

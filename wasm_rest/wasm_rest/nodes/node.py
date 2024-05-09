@@ -51,6 +51,7 @@ class Node:
             self.zeroconf.register_service(self.generate_service_info())
         if self.uvicorn_server is not None:
             self.uvicorn_server.run()
+        self.zeroconf.remove_all_service_listeners()
         if self.service_type is not None:
             self.zeroconf.unregister_service(self.generate_service_info())
 

@@ -59,4 +59,5 @@ class NodeRole(Enum):
     BROKER = 1,
     EXECUTOR = 2,
     DATASTORE = 3,
-    CLIENT = 4
+    CLIENT = 4,
+    AUTO = 5
