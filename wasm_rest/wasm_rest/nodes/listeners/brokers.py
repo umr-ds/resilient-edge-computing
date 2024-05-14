@@ -1,6 +1,7 @@
 import threading
 from uuid import UUID
 
+import readerwriterlock.rwlock
 from zeroconf import ServiceListener, Zeroconf
 
 from wasm_rest.model import Address
@@ -11,22 +12,23 @@ from wasm_rest.util.log import LOG
 
 class BrokerListener(ServiceListener):
     brokers: dict[UUID, Broker] = {}
-    lock = threading.Lock()
+    lock = readerwriterlock.rwlock.RWLockWrite()
 
     def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         pass
 
     def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         node_id = Node.id_from_name(name)
-        with self.lock:
-            del self.brokers[node_id]
+        with self.lock.gen_wlock():
+            node = self.brokers.pop(node_id, None)
+        if node:
             LOG.info(f"Lost connection to broker {node_id}")
 
     def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         info = zc.get_service_info(type_, name)
         node_id = Node.id_from_name(name)
         if info:
-            with self.lock:
+            with self.lock.gen_wlock():
                 self.brokers[node_id] = Broker(id=node_id, address=Address(host=info.parsed_addresses()[0],
                                                                            port=info.port))
-                LOG.info(f"Discovered broker {node_id}")
+            LOG.info(f"Discovered broker {node_id}")

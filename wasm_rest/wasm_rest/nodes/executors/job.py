@@ -107,7 +107,7 @@ class Job:
         for name, path in to_add.items():
             self.job_info.named_data[name] = path
         for name in to_remove:
-            del self.job_info.named_data[name]
+            self.job_info.named_data.pop(name, None)
 
     def resolve_glob_results(self):
         to_add = {}
@@ -122,8 +122,8 @@ class Job:
             self.job_info.named_results[path] = name
             self.__to_store_named[path] = name
         for path in to_remove:
-            del self.job_info.named_results[path]
-            del self.__to_store_named[path]
+            self.job_info.named_results.pop(path, None)
+            self.__to_store_named.pop(path, None)
 
     def try_download_files(self, broker: Broker) -> bool:
         if not try_download_file(self.job_info.wasm_bin[0], self.job_info.wasm_bin[1], broker):
@@ -171,7 +171,7 @@ class Job:
             return True
         else:
             for name in to_remove:
-                del self.__to_store_named[name]
+                self.__to_store_named.pop(name, None)
             return False
 
     def run(self) -> None:

@@ -5,6 +5,7 @@ from http.client import HTTPException
 from typing import Optional, Callable
 from uuid import UUID
 
+import readerwriterlock.rwlock
 from fastapi import FastAPI
 
 from wasm_rest.model import JobInfo, Capabilities
@@ -14,7 +15,7 @@ from wasm_rest.util.log import LOG
 
 class ExecutorBroker:
     executors: dict[UUID, Executor] = {}
-    executor_lock = threading.Lock()
+    executor_lock = readerwriterlock.rwlock.RWLockWrite()
     __on_job_started: Callable[[UUID, JobInfo], None]
 
     def __init__(self, on_job_started: Callable[[UUID, JobInfo], None]):
@@ -25,7 +26,7 @@ class ExecutorBroker:
         def register_executor(executor: Executor) -> None:
             LOG.debug(f"Registering executor {executor.id}")
             if executor.update_capabilities() is not None:
-                with self.executor_lock:
+                with self.executor_lock.gen_wlock():
                     LOG.info(f"Executor {executor.id} registered")
                     self.executors[executor.id] = executor
             else:
@@ -35,7 +36,7 @@ class ExecutorBroker:
         @fastapi_app.put("/executors/heartbeat/{exec_id}")
         def heartbeat_executor(exec_id: UUID, capabilities: Capabilities) -> None:
             LOG.debug(f"heartbeat from executor {exec_id}")
-            with self.executor_lock:
+            with self.executor_lock.gen_wlock():
                 executor = self.executors.get(exec_id)
                 if executor is None:
                     LOG.error(f"Executor {exec_id} not registered")
@@ -64,7 +65,7 @@ class ExecutorBroker:
 
     def capable_executor(self, capabilities: Capabilities) -> Optional[Executor]:
         self.prune_executor_list()
-        with self.executor_lock:
+        with self.executor_lock.gen_rlock():
             capable_executors = [executor for executor in self.executors.values() if
                                  executor.cur_caps.is_capable(capabilities)]
         if len(capable_executors):
@@ -74,15 +75,16 @@ class ExecutorBroker:
     def prune_executor_list(self) -> None:
         delete_list = []
         current_time = time.time()
-        with self.executor_lock:
+        with self.executor_lock.gen_rlock():
             for _, executor in self.executors.items():
                 if (current_time - executor.last_update) > 120:
                     delete_list.append(executor)
+        with self.executor_lock.gen_wlock():
             for executor in delete_list:
-                del self.executors[executor.id]
+                self.executors.pop(executor.id, None)
 
     def delete_job_from_executor(self, job_id: UUID) -> bool:
-        with self.executor_lock:
+        with self.executor_lock.gen_rlock():
             for executor in self.executors.values():
                 if executor.job_delete(job_id):
                     return True

@@ -5,6 +5,7 @@ import time
 from typing import Optional
 from uuid import UUID
 
+import readerwriterlock.rwlock
 from fastapi import FastAPI, UploadFile, HTTPException
 from pydantic import ValidationError
 from zeroconf import Zeroconf
@@ -25,6 +26,7 @@ zeroconf = Zeroconf()
 fastapi_app = FastAPI()
 result_dir = ''
 pending_results: dict[UUID, str] = {}
+result_lock = readerwriterlock.rwlock.RWLockWrite()
 all_queued = False
 started_jobs: set[str] = set()
 
@@ -41,7 +43,7 @@ def receive_result(job_id: UUID, data: UploadFile):
 
 
 def select_broker() -> Optional[Broker]:
-    with broker_listener.lock:
+    with broker_listener.lock.gen_rlock():
         return random.choice(list(broker_listener.brokers.values())) if len(broker_listener.brokers) else None
 
 

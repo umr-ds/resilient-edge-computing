@@ -1,3 +1,4 @@
+import threading
 import time
 from typing import Optional
 from uuid import UUID
@@ -16,30 +17,34 @@ class CachePage(BaseModel):
 
 class DatastoreCache:
     cache: dict[Optional[UUID], dict[str, list[CachePage]]] = {}
+    lock = threading.Lock()
 
     def get(self, name: str, job_id: Optional[UUID] = None) -> Optional[Datastore]:
-        res = self.__get_cache_place(name, job_id)
-        if res is not None:
-            cache_page, _, _ = res
-            return cache_page.datastore
-        return None
+        with self.lock:
+            res = self.__get_cache_place(name, job_id)
+            if res is not None:
+                cache_page, _, _ = res
+                return cache_page.datastore
+            return None
 
     def set(self, page: Page, datastore: Datastore, search: str = '', job_id: Optional[UUID] = None) -> None:
-        job_dict = self.cache.get(job_id, None)
-        if job_dict is None:
-            job_dict = {}
-            self.cache[job_id] = job_dict
-        search_list = job_dict.get(search, None)
-        if search_list is None:
-            search_list = []
-            job_dict[search] = search_list
-        search_list.append(CachePage(datastore=datastore, page=page, time=time.time()))
+        with self.lock:
+            job_dict = self.cache.get(job_id, None)
+            if job_dict is None:
+                job_dict = {}
+                self.cache[job_id] = job_dict
+            search_list = job_dict.get(search, None)
+            if search_list is None:
+                search_list = []
+                job_dict[search] = search_list
+            search_list.append(CachePage(datastore=datastore, page=page, time=time.time()))
 
     def invalidate(self, name: str, job_id: UUID) -> None:
-        res = self.__get_cache_place(name, job_id)
-        if res is not None:
-            cache_page, job_id, search = res
-            self.cache[job_id][search].remove(cache_page)
+        with self.lock:
+            res = self.__get_cache_place(name, job_id)
+            if res is not None:
+                cache_page, job_id, search = res
+                self.cache[job_id][search].remove(cache_page)
 
     def __get_cache_place(self, name: str, job_id: Optional[UUID]) -> Optional[tuple[CachePage, Optional[UUID], str]]:
         page = False

@@ -10,6 +10,7 @@ from typing import Any
 from uuid import UUID
 
 import psutil
+import readerwriterlock.rwlock
 from fastapi import FastAPI, HTTPException
 
 from wasm_rest.exceptions import WasmRestException
@@ -36,7 +37,7 @@ self_object: Executor
 broker_listener = BrokerListener()
 broker: Broker
 
-jobs_lock = threading.Lock()
+jobs_lock = readerwriterlock.rwlock.RWLockWrite()
 jobs: dict[UUID, Job] = {}
 root_dir: str = ""
 
@@ -68,7 +69,7 @@ def register_with_broker() -> None:
 
 
 def select_broker() -> Broker:
-    with broker_listener.lock:
+    with broker_listener.lock.gen_rlock():
         return random.choice(list(broker_listener.brokers.values())) if len(broker_listener.brokers) else None
 
 
@@ -92,18 +93,18 @@ def server_capabilities() -> Capabilities:
 @fastapi_app.get("/job/list")
 def job_list() -> list[UUID]:
     LOG.debug("Sending list of all jobs")
-    with jobs_lock:
+    with jobs_lock.gen_rlock():
         return [key for key in jobs.keys()]
 
 
 @fastapi_app.delete("/job/{job_id}")
 def job_delete(job_id: UUID) -> None:
     LOG.debug(f"Deleting job {job_id}")
-    with jobs_lock:
+    with jobs_lock.gen_wlock():
         job = jobs.get(job_id, None)
         if job:
             job.delete()
-            del jobs[job_id]
+            jobs.pop(job_id, None)
         else:
             LOG.error(f"Failed to delete job {job_id}")
             raise HTTPException(404, "Job not found")
@@ -117,7 +118,7 @@ def start_job(job: Job) -> None:
         if job.try_download_files(broker):
             break
         time.sleep(10)
-    with jobs_lock:
+    with jobs_lock.gen_wlock():
         jobs[job.id] = job
     try:
         LOG.debug(f"Starting process for job {job.id}")
@@ -126,6 +127,7 @@ def start_job(job: Job) -> None:
         LOG.error(e.msg)
         return
     LOG.debug(f"Finished job {job.id}")
+
 
 def do_store_in_datastore(job: Job) -> None:
     LOG.debug(f"Storing named results for job {job.id}")

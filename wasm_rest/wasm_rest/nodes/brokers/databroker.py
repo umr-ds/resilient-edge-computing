@@ -4,6 +4,7 @@ import uuid
 from typing import Optional, Callable, Any
 from uuid import UUID
 
+import readerwriterlock.rwlock
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from fastapi_pagination import Page
@@ -20,7 +21,7 @@ class DataBroker:
     datastore_listener = DatastoreListener()
     job_datastore_cache = DatastoreCache()
     pending_results: dict[UUID, Address] = {}
-    results_lock = threading.Lock()
+    results_lock = readerwriterlock.rwlock.RWLockWrite()
 
     def add_endpoints(self, fastapi_app: FastAPI) -> None:
 
@@ -60,27 +61,28 @@ class DataBroker:
         @fastapi_app.put("/result/{job_id}")
         def send_result(job_id: UUID, data: UploadFile) -> None:
             LOG.debug(f"Sending result of job {job_id} to client")
-            with self.results_lock:
+            with self.results_lock.gen_rlock():
                 address = self.pending_results.get(job_id, None)
-                if address:
-                    client = Client(address=address, id=uuid.uuid4())
-                    if client.send_result(job_id, data.file):
-                        del self.pending_results[job_id]
-                    else:
-                        LOG.error(f"Could not connect to {address} to store result")
-                        raise HTTPException(503, "Result destination not known")
+            if address:
+                client = Client(address=address, id=uuid.uuid4())
+                if client.send_result(job_id, data.file):
+                    with self.results_lock.gen_wlock():
+                        self.pending_results.pop(job_id, None)
+                else:
+                    LOG.error(f"Could not connect to {address} to store result")
+                    raise HTTPException(503, "Result destination not known")
 
     # @fastapi_app.get("/datastore")
     def datastore_for_storage(self, required_storage: int) -> Datastore:
-        with self.datastore_listener.lock:
+        with self.datastore_listener.lock.gen_rlock():
             capable_datastores = [datastore for datastore in self.datastore_listener.datastores.values()
                                   if datastore.free_space() > required_storage]
-            if len(capable_datastores) != 0:
-                datastore = random.choice(capable_datastores)
-                return datastore
-            else:
-                LOG.error(f"Could not find datastore able to hold file of size {required_storage}")
-                raise HTTPException(503, "No datastore able to hold file")
+        if len(capable_datastores) != 0:
+            datastore = random.choice(capable_datastores)
+            return datastore
+        else:
+            LOG.error(f"Could not find datastore able to hold file of size {required_storage}")
+            raise HTTPException(503, "No datastore able to hold file")
 
     # @fastapi_app.get("/datastore/{name:path}")
     def job_data_location(self, name: str, job_id: Optional[UUID] = None) -> Optional[Datastore]:
@@ -90,7 +92,7 @@ class DataBroker:
         return self.iter_data(name, job_id, lambda page, store: store if name in page.items else None)
 
     def iter_data(self, name: str, job_id: Optional[UUID], for_page: Callable[[Page, Datastore], Any]) -> Any:
-        with self.datastore_listener.lock:
+        with self.datastore_listener.lock.gen_rlock():
             datastores = [store for store in self.datastore_listener.datastores.values()]
         for datastore in datastores:
             page_number = 0
@@ -114,6 +116,6 @@ class DataBroker:
             self.pending_results[job_id] = job_info.result_addr
 
     def delete_job_data(self, job_id: UUID):
-        with self.datastore_listener.lock:
+        with self.datastore_listener.lock.gen_rlock():
             for store in self.datastore_listener.datastores.values():
                 store.delete_job_data(job_id)
