@@ -86,7 +86,7 @@ def run_job(job_name: str, job_info: JobInfo) -> bool:
     if broker.submit_job(job_info, job_id) == job_id:
         if job_info.result_addr == node_obj.address:
             pending_results[job_id] = job_name
-            return True
+        return True
     return False
 
 

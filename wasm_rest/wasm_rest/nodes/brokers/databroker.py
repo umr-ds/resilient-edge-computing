@@ -112,7 +112,7 @@ class DataBroker:
                         return None
 
     def add_pending_job(self, job_id: UUID, job_info: JobInfo):
-        with self.results_lock:
+        with self.results_lock.gen_wlock():
             self.pending_results[job_id] = job_info.result_addr
 
     def delete_job_data(self, job_id: UUID):
