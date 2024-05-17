@@ -94,7 +94,7 @@ def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '')
     global result_dir, node_obj, all_queued, broker
     result_dir = _result_dir
     node_obj = Node(host, port, fastapi_app=fastapi_app)
-    node_obj.zeroconf.add_service_listener(Node.zeroconf_service_type("broker"), broker_listener)
+    node_obj.add_service_listener(Node.zeroconf_service_type("broker"), broker_listener)
 
     threading.Thread(target=node_obj.run).start()
 

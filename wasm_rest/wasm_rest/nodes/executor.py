@@ -198,7 +198,7 @@ def run(host: Union[str, list[str]], port: int, rootdir: str, uvicorn_args: dict
     elif type(host) is list:
         addresses.extend(host)
     update_capabilities()
-    node_object.zeroconf.add_service_listener(Node.zeroconf_service_type("broker"), broker_listener)
+    node_object.add_service_listener(Node.zeroconf_service_type("broker"), broker_listener)
     node_object.run()
     return exit_code
 

@@ -29,7 +29,7 @@ def run(host: Union[str, list[str]], port: int, uvicorn_args: dict[str, Any] = N
     data_broker.add_endpoints(fastapi_app)
     executor_broker.add_endpoints(fastapi_app)
     node_object = Node(host, port, "broker", fastapi_app, uvicorn_args)
-    node_object.zeroconf.add_service_listener(Node.zeroconf_service_type("datastore"), data_broker.datastore_listener)
+    node_object.add_service_listener(Node.zeroconf_service_type("datastore"), data_broker.datastore_listener)
     node_object.run()
     return NodeRole.EXIT
 
