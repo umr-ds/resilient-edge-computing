@@ -5,6 +5,7 @@ from typing import Optional, Callable
 from uuid import UUID
 
 import readerwriterlock.rwlock
+import fastapi
 from fastapi import FastAPI, HTTPException
 
 from wasm_rest.model import JobInfo, Capabilities
@@ -52,14 +53,14 @@ class ExecutorBroker:
             return len(self.executors)
 
         @fastapi_app.put("/job/submit/{job_id}")
-        def submit_job(job_info: JobInfo, job_id: UUID) -> UUID:
+        def submit_job(job_info: JobInfo, job_id: UUID, request: fastapi.Request) -> UUID:
             LOG.debug(f"Submitting job {job_id}")
             executor = self.capable_executor(job_info.capabilities)
             if executor is None:
                 LOG.error(f"Found not executor capable to run job {job_id}")
                 raise HTTPException(503, "No capable Executor")
-            if executor.submit_job(job_id, job_info):
-                self.__on_job_started(job_id, job_info)
+            if executor.submit_job(job_id, job_info, ):
+                self.__on_job_started(job_id, job_info, request.client.host) # TODO fix addresses
                 return job_id
             else:
                 LOG.error(f"Error when submitting job {job_id}")

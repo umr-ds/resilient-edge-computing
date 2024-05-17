@@ -73,6 +73,9 @@ def register_with_broker() -> None:
 
 def select_broker() -> Broker:
     with broker_listener.lock.gen_rlock():
+        for broker in broker_listener.brokers.values():
+            if broker.executor_count() == 0:
+                return broker
         return random.choice(list(broker_listener.brokers.values())) if len(broker_listener.brokers) else None
 
 

@@ -20,7 +20,7 @@ class WasmRest(ConfigService):
     # other services that this service depends on, can be used to define service start order
     dependencies: List[str] = []
     # commands to run to start this service
-    startup: List[str] = ["bash -c 'python3 /root/wasm_rest/wasm_rest.py broker --host $(hostname -I | grep -E -o \"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\") &> /root/wasm_rest/out/log.log'"]
+    startup: List[str] = ["bash -c 'python3 /root/wasm_rest/wasm_rest.py -v broker --hosts $(hostname -I | grep -E -o \"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\" | paste -sd ',') &> /root/wasm_rest/out/log.log'"]
     # commands to run to validate this service
     validate: List[str] = []
     # commands to run to stop this service

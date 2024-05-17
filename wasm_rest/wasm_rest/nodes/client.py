@@ -44,9 +44,10 @@ def receive_result(job_id: UUID, data: UploadFile):
             node_obj.stop()
 
 
-def select_broker() -> Optional[Broker]:
+def select_broker() -> Broker:
     with broker_listener.lock.gen_rlock():
-        return random.choice(list(broker_listener.brokers.values())) if len(broker_listener.brokers) else None
+        brokers = [broker for broker in broker_listener.brokers.values() if broker.executor_count() > 0]
+        return random.choice(brokers) if len(brokers) else None
 
 
 def files_to_upload(job_info: JobInfo) -> dict[str, str]:
@@ -76,21 +77,21 @@ def files_to_upload(job_info: JobInfo) -> dict[str, str]:
     return to_upload
 
 
-def run_job(job_name: str, job_info: JobInfo) -> bool:
+def run_job(job_name: str, job_info: JobInfo) -> Optional[UUID]:
     job_id = generate_unique_id()
     job = Job(job_id)
     to_upload = files_to_upload(job_info)
     for path, name in to_upload.items():
         if not job.upload_job_file(name, path, broker):
             job.delete(broker)
-            return False
+            return None
     job.transform_job_info_broker(job_info)
     if broker.submit_job(job_info, job_id) == job_id:
         if job_info.result_addr.host in node_obj.addresses:
             with result_lock.gen_wlock():
-                pending_results[job_id] = job_name
-        return True
-    return False
+                pending_results[job_id] = job_name # TODO fix result send
+        return job_id
+    return None
 
 
 def load_exec_plan(json_path: str) -> Union[ExecutionPlan, NodeRole]:
@@ -139,8 +140,10 @@ def run(json_path: str, host: Union[str, list[str]] = '', port: int = 8004, _res
                     if cmd.wait.isdisjoint(pending_results.values()):
                         break
                 time.sleep(10)
-            if run_job(cmd.cmd, plan.cmds[cmd.cmd]):
+            job_id = run_job(cmd.cmd, plan.cmds[cmd.cmd])
+            if job_id:
                 started_jobs.add(cmd.cmd)
+                LOG.info(f"Job {cmd.cmd} was started as {job_id}")
         except WasmRestException as e:
             LOG.error(f"Invalid Command {cmd.cmd}: {e.msg}")
     with result_lock.gen_rlock():

@@ -109,10 +109,12 @@ class DataBroker:
                     return res
                 else:
                     if len(page.items) == 0:
-                        return None
+                        break
+        return None
 
-    def add_pending_job(self, job_id: UUID, job_info: JobInfo):
+    def add_pending_job(self, job_id: UUID, job_info: JobInfo, received_host: str):
         with self.results_lock.gen_wlock():
+            job_info.result_addr.host = received_host
             self.pending_results[job_id] = job_info.result_addr
 
     def delete_job_data(self, job_id: UUID):
