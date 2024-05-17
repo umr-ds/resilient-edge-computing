@@ -107,7 +107,7 @@ def load_exec_plan(json_path: str) -> Union[ExecutionPlan, NodeRole]:
         return NodeRole.EXIT
 
 
-def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '') -> NodeRole:
+def run(json_path: str, host: Union[str, list[str]] = '', port: int = 8004, _result_dir: str = '') -> NodeRole:
     global result_dir, node_obj, all_queued, broker
     result_dir = _result_dir
     node_obj = Node(host, port, fastapi_app=fastapi_app)

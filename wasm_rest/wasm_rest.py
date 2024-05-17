@@ -7,6 +7,7 @@ import random
 import wasm_rest.util.log
 from wasm_rest.model import NodeRole
 from wasm_rest.nodes import broker, executor, datastore, client
+from wasm_rest.util.log import LOG
 
 
 def main():
@@ -41,7 +42,7 @@ def main():
     client_parser.add_argument("--resultdir", type=str, default='', help="dir to store results in")
     client_parser.set_defaults(prog=NodeRole.CLIENT)
 
-    combined_parser = subparsers.add_parser("autobe",  parents=[executor_parser], add_help=False)
+    combined_parser = subparsers.add_parser("autobe", parents=[executor_parser], add_help=False)
     combined_parser.set_defaults(prog=NodeRole.AUTO)
 
     args = parser.parse_args()
@@ -49,6 +50,14 @@ def main():
     log_level = logging.DEBUG if args.v else logging.INFO if args.i else logging.ERROR
     uvicorn_args = {"log_level": log_level}
     wasm_rest.util.log.LOG.setLevel(log_level)
+
+    if hasattr(args, "hosts"):
+        host = args.hosts.split(",")
+    elif hasattr(args, "host"):
+        host = args.host
+    else:
+        LOG.error("No hosts selected")
+        return
 
     if not hasattr(args, "prog") or args.prog is NodeRole.EXIT:
         parser.print_help()
@@ -60,13 +69,13 @@ def main():
             role = NodeRole.BROKER if random.random() < 0.1 else NodeRole.EXECUTOR
 
         if role is NodeRole.BROKER:
-            role = broker.run(args.host, args.port, uvicorn_args=uvicorn_args)
+            role = broker.run(host, args.port, uvicorn_args=uvicorn_args)
         elif role is NodeRole.EXECUTOR:
-            role = executor.run(args.host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
+            role = executor.run(host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
         elif role is NodeRole.DATASTORE:
-            role = datastore.run(args.host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
+            role = datastore.run(host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
         elif role is NodeRole.CLIENT:
-            role = client.run(args.json, args.host, args.port, args.resultdir)
+            role = client.run(args.json, host, args.port, args.resultdir)
         else:
             parser.print_help()
             return
