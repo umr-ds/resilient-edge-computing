@@ -24,6 +24,7 @@ class Node:
     id: UUID
     service_type: str
     __listeners: list[(str, ServiceListener)] = []
+    __listen_lock = threading.Lock()
 
     def __init__(self, host: Union[str, list[str]], port: int, service_type: Optional[str] = None, fastapi_app: Optional[FastAPI] = None,
                  uvicorn_args: dict[str, Any] = None) -> None:
@@ -62,7 +63,8 @@ class Node:
     def add_service_listener(self, _type: str, listener: ServiceListener):
         if self.uvicorn_server.started:
             self.zeroconf.add_service_listener(_type, listener)
-        self.__listeners.append((_type, listener))
+        with self.__listen_lock:
+            self.__listeners.append((_type, listener))
 
     def run(self) -> None:
         LOG.debug(f"starting {self.service_type}: {self.id}")
@@ -73,6 +75,9 @@ class Node:
         if self.service_type is not None:
             self.zeroconf.unregister_service(self.generate_service_info())
 
+    def start(self):
+        threading.Thread(target=self.run, name=f"Node {self.id}").start()
+
     def stop(self):
         self.uvicorn_server.should_exit = True
 
@@ -81,8 +86,9 @@ class Node:
             if self.uvicorn_server.started:
                 if self.service_type is not None:
                     self.zeroconf.register_service(self.generate_service_info())
-                for _type, listener in self.__listeners:
-                    self.zeroconf.add_service_listener(_type, listener)
+                with self.__listen_lock:
+                    for _type, listener in self.__listeners:
+                        self.zeroconf.add_service_listener(_type, listener)
                 break
             time.sleep(10)
 

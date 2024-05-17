@@ -2,7 +2,7 @@ import os
 import random
 import threading
 import time
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 
 import readerwriterlock.rwlock
@@ -33,13 +33,15 @@ started_jobs: set[str] = set()
 
 @fastapi_app.put("/result/{job_id}")
 def receive_result(job_id: UUID, data: UploadFile):
-    if pending_results.get(job_id, None) is None:
-        raise HTTPException(404, "Result not expected")
+    with result_lock.gen_rlock():
+        if pending_results.get(job_id, None) is None:
+            raise HTTPException(404, "Result not expected")
     if not put_file(data.file, os.path.join(result_dir, f"{job_id}.zip")):
         raise HTTPException(500, "File could not be stored")
-    del pending_results[job_id]
-    if all_queued and len(pending_results) == 0:
-        node_obj.stop()
+    with result_lock.gen_wlock():
+        pending_results.pop(job_id, None)
+        if all_queued and len(pending_results) == 0:
+            node_obj.stop()
 
 
 def select_broker() -> Optional[Broker]:
@@ -85,9 +87,24 @@ def run_job(job_name: str, job_info: JobInfo) -> bool:
     job.transform_job_info_broker(job_info)
     if broker.submit_job(job_info, job_id) == job_id:
         if job_info.result_addr.host in node_obj.addresses:
-            pending_results[job_id] = job_name
+            with result_lock.gen_wlock():
+                pending_results[job_id] = job_name
         return True
     return False
+
+
+def load_exec_plan(json_path: str) -> Union[ExecutionPlan, NodeRole]:
+    try:
+        with open(json_path, "r") as file:
+            return ExecutionPlan.model_validate_json(file.read())
+    except OSError as e:
+        LOG.error(f"Problem opening Execution Plan: {e}")
+        node_obj.stop()
+        return NodeRole.EXIT
+    except ValidationError as e:
+        LOG.error(f"Invalid Execution Plan: {e}")
+        node_obj.stop()
+        return NodeRole.EXIT
 
 
 def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '') -> NodeRole:
@@ -96,7 +113,7 @@ def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '')
     node_obj = Node(host, port, fastapi_app=fastapi_app)
     node_obj.add_service_listener(Node.zeroconf_service_type("broker"), broker_listener)
 
-    threading.Thread(target=node_obj.run).start()
+    node_obj.start()
 
     broker = select_broker()
     while broker is None:
@@ -108,34 +125,29 @@ def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '')
         return NodeRole.EXIT
     LOG.info(f"Selected Broker {broker}")
 
-    if os.path.isfile(json_path):
+    plan = load_exec_plan(json_path)
+    if type(plan) is NodeRole:
+        return plan
+    for path, name in plan.named_data.items():
+        try_store_named_data(name, path, broker)
+    for cmd in plan.exec:
         try:
-            with open(json_path, "r") as file:
-                plan = ExecutionPlan.model_validate_json(file.read())
-        except ValidationError as e:
-            LOG.error(f"Invalid Execution Plan: {e}")
-            node_obj.stop()
-            return NodeRole.EXIT
-        for path, name in plan.named_data.items():
-            try_store_named_data(name, path, broker)
-        for cmd in plan.exec:
-            try:
-                if not started_jobs.issuperset(cmd.wait):
-                    LOG.error("Attempted to wait for Job that was not started")
-                while not cmd.wait.isdisjoint(pending_results.values()):
-                    time.sleep(10)
-                if run_job(cmd.cmd, plan.cmds[cmd.cmd]):
-                    started_jobs.add(cmd.cmd)
-            except WasmRestException as e:
-                LOG.error(f"Invalid Command {cmd.cmd}: {e.msg}")
+            if not started_jobs.issuperset(cmd.wait):
+                LOG.error("Attempted to wait for Job that was not started")
+            while True:
+                with result_lock.gen_rlock():
+                    if cmd.wait.isdisjoint(pending_results.values()):
+                        break
+                time.sleep(10)
+            if run_job(cmd.cmd, plan.cmds[cmd.cmd]):
+                started_jobs.add(cmd.cmd)
+        except WasmRestException as e:
+            LOG.error(f"Invalid Command {cmd.cmd}: {e.msg}")
+    with result_lock.gen_rlock():
         if len(pending_results):
             all_queued = True
         else:
             node_obj.stop()
-
-    else:
-        node_obj.stop()
-        LOG.error("Execution Plan not found")
     return NodeRole.EXIT
 
 
