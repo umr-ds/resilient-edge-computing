@@ -20,7 +20,9 @@ def main():
     log_levels.add_argument("-e", action="store_true", help="error logging (default)")
 
     address_parser = argparse.ArgumentParser(add_help=False)
-    address_parser.add_argument("--host", type=str, default="127.0.0.1", help="host ip address")
+    addresses_group = address_parser.add_mutually_exclusive_group()
+    addresses_group.add_argument("--host", type=str, default="127.0.0.1", help="host ip address")
+    addresses_group.add_argument("--hosts", type=str, help="addresses to send to other nodes, will listen to 0.0.0.0")
     address_parser.add_argument("--port", type=int, default="8000", help="host port")
 
     broker_parser = subparsers.add_parser("broker", parents=[address_parser])

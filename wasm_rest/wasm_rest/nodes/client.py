@@ -84,7 +84,7 @@ def run_job(job_name: str, job_info: JobInfo) -> bool:
             return False
     job.transform_job_info_broker(job_info)
     if broker.submit_job(job_info, job_id) == job_id:
-        if job_info.result_addr == node_obj.address:
+        if job_info.result_addr.host in node_obj.addresses:
             pending_results[job_id] = job_name
         return True
     return False
@@ -98,8 +98,10 @@ def run(json_path: str, host: str = '', port: int = 8004, _result_dir: str = '')
 
     threading.Thread(target=node_obj.run).start()
 
-    time.sleep(3)
     broker = select_broker()
+    while broker is None:
+        time.sleep(3)
+        broker = select_broker()
     if broker is None:
         LOG.error("No broker found")
         node_obj.stop()

@@ -1,3 +1,4 @@
+import json
 from typing import Optional
 from uuid import UUID
 
@@ -30,3 +31,8 @@ class Node(BaseModel):
             return requests.delete(f"http://{self.address.host}:{self.address.port}{path}", **kwargs)
         except requests.exceptions.RequestException:
             return None
+
+    def ping(self, timeout_s: int = 10) -> Optional[str]:
+        res = self.get("/ping", timeout=timeout_s)
+        if res is not None and res.ok:
+            return json.loads(res.content)

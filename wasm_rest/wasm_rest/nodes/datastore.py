@@ -1,7 +1,7 @@
 import os
 import threading
 from enum import Enum
-from typing import Any, Optional, IO
+from typing import Any, Optional, IO, Union
 from uuid import UUID
 
 import psutil
@@ -176,7 +176,7 @@ def _delete_data(name: str) -> bool:
     return False
 
 
-def run(host: str, port: int, rootdir: str, uvicorn_args: dict[str, Any] = None) -> NodeRole:
+def run(host: Union[str, list[str]], port: int, rootdir: str, uvicorn_args: dict[str, Any] = None) -> NodeRole:
     global node_object, root_dir
     node_object = Node(host, port, "datastore", fastapi_app, uvicorn_args)
     root_dir = rootdir

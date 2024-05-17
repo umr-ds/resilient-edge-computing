@@ -28,7 +28,10 @@ class BrokerListener(ServiceListener):
         info = zc.get_service_info(type_, name)
         node_id = Node.id_from_name(name)
         if info:
-            with self.lock.gen_wlock():
-                self.brokers[node_id] = Broker(id=node_id, address=Address(host=info.parsed_addresses()[0],
-                                                                           port=info.port))
-            LOG.info(f"Discovered broker {node_id}")
+            for addr in info.parsed_addresses():
+                broker = Broker(id=node_id, address=Address(host=addr, port=info.port))
+                if broker.ping() == name:
+                    with self.lock.gen_wlock():
+                        self.brokers[node_id] = broker
+                    LOG.info(f"Discovered broker {node_id}")
+                    break

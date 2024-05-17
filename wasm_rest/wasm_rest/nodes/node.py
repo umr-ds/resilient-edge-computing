@@ -1,5 +1,5 @@
 import socket
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from uuid import UUID
 
 from fastapi import FastAPI
@@ -15,19 +15,26 @@ class Node:
     fastapi_app: FastAPI
     uvicorn_server: Optional[UVServer]
     zeroconf: Zeroconf
-    address: Address
+    addresses: list[str] = []
+    port: int
     id: UUID
     service_type: str
 
-    def __init__(self, host: str, port: int, service_type: Optional[str] = None, fastapi_app: Optional[FastAPI] = None,
+    def __init__(self, host: Union[str, list[str]], port: int, service_type: Optional[str] = None, fastapi_app: Optional[FastAPI] = None,
                  uvicorn_args: dict[str, Any] = None) -> None:
         self.service_type = service_type
         if uvicorn_args is None:
             uvicorn_args = {}
         self.fastapi_app = fastapi_app
         uvicorn_args["app"] = self.fastapi_app
-        uvicorn_args["host"] = host
+        if type(host) is str:
+            uvicorn_args["host"] = host
+            self.addresses.append(host)
+        elif type(host) is list:
+            uvicorn_args["host"] = "0.0.0.0"
+            self.addresses.extend(host)
         uvicorn_args["port"] = port
+        self.port = port
         if fastapi_app is None:
             self.uvicorn_server = None
         else:
@@ -37,15 +44,14 @@ class Node:
             config = UVConfig(**uvicorn_args)
             self.uvicorn_server = UVServer(config)
         self.zeroconf = Zeroconf()
-        self.address = Address(host=host, port=port)
         self.id = generate_unique_id()
 
     def generate_service_info(self) -> ServiceInfo:
         return ServiceInfo(
             Node.zeroconf_service_type(self.service_type),
             Node.zeroconf_service_name(self.service_type, self.id),
-            addresses=[socket.inet_aton(self.address.host)],
-            port=self.address.port,
+            addresses=[socket.inet_aton(address) for address in self.addresses],
+            port=self.port,
             server=Node.zeroconf_service_name(self.service_type, self.id))
 
     def run(self) -> None:

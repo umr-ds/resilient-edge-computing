@@ -6,7 +6,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from io import BytesIO
-from typing import Any
+from typing import Any, Union
 from uuid import UUID
 
 import psutil
@@ -14,7 +14,7 @@ import readerwriterlock.rwlock
 from fastapi import FastAPI, HTTPException
 
 from wasm_rest.exceptions import WasmRestException
-from wasm_rest.model import JobInfo, NodeRole, Capabilities
+from wasm_rest.model import JobInfo, NodeRole, Capabilities, Address
 from wasm_rest.nodes.executors.job import Job
 from wasm_rest.nodes.listeners.brokers import BrokerListener
 from wasm_rest.nodes.node import Node
@@ -33,6 +33,7 @@ heartbeat_scheduler = sched.scheduler()
 fastapi_app = FastAPI(lifespan=lifespan)
 node_object: Node
 self_object: Executor
+addresses: list[str] = []
 
 broker_listener = BrokerListener()
 broker: Broker
@@ -59,12 +60,14 @@ def register_with_broker() -> None:
                 waited += 1
         else:
             for _ in range(0, 10):
-                update_capabilities()
-                if broker.register_executor(self_object):
-                    registered = True
-                    heartbeat_scheduler.enter(60, 1, heartbeat)
-                    threading.Thread(target=heartbeat_scheduler.run, daemon=True, name="heartbeat").start()
-                    break
+                for addr in addresses:
+                    update_capabilities()
+                    self_obj = self_object.model_copy(update={"address": Address(host=addr, port=self_object.address.port)})
+                    if broker.register_executor(self_obj):
+                        registered = True
+                        heartbeat_scheduler.enter(60, 1, heartbeat)
+                        threading.Thread(target=heartbeat_scheduler.run, daemon=True, name="heartbeat").start()
+                        return
                 time.sleep(2)
 
 
@@ -184,12 +187,16 @@ def heartbeat() -> None:
     heartbeat_scheduler.enter(60, 1, heartbeat)
 
 
-def run(host: str, port: int, rootdir: str, uvicorn_args: dict[str, Any] = None) -> NodeRole:
+def run(host: Union[str, list[str]], port: int, rootdir: str, uvicorn_args: dict[str, Any] = None) -> NodeRole:
     global node_object, self_object, root_dir
     root_dir = rootdir
     os.makedirs(root_dir, exist_ok=True)
     node_object = Node(host, port, "executor", fastapi_app, uvicorn_args)
-    self_object = Executor(id=node_object.id, address=node_object.address)
+    self_object = Executor(id=node_object.id, address=Address(address='', port=port))
+    if type(host) is str:
+        addresses.append(host)
+    elif type(host) is list:
+        addresses.extend(host)
     update_capabilities()
     node_object.zeroconf.add_service_listener(Node.zeroconf_service_type("broker"), broker_listener)
     node_object.run()
@@ -201,4 +208,4 @@ if __name__ == '__main__':
     parser.add_argument("--port", default=8001, type=int)
     args = parser.parse_args()
 
-    run("127.0.0.1", args.port, "../../executor.d")
+    run(["12.32.4.4", "127.0.0.1"], args.port, "../../executor.d")

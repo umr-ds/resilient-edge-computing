@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Union
 from uuid import UUID
 
 from fastapi import FastAPI
@@ -24,7 +24,7 @@ def delete_job(job_id: UUID) -> None:
     executor_broker.delete_job_from_executor(job_id)
 
 
-def run(host: str, port: int, uvicorn_args: dict[str, Any] = None) -> NodeRole:
+def run(host: Union[str, list[str]], port: int, uvicorn_args: dict[str, Any] = None) -> NodeRole:
     global node_object
     data_broker.add_endpoints(fastapi_app)
     executor_broker.add_endpoints(fastapi_app)
@@ -35,4 +35,4 @@ def run(host: str, port: int, uvicorn_args: dict[str, Any] = None) -> NodeRole:
 
 
 if __name__ == '__main__':
-    run("127.0.0.1", 8000)
+    run(["120.0.9.23", "127.0.0.1"], 8000)

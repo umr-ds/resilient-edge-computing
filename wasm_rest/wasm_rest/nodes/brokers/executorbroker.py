@@ -1,14 +1,14 @@
 import random
-import threading
 import time
-from http.client import HTTPException
+
 from typing import Optional, Callable
 from uuid import UUID
 
 import readerwriterlock.rwlock
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from wasm_rest.model import JobInfo, Capabilities
+from wasm_rest.nodes.node import Node
 from wasm_rest.nodetypes.executor import Executor
 from wasm_rest.util.log import LOG
 
@@ -25,13 +25,14 @@ class ExecutorBroker:
         @fastapi_app.put("/executors/register")
         def register_executor(executor: Executor) -> None:
             LOG.debug(f"Registering executor {executor.id}")
-            if executor.update_capabilities() is not None:
+            name = executor.ping()
+            if name is not None and Node.id_from_name(name) == executor.id:
                 with self.executor_lock.gen_wlock():
                     LOG.info(f"Executor {executor.id} registered")
                     self.executors[executor.id] = executor
             else:
-                LOG.error(f"Could not request Capabilities of executor {executor.id} to verify it's an executor")
-                raise HTTPException(400, "Could not request Capabilities to verify")
+                LOG.error(f"Could not ping executor {executor.id} to verify it's online")
+                raise HTTPException(400, "Could not ping to verify")
 
         @fastapi_app.put("/executors/heartbeat/{exec_id}")
         def heartbeat_executor(exec_id: UUID, capabilities: Capabilities) -> None:
@@ -47,6 +48,7 @@ class ExecutorBroker:
         @fastapi_app.get("/executors/count")
         def executor_count() -> int:
             LOG.debug("Sending number of executors")
+            self.prune_executor_list()
             return len(self.executors)
 
         @fastapi_app.put("/job/submit/{job_id}")
