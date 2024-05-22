@@ -64,7 +64,7 @@ class ExecutorBroker:
             LOG.debug(f"Submitting job {job_id}")
             executor = self.capable_executor(job_info.capabilities)
             if executor is None:
-                LOG.error(f"Found not executor capable to run job {job_id}")
+                LOG.error(f"Found no executor capable to run job {job_id}")
                 raise HTTPException(503, "No capable Executor")
             if executor.submit_job(job_id, job_info):
                 if job_info.result_addr.host == "this":
