@@ -11,8 +11,9 @@ from wasm_rest.nodetypes.node import Node
 
 class Broker(Node):
 
-    def register_executor(self, executor: Executor) -> bool:
-        res = self.put("/executors/register", data=executor.model_dump_json())
+    def register_executor(self, hosts: list[str], executor: Executor) -> bool:
+        data = f"{{\"hosts\": {json.dumps(hosts)}, \"executor\": {executor.model_dump_json()}}}"
+        res = self.put("/executors/register", data=data)
         return res is not None and res.ok
 
     def heartbeat_executor(self, exec_id: UUID, capabilities: Capabilities) -> bool:  # still connected

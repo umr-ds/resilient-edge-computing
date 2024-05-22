@@ -60,14 +60,12 @@ def register_with_broker() -> None:
                 waited += 1
         else:
             for _ in range(0, 10):
-                for addr in addresses:
-                    update_capabilities()
-                    self_obj = self_object.model_copy(update={"address": Address(host=addr, port=self_object.address.port)})
-                    if broker.register_executor(self_obj):
-                        registered = True
-                        heartbeat_scheduler.enter(60, 1, heartbeat)
-                        threading.Thread(target=heartbeat_scheduler.run, daemon=True, name="heartbeat").start()
-                        return
+                update_capabilities()
+                if broker.register_executor(addresses, self_object):
+                    registered = True
+                    heartbeat_scheduler.enter(60, 1, heartbeat)
+                    threading.Thread(target=heartbeat_scheduler.run, daemon=True, name="heartbeat").start()
+                    return
                 time.sleep(2)
 
 

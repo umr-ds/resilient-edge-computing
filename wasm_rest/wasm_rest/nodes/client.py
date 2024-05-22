@@ -89,7 +89,7 @@ def run_job(job_name: str, job_info: JobInfo) -> Optional[UUID]:
     if broker.submit_job(job_info, job_id) == job_id:
         if job_info.result_addr.host in node_obj.addresses:
             with result_lock.gen_wlock():
-                pending_results[job_id] = job_name # TODO fix result send
+                pending_results[job_id] = job_name
         return job_id
     return None
 

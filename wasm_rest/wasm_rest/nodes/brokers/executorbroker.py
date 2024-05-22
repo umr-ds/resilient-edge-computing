@@ -6,7 +6,7 @@ from uuid import UUID
 
 import readerwriterlock.rwlock
 import fastapi
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 
 from wasm_rest.model import JobInfo, Capabilities
 from wasm_rest.nodes.node import Node
@@ -24,16 +24,23 @@ class ExecutorBroker:
 
     def add_endpoints(self, fastapi_app: FastAPI) -> None:
         @fastapi_app.put("/executors/register")
-        def register_executor(executor: Executor) -> None:
+        def register_executor(hosts: list[str], executor: Executor, request: Request) -> None:
             LOG.debug(f"Registering executor {executor.id}")
-            name = executor.ping()
-            if name is not None and Node.id_from_name(name) == executor.id:
-                with self.executor_lock.gen_wlock():
-                    LOG.info(f"Executor {executor.id} registered")
-                    self.executors[executor.id] = executor
-            else:
-                LOG.error(f"Could not ping executor {executor.id} to verify it's online")
-                raise HTTPException(400, "Could not ping to verify")
+            if request.client.host in hosts:
+                hosts.remove(request.client.host)
+                hosts.insert(0, request.client.host)
+            for host in hosts:
+                executor.address.host = host
+                name = executor.ping()
+                if name is not None and Node.id_from_name(name) == executor.id:
+                    with self.executor_lock.gen_wlock():
+                        LOG.info(f"Executor {executor.id} registered")
+                        self.executors[executor.id] = executor
+                        return
+                else:
+                    LOG.debug(f"Could not ping executor {executor.id} on {host} to verify it's online")
+            LOG.error(f"Could not ping executor {executor.id} to verify it's online")
+            raise HTTPException(400, "Could not ping to verify")
 
         @fastapi_app.put("/executors/heartbeat/{exec_id}")
         def heartbeat_executor(exec_id: UUID, capabilities: Capabilities) -> None:
@@ -59,8 +66,10 @@ class ExecutorBroker:
             if executor is None:
                 LOG.error(f"Found not executor capable to run job {job_id}")
                 raise HTTPException(503, "No capable Executor")
-            if executor.submit_job(job_id, job_info, ):
-                self.__on_job_started(job_id, job_info, request.client.host) # TODO fix addresses
+            if executor.submit_job(job_id, job_info):
+                if job_info.result_addr.host == "this":
+                    job_info.result_addr.host = request.client.host
+                self.__on_job_started(job_id, job_info)
                 return job_id
             else:
                 LOG.error(f"Error when submitting job {job_id}")
