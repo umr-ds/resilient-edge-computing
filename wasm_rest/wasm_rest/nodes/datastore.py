@@ -13,7 +13,7 @@ from fastapi_pagination import Page, add_pagination, paginate
 from wasm_rest.model import NodeRole
 from wasm_rest.nodes.node import Node
 from wasm_rest.util.log import LOG
-from wasm_rest.util.util import prevent_breakout
+from wasm_rest.util import prevent_breakout
 
 
 class FileStatus(Enum):

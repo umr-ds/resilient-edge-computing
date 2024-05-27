@@ -55,14 +55,19 @@ class Broker(Node):
         res = self.put(f"/result/{job_id}", files={"data": data})
         return res is not None and res.ok
 
-    def submit_job(self, job_info: JobInfo, job_id: UUID) -> Optional[UUID]:
+    def submit_job(self, job_info: JobInfo, job_id: UUID, wait_for: Optional[set[UUID]] = None) -> Optional[UUID]:
         try:
-            res = self.put(f"/job/submit/{job_id}", data=job_info.model_dump_json())
+            data = f"{{\"job_info\": {job_info.model_dump_json()}, \"wait_for\": {json.dumps([str(it) for it in wait_for])}}}"
+            res = self.put(f"/job/submit/{job_id}", data=data)
             if res is not None and res.ok:
                 return UUID(json.loads(res.content.decode()))
             return None
         except requests.exceptions.RequestException:
             return None
+
+    def job_done(self, job_id: UUID) -> bool:
+        res = self.put(f"/job/done/{job_id}")
+        return res is not None and res.ok
 
     def delete_job(self, job_id: UUID) -> bool:
         res = self.delete(f"/job/{job_id}")

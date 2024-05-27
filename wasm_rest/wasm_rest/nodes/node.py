@@ -6,13 +6,10 @@ from uuid import UUID
 
 from fastapi import FastAPI
 from uvicorn import Server as UVServer, Config as UVConfig
-from uvicorn.server import ServerState
 from zeroconf import Zeroconf, ServiceInfo, ServiceListener
 
-import wasm_rest.nodetypes.node
-from wasm_rest.model import Address
 from wasm_rest.util.log import LOG
-from wasm_rest.util.util import generate_unique_id
+from wasm_rest.util import generate_unique_id
 
 
 class Node:
@@ -26,7 +23,8 @@ class Node:
     __listeners: list[(str, ServiceListener)] = []
     __listen_lock = threading.Lock()
 
-    def __init__(self, host: Union[str, list[str]], port: int, service_type: Optional[str] = None, fastapi_app: Optional[FastAPI] = None,
+    def __init__(self, host: Union[str, list[str]], port: int, service_type: Optional[str] = None,
+                 fastapi_app: Optional[FastAPI] = None,
                  uvicorn_args: dict[str, Any] = None) -> None:
         self.service_type = service_type
         if uvicorn_args is None:
@@ -47,6 +45,7 @@ class Node:
             @fastapi_app.get("/ping")
             def ping() -> str:
                 return Node.zeroconf_service_name(self.service_type, self.id)
+
             config = UVConfig(**uvicorn_args)
             self.uvicorn_server = UVServer(config)
         self.zeroconf = Zeroconf()

@@ -4,7 +4,7 @@ from uuid import UUID
 from wasm_rest.exceptions import WasmRestException
 from wasm_rest.model import JobInfo
 from wasm_rest.nodetypes.broker import Broker
-from wasm_rest.util.util import try_store_named_data
+from wasm_rest.util import try_store_named_data
 
 
 class Job:

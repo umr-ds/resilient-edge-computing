@@ -47,9 +47,8 @@ exit_code = NodeRole.EXIT
 
 def register_with_broker() -> None:
     global broker, exit_code
-    registered = False
     waited = 0
-    while not registered:
+    while True:
         broker = select_broker()
         if broker is None:
             if waited == 10:
@@ -62,7 +61,6 @@ def register_with_broker() -> None:
             for _ in range(0, 10):
                 update_capabilities()
                 if broker.register_executor(addresses, self_object):
-                    registered = True
                     heartbeat_scheduler.enter(60, 1, heartbeat)
                     threading.Thread(target=heartbeat_scheduler.run, daemon=True, name="heartbeat").start()
                     return
@@ -71,9 +69,9 @@ def register_with_broker() -> None:
 
 def select_broker() -> Broker:
     with broker_listener.lock.gen_rlock():
-        for broker in broker_listener.brokers.values():
-            if broker.executor_count() == 0:
-                return broker
+        for b in broker_listener.brokers.values():
+            if b.executor_count() == 0:
+                return b
         return random.choice(list(broker_listener.brokers.values())) if len(broker_listener.brokers) else None
 
 
@@ -161,6 +159,7 @@ def do_store_in_datastore(job: Job) -> None:
 
 def store_job_in_datastore(job: Job) -> None:
     do_store_in_datastore(job)
+    broker.job_done(job.id)
     if job.job_info.delete:
         broker.delete_job(job.id)
 

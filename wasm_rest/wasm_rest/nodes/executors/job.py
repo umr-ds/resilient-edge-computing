@@ -1,6 +1,5 @@
 import glob
 import os
-import threading
 from typing import Callable
 from uuid import UUID
 from zipfile import ZipFile
@@ -9,7 +8,7 @@ from wasm_rest.exceptions import WasmRestException
 from wasm_rest.model import JobInfo
 from wasm_rest.nodetypes.broker import Broker
 from wasm_rest.util.execute_wasm import run_webassembly
-from wasm_rest.util.util import prevent_breakout, zip_folder, try_download_file, try_store_named_data
+from wasm_rest.util import prevent_breakout, zip_folder, try_store_named_data, try_download_file
 
 send_retry = 10
 send_timeout = 10

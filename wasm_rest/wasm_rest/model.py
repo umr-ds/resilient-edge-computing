@@ -46,6 +46,7 @@ class JobInfo(BaseModel):
 
 class Execution(BaseModel):
     cmd: str
+    queue: bool = True
     wait: set[str] = set()
 
 

@@ -1,4 +1,4 @@
-import logging
+import threading
 from typing import Any, Union
 from uuid import UUID
 
@@ -28,6 +28,7 @@ def run(host: Union[str, list[str]], port: int, uvicorn_args: dict[str, Any] = N
     global node_object
     data_broker.add_endpoints(fastapi_app)
     executor_broker.add_endpoints(fastapi_app)
+    threading.Thread(target=executor_broker.job_scheduler, daemon=True, name="broker scheduler").start()
     node_object = Node(host, port, "broker", fastapi_app, uvicorn_args)
     node_object.add_service_listener(Node.zeroconf_service_type("datastore"), data_broker.datastore_listener)
     node_object.run()
@@ -35,4 +36,4 @@ def run(host: Union[str, list[str]], port: int, uvicorn_args: dict[str, Any] = N
 
 
 if __name__ == '__main__':
-    run(["120.0.9.23", "127.0.0.1"], 8000)
+    run(["127.0.0.1"], 8000)

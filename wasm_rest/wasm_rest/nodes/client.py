@@ -1,6 +1,5 @@
 import os
 import random
-import threading
 import time
 from typing import Optional, Union
 from uuid import UUID
@@ -17,7 +16,7 @@ from wasm_rest.nodes.listeners.brokers import BrokerListener
 from wasm_rest.nodes.node import Node
 from wasm_rest.nodetypes.broker import Broker
 from wasm_rest.util.log import LOG
-from wasm_rest.util.util import generate_unique_id, put_file, try_store_named_data
+from wasm_rest.util import put_file, generate_unique_id, try_store_named_data
 
 broker: Broker
 node_obj: Node
@@ -29,6 +28,7 @@ pending_results: dict[UUID, str] = {}
 result_lock = readerwriterlock.rwlock.RWLockWrite()
 all_queued = False
 started_jobs: set[str] = set()
+name_to_uuid: dict[str, UUID] = {}
 
 
 @fastapi_app.put("/result/{job_id}")
@@ -38,6 +38,7 @@ def receive_result(job_id: UUID, data: UploadFile):
             raise HTTPException(404, "Result not expected")
     if not put_file(data.file, os.path.join(result_dir, f"{job_id}.zip")):
         raise HTTPException(500, "File could not be stored")
+    LOG.info(f"Received result of job {job_id}")
     with result_lock.gen_wlock():
         pending_results.pop(job_id, None)
         if all_queued and len(pending_results) == 0:
@@ -46,7 +47,7 @@ def receive_result(job_id: UUID, data: UploadFile):
 
 def select_broker() -> Broker:
     with broker_listener.lock.gen_rlock():
-        brokers = [broker for broker in broker_listener.brokers.values() if broker.executor_count() > 0]
+        brokers = [b for b in broker_listener.brokers.values() if b.executor_count() > 0]
         return random.choice(brokers) if len(brokers) else None
 
 
@@ -77,7 +78,7 @@ def files_to_upload(job_info: JobInfo) -> dict[str, str]:
     return to_upload
 
 
-def run_job(job_name: str, job_info: JobInfo) -> Optional[UUID]:
+def run_job(job_name: str, job_info: JobInfo, wait_for: Optional[set[UUID]] = None) -> Optional[UUID]:
     job_id = generate_unique_id()
     job = Job(job_id)
     to_upload = files_to_upload(job_info)
@@ -86,7 +87,7 @@ def run_job(job_name: str, job_info: JobInfo) -> Optional[UUID]:
             job.delete(broker)
             return None
     job.transform_job_info_broker(job_info)
-    if broker.submit_job(job_info, job_id) == job_id:
+    if broker.submit_job(job_info, job_id, wait_for) == job_id:
         if job_info.result_addr.host in node_obj.addresses or job_info.result_addr.host == "this":
             with result_lock.gen_wlock():
                 pending_results[job_id] = job_name
@@ -135,15 +136,26 @@ def run(json_path: str, host: Union[str, list[str]] = '', port: int = 8004, _res
         try:
             if not started_jobs.issuperset(cmd.wait):
                 LOG.error("Attempted to wait for Job that was not started")
-            while True:
-                with result_lock.gen_rlock():
-                    if cmd.wait.isdisjoint(pending_results.values()):
-                        break
-                time.sleep(10)
-            job_id = run_job(cmd.cmd, plan.cmds[cmd.cmd])
+            if cmd.queue:
+                try:
+                    wait_for = {name_to_uuid[name] for name in cmd.wait}
+                except KeyError:
+                    LOG.error("Attempted to wait for Job that was not started")
+                    continue  # should never happen
+            else:
+                wait_for = None
+                while True:
+                    with result_lock.gen_rlock():
+                        if cmd.wait.isdisjoint(pending_results.values()):
+                            break
+                    time.sleep(10)
+            job_id = run_job(cmd.cmd, plan.cmds[cmd.cmd], wait_for)
             if job_id:
+                name_to_uuid[cmd.cmd] = job_id
                 started_jobs.add(cmd.cmd)
                 LOG.info(f"Job {cmd.cmd} was started as {job_id}")
+            else:
+                LOG.error(f"Job {cmd.cmd} failed to start")
         except WasmRestException as e:
             LOG.error(f"Invalid Command {cmd.cmd}: {e.msg}")
     with result_lock.gen_rlock():

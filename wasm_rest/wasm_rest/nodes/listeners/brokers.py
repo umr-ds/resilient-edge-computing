@@ -1,4 +1,3 @@
-import threading
 from uuid import UUID
 
 import readerwriterlock.rwlock

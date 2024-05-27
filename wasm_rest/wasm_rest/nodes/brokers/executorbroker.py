@@ -1,12 +1,14 @@
 import random
+import threading
 import time
-
+from queue import Queue
 from typing import Optional, Callable
 from uuid import UUID
 
-import readerwriterlock.rwlock
 import fastapi
+import readerwriterlock.rwlock
 from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
 
 from wasm_rest.model import JobInfo, Capabilities
 from wasm_rest.nodes.node import Node
@@ -14,9 +16,18 @@ from wasm_rest.nodetypes.executor import Executor
 from wasm_rest.util.log import LOG
 
 
+class QueuedJob(BaseModel):
+    job_id: UUID
+    job_info: JobInfo
+    wait_for: set[UUID]
+
+
 class ExecutorBroker:
     executors: dict[UUID, Executor] = {}
     executor_lock = readerwriterlock.rwlock.RWLockWrite()
+    queued_jobs: Queue[QueuedJob] = Queue()
+    completed_jobs: set[UUID] = set()
+    cj_lock = threading.Lock()
     __on_job_started: Callable[[UUID, JobInfo], None]
 
     def __init__(self, on_job_started: Callable[[UUID, JobInfo], None]):
@@ -60,20 +71,30 @@ class ExecutorBroker:
             return len(self.executors)
 
         @fastapi_app.put("/job/submit/{job_id}")
-        def submit_job(job_info: JobInfo, job_id: UUID, request: fastapi.Request) -> UUID:
+        def submit_job(job_info: JobInfo, job_id: UUID, request: fastapi.Request,
+                       wait_for: Optional[set[UUID]] = None) -> UUID:
             LOG.debug(f"Submitting job {job_id}")
-            executor = self.capable_executor(job_info.capabilities)
-            if executor is None:
-                LOG.error(f"Found no executor capable to run job {job_id}")
-                raise HTTPException(503, "No capable Executor")
-            if executor.submit_job(job_id, job_info):
-                if job_info.result_addr.host == "this":
-                    job_info.result_addr.host = request.client.host
-                self.__on_job_started(job_id, job_info)
-                return job_id
+            if job_info.result_addr.host == "this":
+                job_info.result_addr.host = request.client.host
+            if wait_for is None:
+                executor = self.capable_executor(job_info.capabilities)
+                if executor is None:
+                    LOG.error(f"Found no executor capable to run job {job_id}")
+                    raise HTTPException(503, "No capable Executor")
+                if executor.submit_job(job_id, job_info):
+                    self.__on_job_started(job_id, job_info)
+                    return job_id
+                else:
+                    LOG.error(f"Error when submitting job {job_id}")
+                    raise HTTPException(503, "Failed to submit Job")
             else:
-                LOG.error(f"Error when submitting job {job_id}")
-                raise HTTPException(503, "Failed to submit Job")
+                self.queue_job(job_id, job_info, wait_for)
+            return job_id
+
+        @fastapi_app.put("/job/done/{job_id}")
+        def job_done(job_id: UUID):
+            with self.cj_lock:
+                self.completed_jobs.add(job_id)
 
     def capable_executor(self, capabilities: Capabilities) -> Optional[Executor]:
         self.prune_executor_list()
@@ -101,3 +122,21 @@ class ExecutorBroker:
                 if executor.job_delete(job_id):
                     return True
         return False
+
+    def queue_job(self, job_id: UUID, job_info: JobInfo, wait_for: Optional[set[UUID]] = None):
+        if wait_for is None:
+            wait_for = set()
+        self.queued_jobs.put(QueuedJob(job_id=job_id, job_info=job_info, wait_for=wait_for), block=True)
+
+    def job_scheduler(self):
+        while True:
+            current_job = self.queued_jobs.get(block=True)
+            while True:
+                with self.cj_lock:
+                    tmp = current_job.wait_for.issubset(self.completed_jobs)
+                if tmp:
+                    executor = self.capable_executor(current_job.job_info.capabilities)
+                    if executor is not None and executor.submit_job(current_job.job_id, current_job.job_info):
+                        self.__on_job_started(current_job.job_id, current_job.job_info)
+                        break
+                time.sleep(10)
