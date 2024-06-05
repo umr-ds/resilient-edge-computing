@@ -51,9 +51,9 @@ def main():
     uvicorn_args = {"log_level": log_level}
     wasm_rest.util.log.LOG.setLevel(log_level)
 
-    if hasattr(args, "hosts"):
+    if hasattr(args, "hosts") and args.hosts is not None:
         host = args.hosts.split(",")
-    elif hasattr(args, "host"):
+    elif hasattr(args, "host") and args.host is not None:
         host = args.host
     else:
         LOG.error("No hosts selected")

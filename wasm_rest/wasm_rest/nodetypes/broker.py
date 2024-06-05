@@ -23,7 +23,7 @@ class Broker(Node):
     def executor_count(self) -> int:
         res = self.get("/executors/count")
         if res is None:
-            return 0
+            return -1
         if res.ok:
             return int(res.content)
 

@@ -11,6 +11,7 @@ services:
       - ../wasm_rest:/root/wasm_rest
       - ../resources:/root/resources
       - ../core-test-setups:/root/tests
+      - ../log:/root/log
     privileged: true
     cap_add:
       - NET_ADMIN

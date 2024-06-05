@@ -143,6 +143,7 @@ def do_store_in_datastore(job: Job) -> None:
                 if broker.send_result(job.id, result_file):
                     return
                 time.sleep(10)
+        LOG.debug(f"Failed to send result for job {job.id} to client at {job.job_info.result_addr}")
     for _ in range(10):
         LOG.debug(f"Storing result for job {job.id}")
         with open(job.result_path, "br") as result_file:
@@ -172,6 +173,7 @@ def update_capabilities() -> Capabilities:
                                         cpu_load=(psutil.getloadavg()[1] / psutil.cpu_count() * 100),
                                         # (1, 5, 15) minutes
                                         cpu_cores=psutil.cpu_count(),
+                                        cpu_freq=psutil.cpu_freq().max,  # not reliable
                                         has_battery=(battery is not None and not battery.power_plugged),
                                         power=battery.percent if battery else 100)
     self_object.last_update = time.time()

@@ -1,4 +1,4 @@
-FROM core:9.0.3
+FROM core:latest
 
 # Install nfd
 RUN apt update

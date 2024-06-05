@@ -5,7 +5,6 @@ from queue import Queue
 from typing import Optional, Callable
 from uuid import UUID
 
-import fastapi
 import readerwriterlock.rwlock
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
@@ -71,7 +70,7 @@ class ExecutorBroker:
             return len(self.executors)
 
         @fastapi_app.put("/job/submit/{job_id}")
-        def submit_job(job_info: JobInfo, job_id: UUID, request: fastapi.Request,
+        def submit_job(job_info: JobInfo, job_id: UUID, request: Request,
                        wait_for: Optional[set[UUID]] = None) -> UUID:
             LOG.debug(f"Submitting job {job_id}")
             if job_info.result_addr.host == "this":

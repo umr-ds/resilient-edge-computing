@@ -35,8 +35,10 @@ name_to_uuid: dict[str, UUID] = {}
 def receive_result(job_id: UUID, data: UploadFile):
     with result_lock.gen_rlock():
         if pending_results.get(job_id, None) is None:
+            LOG.info(f"Received unexpected result for job {job_id}")
             raise HTTPException(404, "Result not expected")
     if not put_file(data.file, os.path.join(result_dir, f"{job_id}.zip")):
+        LOG.error(f"Result for job {job_id} could not be stored")
         raise HTTPException(500, "File could not be stored")
     LOG.info(f"Received result of job {job_id}")
     with result_lock.gen_wlock():
@@ -80,18 +82,23 @@ def files_to_upload(job_info: JobInfo) -> dict[str, str]:
 
 def run_job(job_name: str, job_info: JobInfo, wait_for: Optional[set[UUID]] = None) -> Optional[UUID]:
     job_id = generate_unique_id()
+    LOG.debug(f"Starting job {job_id}")
     job = Job(job_id)
     to_upload = files_to_upload(job_info)
     for path, name in to_upload.items():
+        LOG.debug(f"Uploading {path} for job {job_id}")
         if not job.upload_job_file(name, path, broker):
             job.delete(broker)
+            LOG.error(f"Failed to upload {path} for job {job_name} {job_id}")
             return None
     job.transform_job_info_broker(job_info)
+    LOG.debug(f"Submitting job {job_id}")
     if broker.submit_job(job_info, job_id, wait_for) == job_id:
         if job_info.result_addr.host in node_obj.addresses or job_info.result_addr.host == "this":
             with result_lock.gen_wlock():
                 pending_results[job_id] = job_name
         return job_id
+    LOG.error(f"Failed to submit job {job_name}")
     return None
 
 
@@ -116,7 +123,7 @@ def run(json_path: str, host: Union[str, list[str]] = '', port: int = 8004, _res
     node_obj.add_service_listener(Node.zeroconf_service_type("broker"), broker_listener)
 
     node_obj.start()
-
+    time.sleep(10)
     broker = select_broker()
     while broker is None:
         time.sleep(3)

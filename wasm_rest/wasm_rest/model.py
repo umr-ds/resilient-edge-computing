@@ -14,15 +14,16 @@ class Capabilities(BaseModel):
     disk: int = 0
     cpu_load: float = 100
     cpu_cores: int = 1
-    cpu_freq: float = 0
+    cpu_freq: float = 0  # not reliable
     has_battery: bool = True
     power: float = 0
 
     def is_capable(self, caps: 'Capabilities') -> bool:
-        res = caps.memory <= self.memory and caps.disk <= self.disk
-        res = res and caps.cpu_load >= self.cpu_load
-        res = res and caps.cpu_cores <= self.cpu_cores
-        res = res and caps.cpu_freq <= self.cpu_freq
+        res = (caps.memory <= self.memory
+               and caps.disk <= self.disk
+               and caps.cpu_load >= self.cpu_load
+               and caps.cpu_cores <= self.cpu_cores
+               and caps.cpu_freq <= self.cpu_freq)
         res = False if (not caps.has_battery) and self.has_battery else res
         return res and (caps.power <= self.power if self.has_battery else True)
 
@@ -53,7 +54,7 @@ class Execution(BaseModel):
 class ExecutionPlan(BaseModel):
     exec: list[Execution]
     cmds: dict[str, JobInfo]
-    named_data: dict[str, str] = []
+    named_data: dict[str, str] = {}
 
 
 class NodeRole(Enum):

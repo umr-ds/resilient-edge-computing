@@ -70,6 +70,8 @@ class DataBroker:
                 else:
                     LOG.error(f"Could not connect to {address} to store result")
                     raise HTTPException(503, "Result destination not known")
+            else:
+                LOG.error(f"Destination for result of job {job_id} unknown")
 
     # @fastapi_app.get("/datastore")
     def datastore_for_storage(self, required_storage: int) -> Datastore:
