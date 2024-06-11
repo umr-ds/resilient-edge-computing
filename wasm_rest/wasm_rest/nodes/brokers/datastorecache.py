@@ -16,8 +16,12 @@ class CachePage(BaseModel):
 
 
 class DatastoreCache:
-    cache: dict[Optional[UUID], dict[str, list[CachePage]]] = {}
-    lock = threading.Lock()
+    cache: dict[Optional[UUID], dict[str, list[CachePage]]]
+    lock: threading.Lock
+
+    def __init__(self):
+        self.cache = {}
+        self.lock = threading.Lock()
 
     def get(self, name: str, job_id: Optional[UUID] = None) -> Optional[Datastore]:
         with self.lock:

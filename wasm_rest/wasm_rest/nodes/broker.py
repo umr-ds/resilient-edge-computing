@@ -10,6 +10,7 @@ from wasm_rest.nodes.brokers.executorbroker import ExecutorBroker
 from wasm_rest.nodes.node import Node
 from wasm_rest.util.log import LOG
 
+
 fastapi_app = FastAPI()
 node_object: Node
 

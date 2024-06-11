@@ -22,14 +22,19 @@ class QueuedJob(BaseModel):
 
 
 class ExecutorBroker:
-    executors: dict[UUID, Executor] = {}
-    executor_lock = readerwriterlock.rwlock.RWLockWrite()
-    queued_jobs: Queue[QueuedJob] = Queue()
-    completed_jobs: set[UUID] = set()
-    cj_lock = threading.Lock()
+    executors: dict[UUID, Executor]
+    executor_lock: readerwriterlock.rwlock.RWLockWrite
+    queued_jobs: Queue[QueuedJob]
+    completed_jobs: set[UUID]
+    cj_lock: threading.Lock
     __on_job_started: Callable[[UUID, JobInfo], None]
 
     def __init__(self, on_job_started: Callable[[UUID, JobInfo], None]):
+        self.executors = {}
+        self.executor_lock = readerwriterlock.rwlock.RWLockWrite()
+        self.queued_jobs = Queue()
+        self.completed_jobs = set()
+        self.cj_lock = threading.Lock()
         self.__on_job_started = on_job_started
 
     def add_endpoints(self, fastapi_app: FastAPI) -> None:

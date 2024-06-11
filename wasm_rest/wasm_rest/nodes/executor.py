@@ -51,9 +51,10 @@ def register_with_broker() -> None:
     while True:
         broker = select_broker()
         if broker is None:
-            if waited == 10:
+            if waited == 1:
                 exit_code = NodeRole.BROKER
                 node_object.stop()
+                return
             else:
                 time.sleep(10)
                 waited += 1
@@ -182,6 +183,8 @@ def update_capabilities() -> Capabilities:
 
 def heartbeat() -> None:
     LOG.debug(f"Trying to send heartbeat to broker {broker.id}")
+    if exit_code == NodeRole.BROKER:
+        return
     if not broker.heartbeat_executor(self_object.id, update_capabilities()):
         register_with_broker()
         return
@@ -190,7 +193,8 @@ def heartbeat() -> None:
 
 
 def run(host: Union[str, list[str]], port: int, rootdir: str, uvicorn_args: dict[str, Any] = None) -> NodeRole:
-    global node_object, self_object, root_dir
+    global node_object, self_object, root_dir, exit_code
+    exit_code = NodeRole.EXIT
     root_dir = rootdir
     os.makedirs(root_dir, exist_ok=True)
     node_object = Node(host, port, "executor", fastapi_app, uvicorn_args)
@@ -209,5 +213,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", default=8001, type=int)
     args = parser.parse_args()
+
 
     run(["12.32.4.4", "127.0.0.1"], args.port, "../../executor.d")

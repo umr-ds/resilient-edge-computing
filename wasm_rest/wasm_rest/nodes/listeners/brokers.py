@@ -10,8 +10,12 @@ from wasm_rest.util.log import LOG
 
 
 class BrokerListener(ServiceListener):
-    brokers: dict[UUID, Broker] = {}
-    lock = readerwriterlock.rwlock.RWLockWrite()
+    brokers: dict[UUID, Broker]
+    lock: readerwriterlock.rwlock.RWLockWrite
+
+    def __init__(self):
+        self.brokers = {}
+        self.lock = readerwriterlock.rwlock.RWLockWrite()
 
     def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         pass

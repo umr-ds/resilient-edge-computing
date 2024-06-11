@@ -10,8 +10,12 @@ from wasm_rest.util.log import LOG
 
 
 class DatastoreListener(ServiceListener):
-    datastores: dict[UUID, Datastore] = {}
-    lock = readerwriterlock.rwlock.RWLockWrite()
+    datastores: dict[UUID, Datastore]
+    lock: readerwriterlock.rwlock.RWLockWrite
+
+    def __init__(self):
+        self.datastores = {}
+        self.lock = readerwriterlock.rwlock.RWLockWrite()
 
     def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         pass

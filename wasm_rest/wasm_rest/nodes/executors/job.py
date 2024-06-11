@@ -22,7 +22,7 @@ class Job:
     out_dir: str
     result_path: str
     job_info: JobInfo
-    __to_store_named: dict[str, str] = {}
+    __to_store_named: dict[str, str]
     __on_complete: Callable[['Job'], None]
 
     def __init__(self, root_dir: str, job_id: UUID, job_info: JobInfo,

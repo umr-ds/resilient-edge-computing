@@ -17,10 +17,16 @@ from wasm_rest.util.log import LOG
 
 
 class DataBroker:
-    datastore_listener = DatastoreListener()
-    job_datastore_cache = DatastoreCache()
-    pending_results: dict[UUID, Address] = {}
-    results_lock = readerwriterlock.rwlock.RWLockWrite()
+    datastore_listener: DatastoreListener
+    job_datastore_cache: DatastoreCache
+    pending_results: dict[UUID, Address]
+    results_lock: readerwriterlock.rwlock.RWLockWrite
+
+    def __init__(self):
+        self.datastore_listener = DatastoreListener()
+        self.job_datastore_cache = DatastoreCache()
+        self.pending_results = {}
+        self.results_lock = readerwriterlock.rwlock.RWLockWrite()
 
     def add_endpoints(self, fastapi_app: FastAPI) -> None:
 

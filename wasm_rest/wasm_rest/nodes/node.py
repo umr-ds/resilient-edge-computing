@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import FastAPI
 from uvicorn import Server as UVServer, Config as UVConfig
-from zeroconf import Zeroconf, ServiceInfo, ServiceListener
+from zeroconf import Zeroconf, ServiceInfo, ServiceListener, ServiceBrowser
 
 from wasm_rest.util.log import LOG
 from wasm_rest.util import generate_unique_id
@@ -16,12 +16,12 @@ class Node:
     fastapi_app: FastAPI
     uvicorn_server: Optional[UVServer]
     zeroconf: Zeroconf
-    addresses: list[str] = []
+    addresses: list[str]
     port: int
     id: UUID
     service_type: str
-    __listeners: list[(str, ServiceListener)] = []
-    __listen_lock = threading.Lock()
+    __listeners: list[(str, ServiceListener)]
+    __listen_lock: threading.Lock
 
     def __init__(self, host: Union[str, list[str]], port: int, service_type: Optional[str] = None,
                  fastapi_app: Optional[FastAPI] = None,
@@ -31,6 +31,7 @@ class Node:
             uvicorn_args = {}
         self.fastapi_app = fastapi_app
         uvicorn_args["app"] = self.fastapi_app
+        self.addresses = []
         if type(host) is str:
             uvicorn_args["host"] = host
             self.addresses.append(host)
@@ -50,6 +51,8 @@ class Node:
             self.uvicorn_server = UVServer(config)
         self.zeroconf = Zeroconf()
         self.id = generate_unique_id()
+        self.__listeners = []
+        self.__listen_lock = threading.Lock()
 
     def generate_service_info(self) -> ServiceInfo:
         return ServiceInfo(
@@ -87,6 +90,7 @@ class Node:
                     self.zeroconf.register_service(self.generate_service_info())
                 with self.__listen_lock:
                     for _type, listener in self.__listeners:
+                         # TODO service discovery
                         self.zeroconf.add_service_listener(_type, listener)
                 break
             time.sleep(10)

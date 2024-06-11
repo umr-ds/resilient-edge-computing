@@ -24,13 +24,15 @@ class FileStatus(Enum):
 
 class File:
     path: str
-    int_lock = threading.Lock()
-    write_lock = readerwriterlock.rwlock.RWLockWrite()
+    int_lock: threading.Lock
+    write_lock: readerwriterlock.rwlock.RWLockWrite
     interrupt: int = 0
     deleted: bool = False
 
     def __init__(self, path: str):
         self.path = path
+        self.int_lock = threading.Lock()
+        self.write_lock = readerwriterlock.rwlock.RWLockWrite()
 
     def store(self, file: IO[bytes]) -> FileStatus:
         with self.int_lock:
