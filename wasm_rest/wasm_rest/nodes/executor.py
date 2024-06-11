@@ -4,14 +4,13 @@ import random
 import sched
 import threading
 import time
-from contextlib import asynccontextmanager
 from io import BytesIO
 from typing import Any, Union
 from uuid import UUID
 
 import psutil
 import readerwriterlock.rwlock
-from fastapi import FastAPI, HTTPException
+from fastapi import HTTPException
 
 from wasm_rest.exceptions import WasmRestException
 from wasm_rest.model import JobInfo, NodeRole, Capabilities, Address
@@ -19,200 +18,182 @@ from wasm_rest.nodes.executors.job import Job
 from wasm_rest.nodes.listeners.brokers import BrokerListener
 from wasm_rest.nodes.node import Node
 from wasm_rest.nodetypes.broker import Broker
-from wasm_rest.nodetypes.executor import Executor
+from wasm_rest.nodetypes.executor import Executor as ExecutorObject
 from wasm_rest.util.log import LOG
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    threading.Thread(target=register_with_broker, daemon=True, name="register").start()
-    yield
+class Executor(Node):
+    heartbeat_scheduler: sched.scheduler
+    self_object: ExecutorObject
 
+    broker_listener: BrokerListener
+    broker: Broker
 
-heartbeat_scheduler = sched.scheduler()
-fastapi_app = FastAPI(lifespan=lifespan)
-node_object: Node
-self_object: Executor
-addresses: list[str] = []
+    jobs_lock: readerwriterlock.rwlock.RWLockWrite
+    jobs: dict[UUID, Job]
+    root_dir: str = ""
 
-broker_listener = BrokerListener()
-broker: Broker
+    exit_code = NodeRole.EXIT
 
-jobs_lock = readerwriterlock.rwlock.RWLockWrite()
-jobs: dict[UUID, Job] = {}
-root_dir: str = ""
+    def __init__(self, host: Union[str, list[str]], port: int, rootdir: str, uvicorn_args: dict[str, Any] = None):
+        super().__init__(host, port, "executor", uvicorn_args)
+        self.root_dir = rootdir
+        self.heartbeat_scheduler = sched.scheduler()
+        self.broker_listener = BrokerListener()
+        self.jobs_lock = readerwriterlock.rwlock.RWLockWrite()
+        self.jobs = {}
+        self.self_object = ExecutorObject(id=self.id, address=Address(address='', port=self.port))
+        self.broker = None
 
-exit_code = NodeRole.EXIT
-
-
-def register_with_broker() -> None:
-    global broker, exit_code
-    waited = 0
-    while True:
-        broker = select_broker()
-        if broker is None:
-            if waited == 1:
-                exit_code = NodeRole.BROKER
-                node_object.stop()
-                return
+    def register_with_broker(self) -> None:
+        waited = 0
+        while True:
+            self.broker = self.select_broker()
+            if self.broker is None:
+                if waited == 10:
+                    self.exit_code = NodeRole.BROKER
+                    self.stop()
+                    return
+                else:
+                    time.sleep(10)
+                    waited += 1
             else:
-                time.sleep(10)
-                waited += 1
-        else:
-            for _ in range(0, 10):
-                update_capabilities()
-                if broker.register_executor(addresses, self_object):
-                    heartbeat_scheduler.enter(60, 1, heartbeat)
-                    threading.Thread(target=heartbeat_scheduler.run, daemon=True, name="heartbeat").start()
-                    return
-                time.sleep(2)
+                for _ in range(0, 10):
+                    self.update_capabilities()
+                    if self.broker.register_executor(self.addresses, self.self_object):
+                        self.heartbeat_scheduler.enter(60, 1, self.heartbeat)
+                        threading.Thread(target=self.heartbeat_scheduler.run, daemon=True, name="heartbeat").start()
+                        return
+                    time.sleep(2)
 
+    def select_broker(self) -> Broker:
+        with self.broker_listener.lock.gen_rlock():
+            for b in self.broker_listener.brokers.values():
+                if b.executor_count() == 0:
+                    return b
+            return random.choice(list(self.broker_listener.brokers.values())) if len(
+                self.broker_listener.brokers) else None
 
-def select_broker() -> Broker:
-    with broker_listener.lock.gen_rlock():
-        for b in broker_listener.brokers.values():
-            if b.executor_count() == 0:
-                return b
-        return random.choice(list(broker_listener.brokers.values())) if len(broker_listener.brokers) else None
+    def add_endpoints(self):
+        @self.fastapi_app.put("/submit/{job_id}")
+        def submit_job(job_id: UUID, job_info: JobInfo) -> None:
+            LOG.debug(f"Submitting job {job_id}")
+            try:
+                job = Job(self.root_dir, job_id, job_info, self.store_job_in_datastore)
+            except WasmRestException as e:
+                LOG.error(e.msg)
+                raise HTTPException(503, e.msg)
+            threading.Thread(target=self.start_job, args=[job]).start()
 
+        @self.fastapi_app.get("/capabilities")
+        def server_capabilities() -> Capabilities:
+            LOG.debug("Sending Capabilities")
+            return self.update_capabilities()
 
-@fastapi_app.put("/submit/{job_id}")
-def submit_job(job_id: UUID, job_info: JobInfo) -> None:
-    LOG.debug(f"Submitting job {job_id}")
-    try:
-        job = Job(root_dir, job_id, job_info, store_job_in_datastore)
-    except WasmRestException as e:
-        LOG.error(e.msg)
-        raise HTTPException(503, e.msg)
-    threading.Thread(target=start_job, args=[job]).start()
+        @self.fastapi_app.get("/job/list")
+        def job_list() -> list[UUID]:
+            LOG.debug("Sending list of all jobs")
+            with self.jobs_lock.gen_rlock():
+                return [key for key in self.jobs.keys()]
 
+        @self.fastapi_app.delete("/job/{job_id}")
+        def job_delete(job_id: UUID) -> None:
+            LOG.debug(f"Deleting job {job_id}")
+            with self.jobs_lock.gen_wlock():
+                job = self.jobs.get(job_id, None)
+                if job:
+                    job.delete()
+                    self.jobs.pop(job_id, None)
+                else:
+                    LOG.error(f"Failed to delete job {job_id}")
+                    raise HTTPException(404, "Job not found")
 
-@fastapi_app.get("/capabilities")
-def server_capabilities() -> Capabilities:
-    LOG.debug("Sending Capabilities")
-    return update_capabilities()
-
-
-@fastapi_app.get("/job/list")
-def job_list() -> list[UUID]:
-    LOG.debug("Sending list of all jobs")
-    with jobs_lock.gen_rlock():
-        return [key for key in jobs.keys()]
-
-
-@fastapi_app.delete("/job/{job_id}")
-def job_delete(job_id: UUID) -> None:
-    LOG.debug(f"Deleting job {job_id}")
-    with jobs_lock.gen_wlock():
-        job = jobs.get(job_id, None)
-        if job:
-            job.delete()
-            jobs.pop(job_id, None)
-        else:
-            LOG.error(f"Failed to delete job {job_id}")
-            raise HTTPException(404, "Job not found")
-
-
-def start_job(job: Job) -> None:
-    LOG.debug(f"Resolving data globs for job {job.id}")
-    job.resolve_glob_data(broker)
-    LOG.debug(f"Downloading data for job {job.id}")
-    for _ in range(10):
-        if job.try_download_files(broker):
-            break
-        time.sleep(10)
-    with jobs_lock.gen_wlock():
-        jobs[job.id] = job
-    try:
-        LOG.debug(f"Starting process for job {job.id}")
-        job.run()
-    except WasmRestException as e:
-        LOG.error(e.msg)
-        return
-    LOG.debug(f"Finished job {job.id}")
-
-
-def do_store_in_datastore(job: Job) -> None:
-    LOG.debug(f"Storing named results for job {job.id}")
-    for _ in range(10):
-        if job.store_named(broker):
-            break
-    if job.job_info.result_addr.host != "":
-        LOG.debug(f"Sending result for job {job.id} to client at {job.job_info.result_addr}")
+    def start_job(self, job: Job) -> None:
+        LOG.debug(f"Resolving data globs for job {job.id}")
+        job.resolve_glob_data(self.broker)
+        LOG.debug(f"Downloading data for job {job.id}")
         for _ in range(10):
+            if job.try_download_files(self.broker):
+                break
+            time.sleep(10)
+        with self.jobs_lock.gen_wlock():
+            self.jobs[job.id] = job
+        try:
+            LOG.debug(f"Starting process for job {job.id}")
+            job.run()
+        except WasmRestException as e:
+            LOG.error(e.msg)
+            return
+        LOG.debug(f"Finished job {job.id}")
+
+    def do_store_in_datastore(self, job: Job) -> None:
+        LOG.debug(f"Storing named results for job {job.id}")
+        for _ in range(10):
+            if job.store_named(self.broker):
+                break
+        if job.job_info.result_addr.host != "":
+            LOG.debug(f"Sending result for job {job.id} to client at {job.job_info.result_addr}")
+            for _ in range(10):
+                with open(job.result_path, "br") as result_file:
+                    if self.broker.send_result(job.id, result_file):
+                        return
+                    time.sleep(10)
+            LOG.debug(f"Failed to send result for job {job.id} to client at {job.job_info.result_addr}")
+        for _ in range(10):
+            LOG.debug(f"Storing result for job {job.id}")
             with open(job.result_path, "br") as result_file:
-                if broker.send_result(job.id, result_file):
+                if self.broker.store_data(result_file, f"{job.id}/result"):
                     return
                 time.sleep(10)
-        LOG.debug(f"Failed to send result for job {job.id} to client at {job.job_info.result_addr}")
-    for _ in range(10):
-        LOG.debug(f"Storing result for job {job.id}")
-        with open(job.result_path, "br") as result_file:
-            if broker.store_data(result_file, f"{job.id}/result"):
+        LOG.error(f"Failed to store result for job {job.id}")
+        for _ in range(10):
+            if self.broker.store_data(BytesIO(b"Could not find datastore to store result: too big"),
+                                      f"{job.id}/result"):
                 return
             time.sleep(10)
-    LOG.error(f"Failed to store result for job {job.id}")
-    for _ in range(10):
-        if broker.store_data(BytesIO(b"Could not find datastore to store result: too big"), f"{job.id}/result"):
+        LOG.error(f"Failed to store error for job {job.id}")
+
+    def store_job_in_datastore(self, job: Job) -> None:
+        self.do_store_in_datastore(job)
+        self.broker.job_done(job.id)
+        if job.job_info.delete:
+            self.broker.delete_job(job.id)
+
+    def update_capabilities(self) -> Capabilities:
+        os.makedirs(self.root_dir, exist_ok=True)
+        battery = psutil.sensors_battery()
+        self.self_object.cur_caps = Capabilities(memory=psutil.virtual_memory().available,
+                                                 disk=psutil.disk_usage(self.root_dir).free,
+                                                 cpu_load=(psutil.getloadavg()[1] / psutil.cpu_count() * 100),
+                                                 # (1, 5, 15) minutes
+                                                 cpu_cores=psutil.cpu_count(),
+                                                 cpu_freq=psutil.cpu_freq().max,  # not reliable
+                                                 has_battery=(battery is not None and not battery.power_plugged),
+                                                 power=battery.percent if battery else 100)
+        self.self_object.last_update = time.time()
+        return self.self_object.cur_caps
+
+    def heartbeat(self) -> None:
+        if self.exit_code == NodeRole.BROKER:
             return
-        time.sleep(10)
-    LOG.error(f"Failed to store error for job {job.id}")
+        LOG.debug(f"Trying to send heartbeat to broker {self.broker.id}")
+        if not self.broker.heartbeat_executor(self.id, self.update_capabilities()):
+            self.register_with_broker()
+            return
+        LOG.debug(f"Sent heartbeat to broker {self.broker.id}")
+        self.heartbeat_scheduler.enter(60, 1, self.heartbeat)
 
-
-def store_job_in_datastore(job: Job) -> None:
-    do_store_in_datastore(job)
-    broker.job_done(job.id)
-    if job.job_info.delete:
-        broker.delete_job(job.id)
-
-
-def update_capabilities() -> Capabilities:
-    os.makedirs(root_dir, exist_ok=True)
-    battery = psutil.sensors_battery()
-    self_object.cur_caps = Capabilities(memory=psutil.virtual_memory().available,
-                                        disk=psutil.disk_usage(root_dir).free,
-                                        cpu_load=(psutil.getloadavg()[1] / psutil.cpu_count() * 100),
-                                        # (1, 5, 15) minutes
-                                        cpu_cores=psutil.cpu_count(),
-                                        cpu_freq=psutil.cpu_freq().max,  # not reliable
-                                        has_battery=(battery is not None and not battery.power_plugged),
-                                        power=battery.percent if battery else 100)
-    self_object.last_update = time.time()
-    return self_object.cur_caps
-
-
-def heartbeat() -> None:
-    LOG.debug(f"Trying to send heartbeat to broker {broker.id}")
-    if exit_code == NodeRole.BROKER:
-        return
-    if not broker.heartbeat_executor(self_object.id, update_capabilities()):
-        register_with_broker()
-        return
-    LOG.debug(f"Sent heartbeat to broker {broker.id}")
-    heartbeat_scheduler.enter(60, 1, heartbeat)
-
-
-def run(host: Union[str, list[str]], port: int, rootdir: str, uvicorn_args: dict[str, Any] = None) -> NodeRole:
-    global node_object, self_object, root_dir, exit_code
-    exit_code = NodeRole.EXIT
-    root_dir = rootdir
-    os.makedirs(root_dir, exist_ok=True)
-    node_object = Node(host, port, "executor", fastapi_app, uvicorn_args)
-    self_object = Executor(id=node_object.id, address=Address(address='', port=port))
-    if type(host) is str:
-        addresses.append(host)
-    elif type(host) is list:
-        addresses.extend(host)
-    update_capabilities()
-    node_object.add_service_listener(Node.zeroconf_service_type("broker"), broker_listener)
-    node_object.run()
-    return exit_code
+    def run(self) -> NodeRole:
+        os.makedirs(self.root_dir, exist_ok=True)
+        self.update_capabilities()
+        self.add_service_listener(Node.zeroconf_service_type("broker"), self.broker_listener)
+        threading.Thread(target=self.register_with_broker, daemon=True, name="register").start()
+        self.do_run()
+        return self.exit_code
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", default=8001, type=int)
     args = parser.parse_args()
-
-
-    run(["12.32.4.4", "127.0.0.1"], args.port, "../../executor.d")
+    Executor(["12.32.4.4", "127.0.0.1"], args.port, "../../executor.d").run()

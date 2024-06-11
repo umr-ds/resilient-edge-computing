@@ -6,15 +6,15 @@ from uuid import UUID
 
 from fastapi import FastAPI
 from uvicorn import Server as UVServer, Config as UVConfig
-from zeroconf import Zeroconf, ServiceInfo, ServiceListener, ServiceBrowser
+from zeroconf import Zeroconf, ServiceInfo, ServiceListener
 
-from wasm_rest.util.log import LOG
 from wasm_rest.util import generate_unique_id
+from wasm_rest.util.log import LOG
 
 
 class Node:
     fastapi_app: FastAPI
-    uvicorn_server: Optional[UVServer]
+    uvicorn_server: UVServer
     zeroconf: Zeroconf
     addresses: list[str]
     port: int
@@ -24,12 +24,12 @@ class Node:
     __listen_lock: threading.Lock
 
     def __init__(self, host: Union[str, list[str]], port: int, service_type: Optional[str] = None,
-                 fastapi_app: Optional[FastAPI] = None,
                  uvicorn_args: dict[str, Any] = None) -> None:
         self.service_type = service_type
         if uvicorn_args is None:
             uvicorn_args = {}
-        self.fastapi_app = fastapi_app
+        self.fastapi_app = FastAPI()
+        self.add_endpoints()
         uvicorn_args["app"] = self.fastapi_app
         self.addresses = []
         if type(host) is str:
@@ -40,19 +40,20 @@ class Node:
             self.addresses.extend(host)
         uvicorn_args["port"] = port
         self.port = port
-        if fastapi_app is None:
-            self.uvicorn_server = None
-        else:
-            @fastapi_app.get("/ping")
-            def ping() -> str:
-                return Node.zeroconf_service_name(self.service_type, self.id)
 
-            config = UVConfig(**uvicorn_args)
-            self.uvicorn_server = UVServer(config)
+        @self.fastapi_app.get("/ping")
+        def ping() -> str:
+            return Node.zeroconf_service_name(self.service_type, self.id)
+
+        config = UVConfig(**uvicorn_args)
+        self.uvicorn_server = UVServer(config)
         self.zeroconf = Zeroconf()
         self.id = generate_unique_id()
         self.__listeners = []
         self.__listen_lock = threading.Lock()
+
+    def add_endpoints(self):
+        pass
 
     def generate_service_info(self) -> ServiceInfo:
         return ServiceInfo(
@@ -68,17 +69,16 @@ class Node:
         with self.__listen_lock:
             self.__listeners.append((_type, listener))
 
-    def run(self) -> None:
+    def do_run(self) -> None:
         LOG.debug(f"starting {self.service_type}: {self.id}")
-        if self.uvicorn_server is not None:
-            threading.Thread(target=self.after_start, daemon=True, name="after_start").start()
-            self.uvicorn_server.run()
+        threading.Thread(target=self.after_start, daemon=True, name="after_start").start()
+        self.uvicorn_server.run()
         self.zeroconf.remove_all_service_listeners()
         if self.service_type is not None:
             self.zeroconf.unregister_service(self.generate_service_info())
 
     def start(self):
-        threading.Thread(target=self.run, name=f"Node {self.id}").start()
+        threading.Thread(target=self.do_run, name=f"Node {self.id}").start()
 
     def stop(self):
         self.uvicorn_server.should_exit = True
@@ -90,7 +90,7 @@ class Node:
                     self.zeroconf.register_service(self.generate_service_info())
                 with self.__listen_lock:
                     for _type, listener in self.__listeners:
-                         # TODO service discovery
+                        # TODO service discovery
                         self.zeroconf.add_service_listener(_type, listener)
                 break
             time.sleep(10)

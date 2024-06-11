@@ -27,6 +27,7 @@ class ExecutorBroker:
     queued_jobs: Queue[QueuedJob]
     completed_jobs: set[UUID]
     cj_lock: threading.Lock
+    should_exit = False
     __on_job_started: Callable[[UUID, JobInfo], None]
 
     def __init__(self, on_job_started: Callable[[UUID, JobInfo], None]):
@@ -132,10 +133,18 @@ class ExecutorBroker:
             wait_for = set()
         self.queued_jobs.put(QueuedJob(job_id=job_id, job_info=job_info, wait_for=wait_for), block=True)
 
+    def start(self):
+        threading.Thread(target=self.job_scheduler, daemon=True, name="broker scheduler").start()
+
+    def stop(self):
+        self.should_exit = True
+
     def job_scheduler(self):
         while True:
             current_job = self.queued_jobs.get(block=True)
             while True:
+                if self.should_exit:
+                    return
                 with self.cj_lock:
                     tmp = current_job.wait_for.issubset(self.completed_jobs)
                 if tmp:

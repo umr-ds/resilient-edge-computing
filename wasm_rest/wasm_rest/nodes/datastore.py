@@ -6,14 +6,14 @@ from uuid import UUID
 
 import psutil
 import readerwriterlock.rwlock
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import UploadFile, HTTPException
 from fastapi.responses import FileResponse
 from fastapi_pagination import Page, add_pagination, paginate
 
 from wasm_rest.model import NodeRole
 from wasm_rest.nodes.node import Node
-from wasm_rest.util.log import LOG
 from wasm_rest.util import prevent_breakout
+from wasm_rest.util.log import LOG
 
 
 class FileStatus(Enum):
@@ -73,123 +73,118 @@ class File:
             return True
 
 
-fastapi_app = FastAPI()
-node_object: Node
+class Datastore(Node):
+    root_dir: str
+    data_files: dict[str, File]
+    stored_data: dict[str, str]
+    data_lock: readerwriterlock.rwlock.RWLockWrite
 
-root_dir: str = ""
-data_files: dict[str, File] = {}
-stored_data: dict[str, str] = {}
-data_lock = readerwriterlock.rwlock.RWLockWrite()
+    def __init__(self, host: Union[str, list[str]], port: int, rootdir: str,
+                 uvicorn_args: Optional[dict[str, Any]] = None):
+        super().__init__(host, port, "datastore", uvicorn_args)
+        self.root_dir = rootdir
+        self.data_files = {}
+        self.stored_data = {}
+        self.data_lock = readerwriterlock.rwlock.RWLockWrite()
 
+    def add_endpoints(self):
+        @self.fastapi_app.put("/data/{name:path}")
+        def store_data(name: str, data: UploadFile) -> bool:
+            LOG.debug(f"Storing data {name}")
+            if psutil.disk_usage(self.root_dir).free < data.size:
+                LOG.error("Tried to create to big file")
+                raise HTTPException(500, "Not Enough Space")
+            file_path = os.path.join(self.root_dir, prevent_breakout(name))
+            with self.data_lock.gen_wlock():
+                file = self.data_files.get(name, None)
+                if file is None:
+                    file = File(file_path)
+                    self.data_files[name] = file
+            error = file.store(data.file)
+            if error is FileStatus.CREATED:
+                with self.data_lock.gen_wlock():
+                    self.stored_data[name] = file_path
+                    return True
+            elif error is FileStatus.INTERRUPTED:
+                LOG.debug(f"Interrupted upload of {name}")
+                return False
+            else:
+                LOG.error(f"Failed to create {name}")
+                raise HTTPException(500, "Resource could not be created")
 
-@fastapi_app.put("/data/{name:path}")
-def store_data(name: str, data: UploadFile) -> bool:
-    LOG.debug(f"Storing data {name}")
-    if psutil.disk_usage(root_dir).free < data.size:
-        LOG.error("Tried to create to big file")
-        raise HTTPException(500, "Not Enough Space")
-    file_path = os.path.join(root_dir, prevent_breakout(name))
-    with data_lock.gen_wlock():
-        file = data_files.get(name, None)
-        if file is None:
-            file = File(file_path)
-            data_files[name] = file
-    error = file.store(data.file)
-    if error is FileStatus.CREATED:
-        with data_lock.gen_wlock():
-            stored_data[name] = file_path
-            return True
-    elif error is FileStatus.INTERRUPTED:
-        LOG.debug(f"Interrupted upload of {name}")
+        @self.fastapi_app.get("/data/{name:path}")
+        def get_data(name: str) -> FileResponse:
+            LOG.debug(f"Retrieving data {name}")
+            with self.data_lock.gen_rlock():
+                if name in self.stored_data.keys():
+                    file = self.data_files.get(name, None)
+                else:
+                    file = None
+            if file:
+                with file.read_lock():
+                    return FileResponse(path=file.path, filename=os.path.basename(name))
+            LOG.error(f"Could not find {name}")
+            raise HTTPException(404, "Resource Not Found")
+
+        @self.fastapi_app.delete("/data/{name:path}")
+        def delete_data(name: str) -> None:
+            LOG.debug(f"Deleting data {name}")
+            if not self._delete_data(name):
+                LOG.error(f"Could not find {name}")
+                raise HTTPException(404, "No data of that name")
+
+        @self.fastapi_app.delete("/job_data/{job_id}")
+        def delete_job_data(job_id: UUID) -> None:
+            LOG.debug(f"Deleting job {job_id}")
+            with self.data_lock.gen_wlock():
+                for data in [data for data in self.stored_data if
+                             data.startswith(str(job_id)) and not data.endswith("/result")]:
+                    self._delete_data(data)
+
+        @self.fastapi_app.get("/list")
+        def data_list() -> list[str]:
+            LOG.debug("Listing all data")
+            with self.data_lock.gen_rlock():
+                return list(self.stored_data.keys())
+
+        @self.fastapi_app.get("/list/{name:path}")
+        def paginate_data(name: Optional[str] = '', job_id: Optional[UUID] = None) -> Page[str]:
+            LOG.debug("paginating data")
+            job_id = str(job_id) if job_id else ''
+            with self.data_lock.gen_rlock():
+                return paginate(
+                    [data_name for data_name in self.stored_data.keys()
+                     if data_name.startswith(job_id) and data_name.startswith(name)])
+
+        @self.fastapi_app.get("/free")
+        def free_space() -> int:
+            LOG.debug("Sending free space")
+            os.makedirs(self.root_dir, exist_ok=True)
+            return psutil.disk_usage(self.root_dir).free
+
+        add_pagination(self.fastapi_app)
+
+    def _delete_data(self, name: str) -> bool:
+        path = self.stored_data.pop(name, None)
+        file = self.data_files.pop(name, None)
+        if path:
+            try:
+                file.delete()
+                os.removedirs(os.path.dirname(path))
+                return True
+            except OSError:
+                pass
         return False
-    else:
-        LOG.error(f"Failed to create {name}")
-        raise HTTPException(500, "Resource could not be created")
 
-
-@fastapi_app.get("/data/{name:path}")
-def get_data(name: str) -> FileResponse:
-    LOG.debug(f"Retrieving data {name}")
-    with data_lock.gen_rlock():
-        if name in stored_data.keys():
-            file = data_files.get(name, None)
-        else:
-            file = None
-    if file:
-        with file.read_lock():
-            return FileResponse(path=file.path, filename=os.path.basename(name))
-    LOG.error(f"Could not find {name}")
-    raise HTTPException(404, "Resource Not Found")
-
-
-@fastapi_app.delete("/data/{name:path}")
-def delete_data(name: str) -> None:
-    LOG.debug(f"Deleting data {name}")
-    if not _delete_data(name):
-        LOG.error(f"Could not find {name}")
-        raise HTTPException(404, "No data of that name")
-
-
-@fastapi_app.delete("/job_data/{job_id}")
-def delete_job_data(job_id: UUID) -> None:
-    LOG.debug(f"Deleting job {job_id}")
-    with data_lock.gen_wlock():
-        for data in [data for data in stored_data if data.startswith(str(job_id)) and not data.endswith("/result")]:
-            _delete_data(data)
-
-
-@fastapi_app.get("/list")
-def data_list() -> list[str]:
-    LOG.debug("Listing all data")
-    with data_lock.gen_rlock():
-        return list(stored_data.keys())
-
-
-@fastapi_app.get("/list/{name:path}")
-def paginate_data(name: Optional[str] = '', job_id: Optional[UUID] = None) -> Page[str]:
-    LOG.debug("paginating data")
-    job_id = str(job_id) if job_id else ''
-    with data_lock.gen_rlock():
-        return paginate(
-            [data_name for data_name in stored_data.keys()
-             if data_name.startswith(job_id) and data_name.startswith(name)])
-
-
-@fastapi_app.get("/free")
-def free_space() -> int:
-    LOG.debug("Sending free space")
-    os.makedirs(root_dir, exist_ok=True)
-    return psutil.disk_usage(root_dir).free
-
-
-add_pagination(fastapi_app)
-
-
-def _delete_data(name: str) -> bool:
-    path = stored_data.pop(name, None)
-    file = data_files.pop(name, None)
-    if path:
+    def run(self) -> NodeRole:
         try:
-            file.delete()
-            os.removedirs(os.path.dirname(path))
-            return True
+            os.makedirs(self.root_dir, exist_ok=True)
         except OSError:
-            pass
-    return False
+            return NodeRole.EXIT
 
-
-def run(host: Union[str, list[str]], port: int, rootdir: str, uvicorn_args: dict[str, Any] = None) -> NodeRole:
-    global node_object, root_dir
-    node_object = Node(host, port, "datastore", fastapi_app, uvicorn_args)
-    root_dir = rootdir
-    try:
-        os.makedirs(root_dir, exist_ok=True)
-    except OSError:
+        self.do_run()
         return NodeRole.EXIT
-
-    node_object.run()
-    return NodeRole.EXIT
 
 
 if __name__ == '__main__':
-    run("127.0.0.1", 8002, "../../datastore.d")
+    Datastore("127.0.0.1", 8002, "../../datastore.d").run()

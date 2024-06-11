@@ -6,7 +6,10 @@ import random
 
 import wasm_rest.util.log
 from wasm_rest.model import NodeRole
-from wasm_rest.nodes import broker, executor, datastore, client
+from wasm_rest.nodes.broker import Broker
+from wasm_rest.nodes.client import Client
+from wasm_rest.nodes.datastore import Datastore
+from wasm_rest.nodes.executor import Executor
 from wasm_rest.util.log import LOG
 
 
@@ -69,13 +72,13 @@ def main():
             role = NodeRole.BROKER if random.random() < 0.1 else NodeRole.EXECUTOR
 
         if role is NodeRole.BROKER:
-            role = broker.run(host, args.port, uvicorn_args=uvicorn_args)
+            role = Broker(host, args.port, uvicorn_args=uvicorn_args).run()
         elif role is NodeRole.EXECUTOR:
-            role = executor.run(host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
+            role = Executor(host, args.port, args.rootdir, uvicorn_args=uvicorn_args).run()
         elif role is NodeRole.DATASTORE:
-            role = datastore.run(host, args.port, args.rootdir, uvicorn_args=uvicorn_args)
+            role = Datastore(host, args.port, args.rootdir, uvicorn_args=uvicorn_args).run()
         elif role is NodeRole.CLIENT:
-            role = client.run(args.json, host, args.port, args.resultdir)
+            role = Client(args.json, host, args.port, args.resultdir).run()
         else:
             parser.print_help()
             return
