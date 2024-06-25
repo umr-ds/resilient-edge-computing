@@ -5,7 +5,7 @@ import sched
 import threading
 import time
 from io import BytesIO
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 import psutil
@@ -64,9 +64,11 @@ class Executor(Node):
                         self.heartbeat_scheduler.enter(60, 1, self.heartbeat)
                         threading.Thread(target=self.heartbeat_scheduler.run, daemon=True, name="heartbeat").start()
                         return
+                    else:
+                        self.broker_listener.remove_broker(self.broker.id)
                     time.sleep(2)
 
-    def select_broker(self) -> Broker:
+    def select_broker(self) -> Optional[Broker]:
         with self.broker_listener.lock.gen_rlock():
             for b in self.broker_listener.brokers.values():
                 if b.executor_count() == 0:

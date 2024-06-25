@@ -61,7 +61,7 @@ class Datastore(Node):
     def free_space(self) -> int:
         res = self.get("/free")
         if res is None:
-            return 0
+            return -1
         if res.ok:
             return int(res.content)
         return 0

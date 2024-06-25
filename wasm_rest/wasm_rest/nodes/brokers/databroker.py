@@ -79,11 +79,18 @@ class DataBroker:
             else:
                 LOG.error(f"Destination for result of job {job_id} unknown")
 
-    # @fastapi_app.get("/datastore")
     def datastore_for_storage(self, required_storage: int) -> Datastore:
         with self.datastore_listener.lock.gen_rlock():
-            capable_datastores = [datastore for datastore in self.datastore_listener.datastores.values()
-                                  if datastore.free_space() > required_storage]
+            capable_datastores = []
+            remove_list = []
+            for datastore in self.datastore_listener.datastores.values():
+                free_space = datastore.free_space()
+                if free_space == -1:
+                    remove_list.append(datastore)
+                if free_space > required_storage:
+                    capable_datastores.append(datastore)
+        for datastore in remove_list:
+            self.datastore_listener.remove_datastore(datastore.id)
         if len(capable_datastores) != 0:
             datastore = random.choice(capable_datastores)
             return datastore
@@ -106,10 +113,12 @@ class DataBroker:
                 page_number += 1
                 if job_id:
                     page = datastore.paginate_data_list(job_id=job_id, page_number=page_number)
-                    self.job_datastore_cache.set(page, datastore, job_id=job_id)
+                    if len(page.items) != 0:
+                        self.job_datastore_cache.set(page, datastore, job_id=job_id)
                 else:
                     page = datastore.paginate_data_list(name, page_number=page_number)
-                    self.job_datastore_cache.set(page, datastore, name)
+                    if len(page.items) != 0:
+                        self.job_datastore_cache.set(page, datastore, name)
                 res = for_page(page, datastore)
                 if res:
                     return res
