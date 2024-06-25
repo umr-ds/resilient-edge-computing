@@ -1,7 +1,7 @@
 import os
 import threading
 from enum import Enum
-from typing import Any, Optional, IO, Union
+from typing import Any, Optional, IO
 from uuid import UUID
 
 import psutil
@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi_pagination import Page, add_pagination, paginate
 
 from wasm_rest.model import NodeRole
+from wasm_rest.nodes.listeners.datastores import DatastoreListener
 from wasm_rest.nodes.node import Node
 from wasm_rest.util import prevent_breakout
 from wasm_rest.util.log import LOG
@@ -75,16 +76,18 @@ class File:
 
 class Datastore(Node):
     root_dir: str
+    datastore_listener: DatastoreListener
     data_files: dict[str, File]
     stored_data: dict[str, str]
     data_lock: readerwriterlock.rwlock.RWLockWrite
 
-    def __init__(self, host: Union[str, list[str]], port: int, rootdir: str,
+    def __init__(self, host: list[str], port: int, rootdir: str,
                  uvicorn_args: Optional[dict[str, Any]] = None):
         super().__init__(host, port, "datastore", uvicorn_args)
         self.root_dir = rootdir
         self.data_files = {}
         self.stored_data = {}
+        self.datastore_listener = DatastoreListener()
         self.data_lock = readerwriterlock.rwlock.RWLockWrite()
 
     def add_endpoints(self):
@@ -181,10 +184,10 @@ class Datastore(Node):
             os.makedirs(self.root_dir, exist_ok=True)
         except OSError:
             return NodeRole.EXIT
-
+        self.add_service_listener(Node.zeroconf_service_type("datastore"), self.datastore_listener)
         self.do_run()
         return NodeRole.EXIT
 
 
 if __name__ == '__main__':
-    Datastore("127.0.0.1", 8002, "../../datastore.d").run()
+    Datastore(["127.0.0.1"], 8002, "../../datastore.d").run()

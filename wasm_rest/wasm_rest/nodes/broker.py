@@ -1,5 +1,5 @@
 import threading
-from typing import Any, Union, Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from wasm_rest.model import NodeRole
@@ -13,7 +13,7 @@ class Broker(Node):
     data_broker: DataBroker
     executor_broker: ExecutorBroker
 
-    def __init__(self, host: Union[str, list[str]], port: int, uvicorn_args: Optional[dict[str, Any]] = None):
+    def __init__(self, host: list[str], port: int, uvicorn_args: Optional[dict[str, Any]] = None):
         super().__init__(host, port, "broker", uvicorn_args)
         self.data_broker = DataBroker()
         self.executor_broker = ExecutorBroker(self.data_broker.add_pending_job)

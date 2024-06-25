@@ -51,7 +51,7 @@ class Broker(Node):
             return json.loads(res.content.decode())
         return []
 
-    def send_result(self, job_id: UUID, data: IO[bytes]):
+    def send_result(self, job_id: UUID, data: IO[bytes]) -> bool:
         res = self.put(f"/result/{job_id}", files={"data": data})
         return res is not None and res.ok
 
@@ -72,3 +72,46 @@ class Broker(Node):
     def delete_job(self, job_id: UUID) -> bool:
         res = self.delete(f"/job/{job_id}")
         return res is not None and res.ok
+
+
+class BrokerProxy(Broker):
+    broker: Broker
+
+    def __init__(self, broker: Broker):
+        super().__init__(address=broker.address, id=broker.id)
+        self.broker = broker
+
+    def set_broker(self, broker: Broker):
+        self.address = broker.address
+        self.id = broker.id
+        self.broker = broker
+
+    def register_executor(self, hosts: list[str], executor: Executor) -> bool:
+        return self.broker.register_executor(hosts, executor)
+
+    def heartbeat_executor(self, exec_id: UUID, capabilities: Capabilities) -> bool:  # still connected
+        return self.broker.heartbeat_executor(exec_id, capabilities)
+
+    def executor_count(self) -> int:
+        return self.broker.executor_count()
+
+    def store_data(self, file: IO[bytes], name: str) -> bool:
+        return self.broker.store_data(file, name)
+
+    def get_data(self, file: IO[bytes], name: str, job_id: Optional[UUID] = None) -> bool:
+        return self.broker.get_data(file, name, job_id)
+
+    def get_data_glob(self, name: str) -> list[str]:
+        return self.broker.get_data_glob(name)
+
+    def send_result(self, job_id: UUID, data: IO[bytes]) -> bool:
+        return self.broker.send_result(job_id, data)
+
+    def submit_job(self, job_info: JobInfo, job_id: UUID, wait_for: Optional[set[UUID]] = None) -> Optional[UUID]:
+        return self.broker.submit_job(job_info, job_id, wait_for)
+
+    def job_done(self, job_id: UUID) -> bool:
+        return self.broker.job_done(job_id)
+
+    def delete_job(self, job_id: UUID) -> bool:
+        return self.broker.delete_job(job_id)

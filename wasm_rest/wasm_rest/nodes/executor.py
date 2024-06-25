@@ -5,7 +5,7 @@ import sched
 import threading
 import time
 from io import BytesIO
-from typing import Any, Union
+from typing import Any
 from uuid import UUID
 
 import psutil
@@ -35,7 +35,7 @@ class Executor(Node):
 
     exit_code = NodeRole.EXIT
 
-    def __init__(self, host: Union[str, list[str]], port: int, rootdir: str, uvicorn_args: dict[str, Any] = None):
+    def __init__(self, host: list[str], port: int, rootdir: str, uvicorn_args: dict[str, Any] = None):
         super().__init__(host, port, "executor", uvicorn_args)
         self.root_dir = rootdir
         self.heartbeat_scheduler = sched.scheduler()
@@ -174,7 +174,7 @@ class Executor(Node):
         return self.self_object.cur_caps
 
     def heartbeat(self) -> None:
-        if self.exit_code == NodeRole.BROKER:
+        if self.should_stop:
             return
         LOG.debug(f"Trying to send heartbeat to broker {self.broker.id}")
         if not self.broker.heartbeat_executor(self.id, self.update_capabilities()):

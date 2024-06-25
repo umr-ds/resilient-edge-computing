@@ -19,6 +19,7 @@ def run_webassembly(exec_path: str, data_path: str, stdin_file: Optional[str],
     wasm.start()
     err_msg = error.get(block=True)
     wasm.join()
+    wasm.close()
     if err_msg != "":
         raise WasmRestException(err_msg)
 

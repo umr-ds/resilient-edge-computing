@@ -29,7 +29,7 @@ class Client(Node):
     name_to_uuid: dict[str, UUID]
     json_path: str
 
-    def __init__(self, json_path: str, host: Union[str, list[str]] = '', port: int = 8004, _result_dir: str = ''):
+    def __init__(self, json_path: str, host: list[str] = '', port: int = 8004, _result_dir: str = ''):
         super().__init__(host, port)
         self.result_dir = _result_dir
         self.broker = None
@@ -92,6 +92,7 @@ class Client(Node):
         LOG.debug(f"Starting job {job_id}")
         job = Job(job_id)
         to_upload = self.files_to_upload(job_info)
+        LOG.debug(f"Uploading files for job {job_id}")
         for path, name in to_upload.items():
             LOG.debug(f"Uploading {path} for job {job_id}")
             if not job.upload_job_file(name, path, self.broker):
@@ -176,4 +177,4 @@ class Client(Node):
 
 
 if __name__ == '__main__':
-    Client("../../resources/command2.json", "127.0.0.1", 8004, "../../results").run()
+    Client("../../resources/voice.json", ["127.0.0.1"], 8004, "../../results").run()

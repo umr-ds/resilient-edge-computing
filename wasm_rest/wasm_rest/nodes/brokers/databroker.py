@@ -91,7 +91,6 @@ class DataBroker:
             LOG.error(f"Could not find datastore able to hold file of size {required_storage}")
             raise HTTPException(503, "No datastore able to hold file")
 
-    # @fastapi_app.get("/datastore/{name:path}")
     def job_data_location(self, name: str, job_id: Optional[UUID] = None) -> Optional[Datastore]:
         datastore = self.job_datastore_cache.get(name, job_id)
         if datastore is not None:

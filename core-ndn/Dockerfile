@@ -1,11 +1,11 @@
 FROM core:latest
 
 # Install nfd
-RUN apt update
-RUN apt install -y software-properties-common
-RUN add-apt-repository ppa:named-data/ppa -y
-RUN apt update
-RUN apt install -y nfd ndn-tools
+#RUN apt update
+#RUN apt install -y software-properties-common
+#RUN add-apt-repository ppa:named-data/ppa -y
+#RUN apt update
+#RUN apt install -y nfd ndn-tools
 
 # Install ndn-cxx
 # RUN apt update
@@ -31,9 +31,9 @@ RUN apt install -y nfd ndn-tools
 # RUN ./waf install
 
 # Install python bindings
-RUN apt update
-RUN apt install -y python3-pip
-RUN pip3 install python-ndn
+#RUN apt update
+#RUN apt install -y python3-pip
+#RUN pip3 install python-ndn
 
 #Install wasm_rest dependencies
 RUN apt update

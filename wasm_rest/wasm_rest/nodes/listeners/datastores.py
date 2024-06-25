@@ -17,15 +17,17 @@ class DatastoreListener(ServiceListener):
         self.datastores = {}
         self.lock = readerwriterlock.rwlock.RWLockWrite()
 
-    def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
-        pass
-
-    def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
-        node_id = Node.id_from_name(name)
+    def remove_datastore(self, node_id: UUID):
         with self.lock.gen_wlock():
             node = self.datastores.pop(node_id, None)
         if node:
             LOG.info(f"Lost connection to datastore {node_id}")
+
+    def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+        pass
+
+    def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+        self.remove_datastore(Node.id_from_name(name))
 
     def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         info = zc.get_service_info(type_, name)

@@ -57,7 +57,7 @@ def main():
     if hasattr(args, "hosts") and args.hosts is not None:
         host = args.hosts.split(",")
     elif hasattr(args, "host") and args.host is not None:
-        host = args.host
+        host = [args.host]
     else:
         LOG.error("No hosts selected")
         return

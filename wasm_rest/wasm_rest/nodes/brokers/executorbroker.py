@@ -115,7 +115,7 @@ class ExecutorBroker:
         current_time = time.time()
         with self.executor_lock.gen_rlock():
             for _, executor in self.executors.items():
-                if (current_time - executor.last_update) > 120:
+                if (current_time - executor.last_update) > 130:
                     delete_list.append(executor)
         with self.executor_lock.gen_wlock():
             for executor in delete_list:

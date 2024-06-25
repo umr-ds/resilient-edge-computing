@@ -1,7 +1,7 @@
 import socket
 import threading
 import time
-from typing import Any, Optional, Union
+from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import FastAPI
@@ -20,10 +20,11 @@ class Node:
     port: int
     id: UUID
     service_type: str
+    should_stop: bool = False
     __listeners: list[(str, ServiceListener)]
     __listen_lock: threading.Lock
 
-    def __init__(self, host: Union[str, list[str]], port: int, service_type: Optional[str] = None,
+    def __init__(self, host: list[str], port: int, service_type: Optional[str] = None,
                  uvicorn_args: dict[str, Any] = None) -> None:
         self.service_type = service_type
         if uvicorn_args is None:
@@ -32,12 +33,11 @@ class Node:
         self.add_endpoints()
         uvicorn_args["app"] = self.fastapi_app
         self.addresses = []
-        if type(host) is str:
-            uvicorn_args["host"] = host
-            self.addresses.append(host)
+        if len(host) == 1:
+            uvicorn_args["host"] = host[0]
         elif type(host) is list:
             uvicorn_args["host"] = "0.0.0.0"
-            self.addresses.extend(host)
+        self.addresses.extend(host)
         uvicorn_args["port"] = port
         self.port = port
 
@@ -73,6 +73,7 @@ class Node:
         LOG.debug(f"starting {self.service_type}: {self.id}")
         threading.Thread(target=self.after_start, daemon=True, name="after_start").start()
         self.uvicorn_server.run()
+        self.stop()
         self.zeroconf.remove_all_service_listeners()
         if self.service_type is not None:
             self.zeroconf.unregister_service(self.generate_service_info())
@@ -82,6 +83,7 @@ class Node:
 
     def stop(self):
         self.uvicorn_server.should_exit = True
+        self.should_stop = True
 
     def after_start(self):
         for _ in range(10):
@@ -90,9 +92,11 @@ class Node:
                     self.zeroconf.register_service(self.generate_service_info())
                 with self.__listen_lock:
                     for _type, listener in self.__listeners:
-                        # TODO service discovery
                         self.zeroconf.add_service_listener(_type, listener)
                 break
+            time.sleep(10)
+        while not self.should_stop:
+            self.zeroconf.send(self.zeroconf.generate_service_broadcast(self.generate_service_info(), None))
             time.sleep(10)
 
     @classmethod
@@ -109,4 +113,4 @@ class Node:
 
 
 if __name__ == '__main__':
-    print(Node.id_from_name(Node("127.0.0.1", 8000, "test", None).generate_service_info().name))
+    print(Node.id_from_name(Node(["127.0.0.1"], 8000, "test", None).generate_service_info().name))
