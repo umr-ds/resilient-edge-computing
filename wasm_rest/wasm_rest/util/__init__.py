@@ -25,10 +25,11 @@ def put_file(file: IO[bytes], path: str) -> bool:
 
 
 def prevent_breakout(path: str) -> str:
+    path = path.replace("\\", "/")
     if path == "/":
         return ""
     check_path = path[:-1] if path.endswith("/") else path
-    if os.path.normpath(check_path) != check_path or os.path.expanduser(check_path) != check_path or \
+    if os.path.normpath(check_path).replace("\\", "/") != check_path or os.path.expanduser(check_path) != check_path or \
             os.path.expandvars(check_path) != check_path:  # TODO prevent breaking out
         raise ValueError(f"Path {path} was incorrectly formatted")
     if path.startswith("/"):
