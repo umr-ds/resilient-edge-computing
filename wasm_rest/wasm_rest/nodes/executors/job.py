@@ -1,6 +1,6 @@
 import glob
 import os
-from typing import Callable
+from typing import Callable, Optional
 from uuid import UUID
 from zipfile import ZipFile
 
@@ -9,9 +9,68 @@ from wasm_rest.model import JobInfo
 from wasm_rest.nodetypes.broker import Broker
 from wasm_rest.util import prevent_breakout, zip_folder, try_store_named_data, try_download_file
 from wasm_rest.util.execute_wasm import run_webassembly
+from wasm_rest.util.log import LOG
 
 send_retry = 10
 send_timeout = 10
+
+
+class InternalJobInfo:
+    wasm_bin: tuple[str, str]
+
+    stdin: Optional[str] = None
+    env: dict[str, str]
+    args: list[str]
+
+    job_data: dict[str, str]
+    named_data: dict[str, str]
+
+    to_store_named: dict[str, str]
+    zip_results: dict[str, str]
+    named_results: dict[str, str]
+
+    def __init__(self, job_info: JobInfo, job: 'Job') -> None:
+        try:
+            if type(job_info.wasm_bin) is str:
+                self.wasm_bin = (job_info.wasm_bin, os.path.join(job.code_dir, "exec.wasm"))
+            elif type(job_info.wasm_bin) is tuple:
+                self.wasm_bin = (job_info.wasm_bin[0],
+                                 os.path.join(job.code_dir, prevent_breakout(job_info.wasm_bin[1])))
+            else:
+                raise WasmRestException("Invalid Formatting in wasm_bin")
+
+            if type(job_info.stdin) is str:
+                if job_info.stdin != '':
+                    self.stdin = job.data_path(job_info.stdin)
+            elif type(job_info.stdin) is tuple:
+                if job_info.stdin[0] != '':
+                    if job_info.stdin_is_named:
+                        self.job_data[job_info.stdin[0]] = job_info.stdin[1]
+                    else:
+                        self.job_data[job.job_data_name(job_info.stdin[0])] = job_info.stdin[1]
+                    self.stdin = job.data_path(job_info.stdin[1])
+            else:
+                raise WasmRestException("Invalid Formatting in stdin")
+
+            self.job_data = {name: job.data_path(path)
+                             for name, path in job_info.job_data.items()}
+
+            self.named_data = {name: job.data_path(path)
+                               for name, path in job_info.named_data.items()}
+
+            self.zip_results = {job.data_path(host_path): prevent_breakout(zip_path)
+                                for host_path, zip_path in job_info.zip_results.items()}
+
+            self.named_results = {job.data_path(host_path): name
+                                  for host_path, name in job_info.named_results.items()}
+
+            self.to_store_named = {path: name for path, name in self.named_results.items()}
+
+            self.env = job_info.env
+            self.args = list(job_info.args)  # in case of no arguments to not pollute the default list
+            self.args.insert(0, os.path.basename(self.wasm_bin[1]))  # first argument program name
+        except ValueError as e:
+            raise WasmRestException("Invalid Formatting") from e
 
 
 class Job:
@@ -22,13 +81,13 @@ class Job:
     out_dir: str
     result_path: str
     job_info: JobInfo
-    __to_store_named: dict[str, str]
+    internal_job_info: InternalJobInfo
     __on_complete: Callable[['Job'], None]
 
     def __init__(self, root_dir: str, job_id: UUID, job_info: JobInfo,
                  on_complete: Callable[['Job'], None]) -> None:
-        self.job_info = job_info
         self.__on_complete = on_complete
+        self.job_info = job_info
         self.id = job_id
         self.dir = os.path.join(root_dir, str(self.id))
         self.code_dir = os.path.join(self.dir, "code")
@@ -41,62 +100,17 @@ class Job:
             os.makedirs(self.out_dir)
         except OSError:
             raise WasmRestException("failed create")
-        self.__transform_job_info()
         self.mkdirs()
+        self.internal_job_info = InternalJobInfo(job_info, self)
 
-    def __transform_job_info(self) -> None:
-        try:
-            if type(self.job_info.wasm_bin) is str:
-                self.job_info.wasm_bin = (self.job_info.wasm_bin, os.path.join(self.code_dir, "exec.wasm"))
-            elif type(self.job_info.wasm_bin) is tuple:
-                self.job_info.wasm_bin = (self.job_info.wasm_bin[0],
-                                          os.path.join(self.code_dir, prevent_breakout(self.job_info.wasm_bin[1])))
-            else:
-                raise WasmRestException("Invalid Formatting in wasm_bin")
-
-            if type(self.job_info.stdin) is str:
-                if self.job_info.stdin != "":
-                    self.job_info.stdin = self.data_path(self.job_info.stdin)
-            elif type(self.job_info.stdin) is tuple:
-                if self.job_info.stdin[0] == '':
-                    self.job_info.stdin = ''
-                else:
-                    if self.job_info.stdin_is_named:
-                        self.job_info.job_data[self.job_info.stdin[0]] = self.job_info.stdin[1]
-                    else:
-                        self.job_info.job_data[self.job_data_name(self.job_info.stdin[0])] = self.job_info.stdin[1]
-                    self.job_info.stdin = self.data_path(self.job_info.stdin[1])
-            else:
-                raise WasmRestException("Invalid Formatting in stdin")
-
-            self.job_info.directories = [self.data_path(directory) for directory in self.job_info.directories]
-
-            self.job_info.job_data = {name: self.data_path(path)
-                                      for name, path in self.job_info.job_data.items()}
-
-            for name, path in self.job_info.named_data.items():
-                self.job_info.named_data[name] = self.data_path(path)
-
-            self.job_info.zip_results = {self.data_path(host_path): prevent_breakout(zip_path)
-                                         for host_path, zip_path in self.job_info.zip_results.items()}
-
-            self.job_info.named_results = {self.data_path(host_path): name
-                                           for host_path, name in self.job_info.named_results.items()}
-
-            self.__to_store_named = {path: name for path, name in self.job_info.named_results.items()}
-
-            self.job_info.args.insert(0, os.path.basename(self.job_info.wasm_bin[1]))  # first argument program name
-        except ValueError as e:
-            raise WasmRestException("Invalid Formatting") from e
-
-    def mkdirs(self, dirs: list[str] = None) -> None:
-        for dir_to_create in dirs if dirs is not None else self.job_info.directories:
+    def mkdirs(self) -> None:
+        for dir_to_create in [self.data_path(directory) for directory in self.job_info.directories]:
             os.makedirs(dir_to_create, exist_ok=True)
 
     def resolve_glob_data(self, broker: Broker):
         to_add = {}
         to_remove = []
-        for name, path in self.job_info.named_data.items():
+        for name, path in self.internal_job_info.named_data.items():
             if name.endswith("*") and path.endswith("*"):
                 names = broker.get_data_glob(name[:-1])
                 if names:
@@ -104,35 +118,35 @@ class Job:
                         to_add[full_name] = path[:-1] + full_name[len(name) - 1:]
                 to_remove.append(name)
         for name, path in to_add.items():
-            self.job_info.named_data[name] = path
+            self.internal_job_info.named_data[name] = path
         for name in to_remove:
-            self.job_info.named_data.pop(name, None)
+            self.internal_job_info.named_data.pop(name, None)
 
     def resolve_glob_results(self):
         to_add = {}
         to_remove = []
-        for path, name in self.job_info.named_results.items():
-            if name.endswith("*") and path.endswith("*"):
+        for path, name in self.internal_job_info.named_results.items():
+            if name.endswith("*") and path.endswith("*") and path.count("*") == 1:
                 paths = glob.glob(path)
                 for full_path in paths:
                     to_add[full_path] = name[:-1] + full_path[len(path) - 1:]
                 to_remove.append(path)
         for path, name in to_add.items():
-            self.job_info.named_results[path] = name
-            self.__to_store_named[path] = name
+            self.internal_job_info.named_results[path] = name
+            self.internal_job_info.to_store_named[path] = name
         for path in to_remove:
-            self.job_info.named_results.pop(path, None)
-            self.__to_store_named.pop(path, None)
+            self.internal_job_info.named_results.pop(path, None)
+            self.internal_job_info.to_store_named.pop(path, None)
 
     def try_download_files(self, broker: Broker) -> bool:
-        if not try_download_file(self.job_info.wasm_bin[0], self.job_info.wasm_bin[1], broker):
+        if not try_download_file(self.internal_job_info.wasm_bin[0], self.internal_job_info.wasm_bin[1], broker):
             return False
 
-        for name, path in self.job_info.job_data.items():
+        for name, path in self.internal_job_info.job_data.items():
             if not try_download_file(name, path, broker, self.id):
                 return False
 
-        for name, path in self.job_info.named_data.items():
+        for name, path in self.internal_job_info.named_data.items():
             if not try_download_file(name, path, broker):
                 return False
         return True
@@ -158,34 +172,36 @@ class Job:
 
     def store_named(self, broker: Broker) -> bool:
         to_remove = []
-        if len(self.__to_store_named) == 0:
+        if len(self.internal_job_info.to_store_named) == 0:
             return True
-        for name, path in self.job_info.named_results.items():
+        for name, path in self.internal_job_info.to_store_named.items():
             if try_store_named_data(path, name, broker):
                 to_remove.append(name)
             else:
                 break
-        if len(to_remove) == len(self.__to_store_named):
-            self.__to_store_named.clear()
+        if len(to_remove) == len(self.internal_job_info.to_store_named):
+            self.internal_job_info.to_store_named.clear()
             return True
         else:
             for name in to_remove:
-                self.__to_store_named.pop(name, None)
+                self.internal_job_info.to_store_named.pop(name, None)
             return False
 
     def run(self) -> None:
         try:
-            run_webassembly(self.job_info.wasm_bin[1], self.data_dir,
-                            None if self.job_info.stdin == '' else self.job_info.stdin,
-                            self.job_info.args, self.job_info.env, self.out_dir)
+            run_webassembly(self.internal_job_info.wasm_bin[1], self.data_dir,
+                            self.internal_job_info.stdin,
+                            self.internal_job_info.args, self.internal_job_info.env, self.out_dir)
+            LOG.debug(f"Finished executing job {self.id}")
         except WasmRestException as e:
             with open(os.path.join(self.out_dir, "stderr.txt"), "a") as file:
                 file.write(e.msg)
+            LOG.error(f"Failed to execute job {self.id}: {e.msg}")
         try:
             with ZipFile(self.result_path, "w") as zip_file:
                 zip_file.write(os.path.join(self.out_dir, "stdout.txt"), "stdout.txt")
                 zip_file.write(os.path.join(self.out_dir, "stderr.txt"), "stderr.txt")
-                for host_file, to_zip in self.job_info.zip_results.items():
+                for host_file, to_zip in self.internal_job_info.zip_results.items():
                     if os.path.isfile(host_file):
                         zip_file.write(host_file, to_zip)
                     if os.path.isdir(host_file):
