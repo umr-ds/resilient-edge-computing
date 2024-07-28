@@ -152,4 +152,6 @@ class ExecutorBroker:
                     if executor is not None and executor.submit_job(current_job.job_id, current_job.job_info):
                         self.__on_job_started(current_job.job_id, current_job.job_info)
                         break
-                time.sleep(10)
+                    time.sleep(10)
+                else:
+                    time.sleep(1)

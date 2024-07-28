@@ -12,6 +12,8 @@ services:
       - ../resources:/root/resources
       - ../core-test-setups:/root/tests
       - ../log:/root/log
+      - ../eval:/root/eval
+      - ../result:/root/result
     privileged: true
     cap_add:
       - NET_ADMIN

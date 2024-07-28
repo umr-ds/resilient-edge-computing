@@ -39,6 +39,15 @@ FROM core:latest
 RUN apt update
 RUN pip3 install wasmtime uvicorn fastapi python-multipart requests psutil zeroconf fastapi-pagination readerwriterlock
 
+#Install wasmtime
+RUN apt update
+RUN apt install curl -y
+RUN curl https://wasmtime.dev/install.sh -sSf | bash
+
+#Install bwn-ng
+RUN apt update
+RUN apt install bwm-ng sysstat -y
+
 RUN echo "custom_config_services_dir = /root/.coregui/custom_services" >> /etc/core/core.conf
 
 ENTRYPOINT ["core-daemon"]
