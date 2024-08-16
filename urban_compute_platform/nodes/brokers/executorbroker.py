@@ -148,10 +148,13 @@ class ExecutorBroker:
                 with self.cj_lock:
                     tmp = current_job.wait_for.issubset(self.completed_jobs)
                 if tmp:
+                    LOG.debug(f"Trying to submitt job {current_job.job_id}")
                     executor = self.capable_executor(current_job.job_info.capabilities)
                     if executor is not None and executor.submit_job(current_job.job_id, current_job.job_info):
                         self.__on_job_started(current_job.job_id, current_job.job_info)
                         break
+                    LOG.debug(f"Failed to submitt job {current_job.job_id}: Wait 10")
                     time.sleep(10)
                 else:
+                    LOG.debug(f"Job {current_job.job_id} waiting for {current_job.wait_for}: Wait 1")
                     time.sleep(1)

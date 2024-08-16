@@ -1,32 +1,37 @@
 import multiprocessing
+import multiprocessing.connection
 import os
 from typing import Optional
 
 from wasmtime import Store, Module, Linker, WasiConfig, Trap, WasmtimeError
 
 from urban_compute_platform.exceptions import WasmRestException
+from urban_compute_platform.util.log import LOG
 
 
 def run_webassembly(exec_path: str, data_path: str, stdin_file: Optional[str],
                     argv: list[str], env: dict[str, str],
                     out_path: str) -> None:
-    error = multiprocessing.Queue(1)
+    error_r, error_s = multiprocessing.Pipe(duplex=False)
     wasm = multiprocessing.Process(target=run_wasmtime,
                                    args=(exec_path, data_path,
                                          stdin_file, argv, env,
                                          out_path,
-                                         error), daemon=True)
+                                         error_s))
     wasm.start()
-    err_msg = error.get(block=True)
-    wasm.join()
-    wasm.close()
+    LOG.debug(f"started process {wasm.pid}: {exec_path}")
+    err_msg = error_r.recv()
+    LOG.debug(f"Returned from subprocess: {exec_path}")
+    error_s.close()
+    wasm.kill()
+    LOG.debug(f"subprocess died: {exec_path}")
     if err_msg != "":
         raise WasmRestException(err_msg)
 
 
 def run_wasmtime(exec_path: str, data_path: str, stdin_file: Optional[str],
                  argv: list[str], env: dict[str, str],
-                 out_path: str, error: multiprocessing.Queue) -> None:
+                 out_path: str, error: multiprocessing.connection.Connection) -> None:
     try:
         with open(exec_path, "br") as wasm_file:
             wasm = wasm_file.read()
@@ -52,13 +57,15 @@ def run_wasmtime(exec_path: str, data_path: str, stdin_file: Optional[str],
         function = instance.exports(store)["_start"]
         try:
             function(store)
-            error.put("")
+            error.send("")
         except Trap as t:
-            error.put(f"Encountered Webassembly Trap: {t.message}")
+            error.send(f"Encountered Webassembly Trap: {t.message}")
             # raise WasmRestException(f"Encountered Webassembly Trap {t.message}")
     except WasmtimeError as e:
-        error.put(f"Failed to set up Webassembly Runtime: {e}")
+        error.send(f"Failed to set up Webassembly Runtime: {e}")
         # raise WasmRestException("Failed to set up Webassembly Runtime")
     except OSError:
-        error.put("Failed to open binary")
+        error.send("Failed to open binary")
         # raise WasmRestException("Failed to open binary")
+    finally:
+        error.close()
