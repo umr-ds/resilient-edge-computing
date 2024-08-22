@@ -21,13 +21,14 @@ class Job:
 
     def transform_job_info_broker(self, job_info: JobInfo) -> None:
         try:
-            if type(job_info.wasm_bin) is str:
-                job_info.wasm_bin = self.job_data_name("exec.wasm")
-            elif type(job_info.wasm_bin) is tuple:
-                job_info.wasm_bin = (self.job_data_name(job_info.wasm_bin[1]),
-                                     job_info.wasm_bin[1])
-            else:
-                raise WasmRestException("Invalid Formatting in wasm_bin")
+            if not job_info.wasm_bin_is_named:
+                if type(job_info.wasm_bin) is str:
+                    job_info.wasm_bin = self.job_data_name("exec.wasm")
+                elif type(job_info.wasm_bin) is tuple:
+                    job_info.wasm_bin = (self.job_data_name(job_info.wasm_bin[1]),
+                                            job_info.wasm_bin[1])
+                else:
+                    raise WasmRestException("Invalid Formatting in wasm_bin")
             if not job_info.stdin_is_named:
                 if type(job_info.stdin) is str:
                     job_info.job_data[self.job_data_name(job_info.stdin[1])] = "stdin"
