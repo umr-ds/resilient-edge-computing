@@ -64,3 +64,9 @@ class NodeRole(Enum):
     DATASTORE = 3,
     CLIENT = 4,
     AUTO = 5
+
+class ExecutorSelectionMethod(Enum):
+    RANDOM = "random"
+    GENETIC = "genetic"
+    BUTTERFLY = "butterfly"
+    CORAL = "coral"

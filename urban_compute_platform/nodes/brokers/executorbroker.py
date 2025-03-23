@@ -9,7 +9,7 @@ import readerwriterlock.rwlock
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-from urban_compute_platform.model import JobInfo, Capabilities
+from urban_compute_platform.model import JobInfo, Capabilities, ExecutorSelectionMethod
 from urban_compute_platform.nodes.node import Node
 from urban_compute_platform.nodetypes.executor import Executor
 from urban_compute_platform.util.log import LOG
@@ -29,14 +29,21 @@ class ExecutorBroker:
     cj_lock: threading.Lock
     should_exit = False
     __on_job_started: Callable[[UUID, JobInfo], None]
+    selection_method: ExecutorSelectionMethod = ExecutorSelectionMethod.RANDOM
 
-    def __init__(self, on_job_started: Callable[[UUID, JobInfo], None]):
+    def __init__(self, on_job_started: Callable[[UUID, JobInfo], None], 
+                 selection_method: ExecutorSelectionMethod = ExecutorSelectionMethod.RANDOM):
         self.executors = {}
         self.executor_lock = readerwriterlock.rwlock.RWLockWrite()
         self.queued_jobs = Queue()
         self.completed_jobs = set()
         self.cj_lock = threading.Lock()
         self.__on_job_started = on_job_started
+        self.selection_method = selection_method
+
+    def set_selection_method(self, method: ExecutorSelectionMethod) -> None:
+        self.selection_method = method
+        LOG.info(f"Executor selection method changed to {method.value}")
 
     def add_endpoints(self, fastapi_app: FastAPI) -> None:
         @fastapi_app.put("/executors/register")
@@ -74,6 +81,16 @@ class ExecutorBroker:
             LOG.debug("Sending number of executors")
             self.prune_executor_list()
             return len(self.executors)
+        
+        @fastapi_app.put("/config/selection_method/{method}")
+        def set_selection_method(method: str) -> dict:
+            """Ändert die Methode zur Auswahl von Executors."""
+            try:
+                new_method = ExecutorSelectionMethod(method)
+                self.set_selection_method(new_method)
+                return {"status": "success", "message": f"Selection method set to {method}"}
+            except ValueError:
+                raise HTTPException(400, f"Invalid selection method: {method}. Valid options: random, genetic")
 
         @fastapi_app.put("/job/submit/{job_id}")
         def submit_job(job_info: JobInfo, job_id: UUID, request: Request,
@@ -97,18 +114,58 @@ class ExecutorBroker:
             return job_id
 
         @fastapi_app.put("/job/done/{job_id}")
-        def job_done(job_id: UUID):
+        def job_done(job_id: UUID, success_score: float = 1.0):
             with self.cj_lock:
                 self.completed_jobs.add(job_id)
+            
+            # Performance-Tracking aktualisieren
+            # Finde den Executor, der diesen Job ausgeführt hat
+            executor_id = None
+            with self.executor_lock.gen_rlock():
+                for executor in self.executors.values():
+                    if job_id in executor.job_list():
+                        executor_id = executor.id
+                        break
+            
+            if executor_id:
+                if self.selection_method == ExecutorSelectionMethod.GENETIC:
+                    from urban_compute_platform.util.genetic_selector import GeneticExecutorSelector
+                    GeneticExecutorSelector.update_performance(executor_id, success_score)
+                elif self.selection_method == ExecutorSelectionMethod.BUTTERFLY:
+                    from urban_compute_platform.util.butterfly_selector import ButterflyExecutorSelector
+                    ButterflyExecutorSelector.update_performance(executor_id, success_score)
+                elif self.selection_method == ExecutorSelectionMethod.CORAL:
+                    from urban_compute_platform.util.coral_selector import CoralExecutorSelector
+                    CoralExecutorSelector.update_performance(executor_id, success_score)
 
     def capable_executor(self, capabilities: Capabilities) -> Optional[Executor]:
         self.prune_executor_list()
         with self.executor_lock.gen_rlock():
             capable_executors = [executor for executor in self.executors.values() if
-                                 executor.cur_caps.is_capable(capabilities)]
-        if len(capable_executors):
+                                executor.cur_caps.is_capable(capabilities)]
+        
+        if not capable_executors:
+            return None
+
+        if self.selection_method == ExecutorSelectionMethod.GENETIC:
+            # Genetischen Algorithmus verwenden
+            from urban_compute_platform.util.genetic_selector import GeneticExecutorSelector
+            LOG.debug("Using genetic algorithm for executor selection")
+            return GeneticExecutorSelector.select_executor(capable_executors, capabilities)
+        elif self.selection_method == ExecutorSelectionMethod.BUTTERFLY:
+            # Butterfly-Algorithmus verwenden
+            from urban_compute_platform.util.butterfly_selector import ButterflyExecutorSelector
+            LOG.debug("Using butterfly algorithm for executor selection")
+            return ButterflyExecutorSelector.select_executor(capable_executors, capabilities)
+        elif self.selection_method == ExecutorSelectionMethod.CORAL:
+            # Coral Reefs-Algorithmus verwenden
+            from urban_compute_platform.util.coral_selector import CoralExecutorSelector
+            LOG.debug("Using coral reefs algorithm for executor selection")
+            return CoralExecutorSelector.select_executor(capable_executors, capabilities)
+        else:
+            # Zufällige Auswahl verwenden (Standardverhalten)
+            LOG.debug("Using random selection for executor")
             return random.choice(capable_executors)
-        return None
 
     def prune_executor_list(self) -> None:
         delete_list = []

@@ -2,7 +2,7 @@ import threading
 from typing import Any, Optional
 from uuid import UUID
 
-from urban_compute_platform.model import NodeRole
+from urban_compute_platform.model import NodeRole, ExecutorSelectionMethod
 from urban_compute_platform.nodes.brokers.databroker import DataBroker
 from urban_compute_platform.nodes.brokers.executorbroker import ExecutorBroker
 from urban_compute_platform.nodes.node import Node
@@ -13,10 +13,12 @@ class Broker(Node):
     data_broker: DataBroker
     executor_broker: ExecutorBroker
 
-    def __init__(self, host: list[str], port: int, uvicorn_args: Optional[dict[str, Any]] = None):
+    def __init__(self, host: list[str], port: int, 
+            selection_method: ExecutorSelectionMethod = ExecutorSelectionMethod.RANDOM,
+            uvicorn_args: Optional[dict[str, Any]] = None):
         super().__init__(host, port, "broker", uvicorn_args)
         self.data_broker = DataBroker()
-        self.executor_broker = ExecutorBroker(self.data_broker.add_pending_job)
+        self.executor_broker = ExecutorBroker(self.data_broker.add_pending_job, selection_method)
         self.data_broker.add_endpoints(self.fastapi_app)
         self.executor_broker.add_endpoints(self.fastapi_app)
 

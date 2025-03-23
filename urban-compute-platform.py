@@ -5,7 +5,7 @@ import logging
 import random
 
 import urban_compute_platform.util.log
-from urban_compute_platform.model import NodeRole
+from urban_compute_platform.model import NodeRole, ExecutorSelectionMethod
 from urban_compute_platform.nodes.broker import Broker
 from urban_compute_platform.nodes.client import Client
 from urban_compute_platform.nodes.datastore import Datastore
@@ -30,6 +30,8 @@ def main():
     address_parser.add_argument("--port", type=int, default="8000", help="host port")
 
     broker_parser = subparsers.add_parser("broker", parents=[address_parser])
+    broker_parser.add_argument("--selection", type=str, choices=["random", "genetic", "butterfly", "coral"], 
+                    default="genetic", help="Methode zur Auswahl von Executors")
     broker_parser.set_defaults(prog=NodeRole.BROKER)
 
     executor_parser = subparsers.add_parser("executor", parents=[address_parser])
@@ -72,7 +74,8 @@ def main():
             role = NodeRole.BROKER if random.random() < 0.1 else NodeRole.EXECUTOR
 
         if role is NodeRole.BROKER:
-            role = Broker(host, args.port, uvicorn_args=uvicorn_args).run()
+            selection_method = ExecutorSelectionMethod(args.selection)
+            role = Broker(host, args.port, selection_method, uvicorn_args=uvicorn_args).run()
         elif role is NodeRole.EXECUTOR:
             role = Executor(host, args.port, args.rootdir, uvicorn_args=uvicorn_args).run()
         elif role is NodeRole.DATASTORE:
