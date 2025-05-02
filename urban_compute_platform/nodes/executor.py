@@ -35,14 +35,22 @@ class Executor(Node):
 
     exit_code = NodeRole.EXIT
 
-    def __init__(self, host: list[str], port: int, rootdir: str, uvicorn_args: dict[str, Any] = None):
+    def __init__(
+        self,
+        host: list[str],
+        port: int,
+        rootdir: str,
+        uvicorn_args: dict[str, Any] = None,
+    ):
         super().__init__(host, port, "executor", uvicorn_args)
         self.root_dir = rootdir
         self.heartbeat_scheduler = sched.scheduler()
         self.broker_listener = BrokerListener()
         self.jobs_lock = readerwriterlock.rwlock.RWLockWrite()
         self.jobs = {}
-        self.self_object = ExecutorObject(id=self.id, address=Address(address='', port=self.port))
+        self.self_object = ExecutorObject(
+            id=self.id, address=Address(address="", port=self.port)
+        )
         self.broker = None
 
     def register_with_broker(self) -> None:
@@ -62,7 +70,11 @@ class Executor(Node):
                     self.update_capabilities()
                     if self.broker.register_executor(self.addresses, self.self_object):
                         self.heartbeat_scheduler.enter(60, 1, self.heartbeat)
-                        threading.Thread(target=self.heartbeat_scheduler.run, daemon=True, name="heartbeat").start()
+                        threading.Thread(
+                            target=self.heartbeat_scheduler.run,
+                            daemon=True,
+                            name="heartbeat",
+                        ).start()
                         return
                     else:
                         self.broker_listener.remove_broker(self.broker.id)
@@ -73,8 +85,11 @@ class Executor(Node):
             for b in self.broker_listener.brokers.values():
                 if b.executor_count() == 0:
                     return b
-            return random.choice(list(self.broker_listener.brokers.values())) if len(
-                self.broker_listener.brokers) else None
+            return (
+                random.choice(list(self.broker_listener.brokers.values()))
+                if len(self.broker_listener.brokers)
+                else None
+            )
 
     def add_endpoints(self):
         @self.fastapi_app.put("/submit/{job_id}")
@@ -134,13 +149,17 @@ class Executor(Node):
             if job.store_named(self.broker):
                 break
         if job.job_info.result_addr.host != "":
-            LOG.debug(f"Sending result for job {job.id} to client at {job.job_info.result_addr}")
+            LOG.debug(
+                f"Sending result for job {job.id} to client at {job.job_info.result_addr}"
+            )
             for _ in range(10):
                 with open(job.result_path, "br") as result_file:
                     if self.broker.send_result(job.id, result_file):
                         return
                     time.sleep(10)
-            LOG.debug(f"Failed to send result for job {job.id} to client at {job.job_info.result_addr}")
+            LOG.debug(
+                f"Failed to send result for job {job.id} to client at {job.job_info.result_addr}"
+            )
         for _ in range(10):
             LOG.debug(f"Storing result for job {job.id}")
             with open(job.result_path, "br") as result_file:
@@ -149,8 +168,10 @@ class Executor(Node):
                 time.sleep(10)
         LOG.error(f"Failed to store result for job {job.id}")
         for _ in range(10):
-            if self.broker.store_data(BytesIO(b"Could not find datastore to store result: too big"),
-                                      f"{job.id}/result"):
+            if self.broker.store_data(
+                BytesIO(b"Could not find datastore to store result: too big"),
+                f"{job.id}/result",
+            ):
                 return
             time.sleep(10)
         LOG.error(f"Failed to store error for job {job.id}")
@@ -164,14 +185,16 @@ class Executor(Node):
     def update_capabilities(self) -> Capabilities:
         os.makedirs(self.root_dir, exist_ok=True)
         battery = psutil.sensors_battery()
-        self.self_object.cur_caps = Capabilities(memory=psutil.virtual_memory().available,
-                                                 disk=psutil.disk_usage(self.root_dir).free,
-                                                 cpu_load=(psutil.getloadavg()[1] / psutil.cpu_count() * 100),
-                                                 # (1, 5, 15) minutes
-                                                 cpu_cores=psutil.cpu_count(),
-                                                 cpu_freq=psutil.cpu_freq().max,  # not reliable
-                                                 has_battery=(battery is not None and not battery.power_plugged),
-                                                 power=battery.percent if battery else 100)
+        self.self_object.cur_caps = Capabilities(
+            memory=psutil.virtual_memory().available,
+            disk=psutil.disk_usage(self.root_dir).free,
+            cpu_load=(psutil.getloadavg()[1] / psutil.cpu_count() * 100),
+            # (1, 5, 15) minutes
+            cpu_cores=psutil.cpu_count(),
+            cpu_freq=psutil.cpu_freq().max,  # not reliable
+            has_battery=(battery is not None and not battery.power_plugged),
+            power=battery.percent if battery else 100,
+        )
         self.self_object.last_update = time.time()
         return self.self_object.cur_caps
 
@@ -188,13 +211,17 @@ class Executor(Node):
     def run(self) -> NodeRole:
         os.makedirs(self.root_dir, exist_ok=True)
         self.update_capabilities()
-        self.add_service_listener(Node.zeroconf_service_type("broker"), self.broker_listener)
-        threading.Thread(target=self.register_with_broker, daemon=True, name="register").start()
+        self.add_service_listener(
+            Node.zeroconf_service_type("broker"), self.broker_listener
+        )
+        threading.Thread(
+            target=self.register_with_broker, daemon=True, name="register"
+        ).start()
         self.do_run()
         return self.exit_code
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", default=8001, type=int)
     args = parser.parse_args()

@@ -29,8 +29,11 @@ def prevent_breakout(path: str) -> str:
     if path == "/":
         return ""
     check_path = path[:-1] if path.endswith("/") else path
-    if os.path.normpath(check_path).replace("\\", "/") != check_path or os.path.expanduser(check_path) != check_path or \
-            os.path.expandvars(check_path) != check_path:  # TODO prevent breaking out
+    if (
+        os.path.normpath(check_path).replace("\\", "/") != check_path
+        or os.path.expanduser(check_path) != check_path
+        or os.path.expandvars(check_path) != check_path
+    ):  # TODO prevent breaking out
         raise ValueError(f"Path {path} was incorrectly formatted")
     if path.startswith("/"):
         path = path[1:]
@@ -41,8 +44,7 @@ def zip_folder(zip_file: ZipFile, host: str, to_zip: str) -> None:
     for root, _, files in os.walk(host):
         for file in files:
             relpath = os.path.relpath(os.path.join(root, file), host)
-            zip_file.write(os.path.join(root, file),
-                           os.path.join(to_zip, relpath))
+            zip_file.write(os.path.join(root, file), os.path.join(to_zip, relpath))
 
 
 def generate_unique_id() -> UUID:
@@ -57,7 +59,9 @@ def try_store_named_data(name: str, path: str, broker: Broker) -> bool:
         return False
 
 
-def try_download_file(name: str, path: str, broker: Broker, job_id: Optional[UUID] = None) -> bool:
+def try_download_file(
+    name: str, path: str, broker: Broker, job_id: Optional[UUID] = None
+) -> bool:
     if os.path.exists(path):
         return True
     with open(path, "bw") as data_file:

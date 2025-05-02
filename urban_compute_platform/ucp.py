@@ -25,27 +25,46 @@ def main():
 
     address_parser = argparse.ArgumentParser(add_help=False)
     addresses_group = address_parser.add_mutually_exclusive_group()
-    addresses_group.add_argument("--host", type=str, default="127.0.0.1", help="host ip address")
-    addresses_group.add_argument("--hosts", type=str, help="addresses to send to other nodes, will listen to 0.0.0.0")
+    addresses_group.add_argument(
+        "--host", type=str, default="127.0.0.1", help="host ip address"
+    )
+    addresses_group.add_argument(
+        "--hosts",
+        type=str,
+        help="addresses to send to other nodes, will listen to 0.0.0.0",
+    )
     address_parser.add_argument("--port", type=int, default="8000", help="host port")
 
     broker_parser = subparsers.add_parser("broker", parents=[address_parser])
     broker_parser.set_defaults(prog=NodeRole.BROKER)
 
     executor_parser = subparsers.add_parser("executor", parents=[address_parser])
-    executor_parser.add_argument("--rootdir", type=str, default="executor.d", help="folder to store executor files")
+    executor_parser.add_argument(
+        "--rootdir",
+        type=str,
+        default="executor.d",
+        help="folder to store executor files",
+    )
     executor_parser.set_defaults(prog=NodeRole.EXECUTOR)
 
     datastore_parser = subparsers.add_parser("datastore", parents=[address_parser])
-    datastore_parser.add_argument("--rootdir", type=str, default="datastore.d", help="folder to store data")
+    datastore_parser.add_argument(
+        "--rootdir", type=str, default="datastore.d", help="folder to store data"
+    )
     datastore_parser.set_defaults(prog=NodeRole.DATASTORE)
 
     client_parser = subparsers.add_parser("client", parents=[address_parser])
-    client_parser.add_argument("json", type=str, help="json file with the execution plan")
-    client_parser.add_argument("--resultdir", type=str, default='', help="dir to store results in")
+    client_parser.add_argument(
+        "json", type=str, help="json file with the execution plan"
+    )
+    client_parser.add_argument(
+        "--resultdir", type=str, default="", help="dir to store results in"
+    )
     client_parser.set_defaults(prog=NodeRole.CLIENT)
 
-    combined_parser = subparsers.add_parser("autobe", parents=[executor_parser], add_help=False)
+    combined_parser = subparsers.add_parser(
+        "autobe", parents=[executor_parser], add_help=False
+    )
     combined_parser.set_defaults(prog=NodeRole.AUTO)
 
     args = parser.parse_args()
@@ -74,9 +93,13 @@ def main():
         if role is NodeRole.BROKER:
             role = Broker(host, args.port, uvicorn_args=uvicorn_args).run()
         elif role is NodeRole.EXECUTOR:
-            role = Executor(host, args.port, args.rootdir, uvicorn_args=uvicorn_args).run()
+            role = Executor(
+                host, args.port, args.rootdir, uvicorn_args=uvicorn_args
+            ).run()
         elif role is NodeRole.DATASTORE:
-            role = Datastore(host, args.port, args.rootdir, uvicorn_args=uvicorn_args).run()
+            role = Datastore(
+                host, args.port, args.rootdir, uvicorn_args=uvicorn_args
+            ).run()
         elif role is NodeRole.CLIENT:
             role = Client(args.json, host, args.port, args.resultdir).run()
         else:
@@ -84,5 +107,5 @@ def main():
             return
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

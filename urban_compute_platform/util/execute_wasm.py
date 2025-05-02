@@ -9,15 +9,19 @@ from urban_compute_platform.exceptions import WasmRestException
 from urban_compute_platform.util.log import LOG
 
 
-def run_webassembly(exec_path: str, data_path: str, stdin_file: Optional[str],
-                    argv: list[str], env: dict[str, str],
-                    out_path: str) -> None:
+def run_webassembly(
+    exec_path: str,
+    data_path: str,
+    stdin_file: Optional[str],
+    argv: list[str],
+    env: dict[str, str],
+    out_path: str,
+) -> None:
     error_r, error_s = multiprocessing.Pipe(duplex=False)
-    wasm = multiprocessing.Process(target=run_wasmtime,
-                                   args=(exec_path, data_path,
-                                         stdin_file, argv, env,
-                                         out_path,
-                                         error_s))
+    wasm = multiprocessing.Process(
+        target=run_wasmtime,
+        args=(exec_path, data_path, stdin_file, argv, env, out_path, error_s),
+    )
     wasm.start()
     LOG.debug(f"started process {wasm.pid}: {exec_path}")
     err_msg = error_r.recv()
@@ -29,9 +33,15 @@ def run_webassembly(exec_path: str, data_path: str, stdin_file: Optional[str],
         raise WasmRestException(err_msg)
 
 
-def run_wasmtime(exec_path: str, data_path: str, stdin_file: Optional[str],
-                 argv: list[str], env: dict[str, str],
-                 out_path: str, error: multiprocessing.connection.Connection) -> None:
+def run_wasmtime(
+    exec_path: str,
+    data_path: str,
+    stdin_file: Optional[str],
+    argv: list[str],
+    env: dict[str, str],
+    out_path: str,
+    error: multiprocessing.connection.Connection,
+) -> None:
     try:
         with open(exec_path, "br") as wasm_file:
             wasm = wasm_file.read()

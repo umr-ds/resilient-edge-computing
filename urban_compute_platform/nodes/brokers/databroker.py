@@ -48,9 +48,13 @@ class DataBroker:
                 if datastore:
                     data = datastore.get_data_iterator(name)
                     if data:
-                        return StreamingResponse(data, media_type="application/octet-stream")
+                        return StreamingResponse(
+                            data, media_type="application/octet-stream"
+                        )
                     else:
-                        self.job_datastore_cache.invalidate(name, job_id)  # outdated value from cache
+                        self.job_datastore_cache.invalidate(
+                            name, job_id
+                        )  # outdated value from cache
                         continue
                 else:
                     LOG.error(f"Could not find location of {name}")
@@ -60,7 +64,9 @@ class DataBroker:
         def get_data_glob(name: str) -> list[str]:
             LOG.debug(f"Listing files starting with {name}")
             result = []
-            self.iter_data(name, None, lambda page, datastore: result.extend(page.items))
+            self.iter_data(
+                name, None, lambda page, datastore: result.extend(page.items)
+            )
             return result
 
         @fastapi_app.put("/result/{job_id}")
@@ -95,24 +101,39 @@ class DataBroker:
             datastore = random.choice(capable_datastores)
             return datastore
         else:
-            LOG.error(f"Could not find datastore able to hold file of size {required_storage}")
+            LOG.error(
+                f"Could not find datastore able to hold file of size {required_storage}"
+            )
             raise HTTPException(503, "No datastore able to hold file")
 
-    def job_data_location(self, name: str, job_id: Optional[UUID] = None) -> Optional[Datastore]:
+    def job_data_location(
+        self, name: str, job_id: Optional[UUID] = None
+    ) -> Optional[Datastore]:
         datastore = self.job_datastore_cache.get(name, job_id)
         if datastore is not None:
             return datastore
-        return self.iter_data(name, job_id, lambda page, store: store if name in page.items else None)
+        return self.iter_data(
+            name, job_id, lambda page, store: store if name in page.items else None
+        )
 
-    def iter_data(self, name: str, job_id: Optional[UUID], for_page: Callable[[Page, Datastore], Any]) -> Any:
+    def iter_data(
+        self,
+        name: str,
+        job_id: Optional[UUID],
+        for_page: Callable[[Page, Datastore], Any],
+    ) -> Any:
         with self.datastore_listener.lock.gen_rlock():
-            datastores = [store for store in self.datastore_listener.datastores.values()]
+            datastores = [
+                store for store in self.datastore_listener.datastores.values()
+            ]
         for datastore in datastores:
             page_number = 0
             while True:
                 page_number += 1
                 if job_id:
-                    page = datastore.paginate_data_list(job_id=job_id, page_number=page_number)
+                    page = datastore.paginate_data_list(
+                        job_id=job_id, page_number=page_number
+                    )
                     if len(page.items) != 0:
                         self.job_datastore_cache.set(page, datastore, job_id=job_id)
                 else:

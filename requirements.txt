@@ -1,11 +1,13 @@
 ###### Requirements without Version Specifiers ######
+hatchling
 wasmtime
-uvicorn~=0.27.1
-fastapi~=0.109.2
+uvicorn
+fastapi
 fastapi-pagination
 python-multipart
-requests~=2.31.0
-psutil~=5.9.8
-zeroconf~=0.131.0
-pydantic~=2.6.1
+requests
+psutil
+zeroconf
+pydantic
 readerwriterlock
+black

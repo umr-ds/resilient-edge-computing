@@ -81,8 +81,13 @@ class Datastore(Node):
     stored_data: dict[str, str]
     data_lock: readerwriterlock.rwlock.RWLockWrite
 
-    def __init__(self, host: list[str], port: int, rootdir: str,
-                 uvicorn_args: Optional[dict[str, Any]] = None):
+    def __init__(
+        self,
+        host: list[str],
+        port: int,
+        rootdir: str,
+        uvicorn_args: Optional[dict[str, Any]] = None,
+    ):
         super().__init__(host, port, "datastore", uvicorn_args)
         self.root_dir = rootdir
         self.data_files = {}
@@ -140,8 +145,11 @@ class Datastore(Node):
         def delete_job_data(job_id: UUID) -> None:
             LOG.debug(f"Deleting job {job_id}")
             with self.data_lock.gen_wlock():
-                for data in [data for data in self.stored_data if
-                             data.startswith(str(job_id)) and not data.endswith("/result")]:
+                for data in [
+                    data
+                    for data in self.stored_data
+                    if data.startswith(str(job_id)) and not data.endswith("/result")
+                ]:
                     self._delete_data(data)
 
         @self.fastapi_app.get("/list")
@@ -151,13 +159,19 @@ class Datastore(Node):
                 return list(self.stored_data.keys())
 
         @self.fastapi_app.get("/list/{name:path}")
-        def paginate_data(name: Optional[str] = '', job_id: Optional[UUID] = None) -> Page[str]:
+        def paginate_data(
+            name: Optional[str] = "", job_id: Optional[UUID] = None
+        ) -> Page[str]:
             LOG.debug("paginating data")
-            job_id = str(job_id) if job_id else ''
+            job_id = str(job_id) if job_id else ""
             with self.data_lock.gen_rlock():
                 return paginate(
-                    [data_name for data_name in self.stored_data.keys()
-                     if data_name.startswith(job_id) and data_name.startswith(name)])
+                    [
+                        data_name
+                        for data_name in self.stored_data.keys()
+                        if data_name.startswith(job_id) and data_name.startswith(name)
+                    ]
+                )
 
         @self.fastapi_app.get("/free")
         def free_space() -> int:
@@ -184,10 +198,12 @@ class Datastore(Node):
             os.makedirs(self.root_dir, exist_ok=True)
         except OSError:
             return NodeRole.EXIT
-        self.add_service_listener(Node.zeroconf_service_type("datastore"), self.datastore_listener)
+        self.add_service_listener(
+            Node.zeroconf_service_type("datastore"), self.datastore_listener
+        )
         self.do_run()
         return NodeRole.EXIT
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     Datastore(["127.0.0.1"], 8002, "../../datastore.d").run()

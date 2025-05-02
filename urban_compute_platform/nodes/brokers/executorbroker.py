@@ -40,7 +40,9 @@ class ExecutorBroker:
 
     def add_endpoints(self, fastapi_app: FastAPI) -> None:
         @fastapi_app.put("/executors/register")
-        def register_executor(hosts: list[str], executor: Executor, request: Request) -> None:
+        def register_executor(
+            hosts: list[str], executor: Executor, request: Request
+        ) -> None:
             LOG.debug(f"Registering executor {executor.id}")
             if request.client.host in hosts:
                 hosts.remove(request.client.host)
@@ -54,7 +56,9 @@ class ExecutorBroker:
                         self.executors[executor.id] = executor
                         return
                 else:
-                    LOG.debug(f"Could not ping executor {executor.id} on {host} to verify it's online")
+                    LOG.debug(
+                        f"Could not ping executor {executor.id} on {host} to verify it's online"
+                    )
             LOG.error(f"Could not ping executor {executor.id} to verify it's online")
             raise HTTPException(400, "Could not ping to verify")
 
@@ -76,8 +80,12 @@ class ExecutorBroker:
             return len(self.executors)
 
         @fastapi_app.put("/job/submit/{job_id}")
-        def submit_job(job_info: JobInfo, job_id: UUID, request: Request,
-                       wait_for: Optional[set[UUID]] = None) -> UUID:
+        def submit_job(
+            job_info: JobInfo,
+            job_id: UUID,
+            request: Request,
+            wait_for: Optional[set[UUID]] = None,
+        ) -> UUID:
             LOG.debug(f"Submitting job {job_id}")
             if job_info.result_addr.host == "this":
                 job_info.result_addr.host = request.client.host
@@ -104,8 +112,11 @@ class ExecutorBroker:
     def capable_executor(self, capabilities: Capabilities) -> Optional[Executor]:
         self.prune_executor_list()
         with self.executor_lock.gen_rlock():
-            capable_executors = [executor for executor in self.executors.values() if
-                                 executor.cur_caps.is_capable(capabilities)]
+            capable_executors = [
+                executor
+                for executor in self.executors.values()
+                if executor.cur_caps.is_capable(capabilities)
+            ]
         if len(capable_executors):
             return random.choice(capable_executors)
         return None
@@ -128,13 +139,19 @@ class ExecutorBroker:
                     return True
         return False
 
-    def queue_job(self, job_id: UUID, job_info: JobInfo, wait_for: Optional[set[UUID]] = None):
+    def queue_job(
+        self, job_id: UUID, job_info: JobInfo, wait_for: Optional[set[UUID]] = None
+    ):
         if wait_for is None:
             wait_for = set()
-        self.queued_jobs.put(QueuedJob(job_id=job_id, job_info=job_info, wait_for=wait_for), block=True)
+        self.queued_jobs.put(
+            QueuedJob(job_id=job_id, job_info=job_info, wait_for=wait_for), block=True
+        )
 
     def start(self):
-        threading.Thread(target=self.job_scheduler, daemon=True, name="broker scheduler").start()
+        threading.Thread(
+            target=self.job_scheduler, daemon=True, name="broker scheduler"
+        ).start()
 
     def stop(self):
         self.should_exit = True
@@ -150,11 +167,15 @@ class ExecutorBroker:
                 if tmp:
                     LOG.debug(f"Trying to submitt job {current_job.job_id}")
                     executor = self.capable_executor(current_job.job_info.capabilities)
-                    if executor is not None and executor.submit_job(current_job.job_id, current_job.job_info):
+                    if executor is not None and executor.submit_job(
+                        current_job.job_id, current_job.job_info
+                    ):
                         self.__on_job_started(current_job.job_id, current_job.job_info)
                         break
                     LOG.debug(f"Failed to submitt job {current_job.job_id}: Wait 10")
                     time.sleep(10)
                 else:
-                    LOG.debug(f"Job {current_job.job_id} waiting for {current_job.wait_for}: Wait 1")
+                    LOG.debug(
+                        f"Job {current_job.job_id} waiting for {current_job.wait_for}: Wait 1"
+                    )
                     time.sleep(1)

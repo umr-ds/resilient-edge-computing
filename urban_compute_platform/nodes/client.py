@@ -14,14 +14,18 @@ from urban_compute_platform.nodes.clients.job import Job
 from urban_compute_platform.nodes.listeners.brokers import BrokerListener
 from urban_compute_platform.nodes.node import Node
 from urban_compute_platform.nodetypes.broker import Broker
-from urban_compute_platform.util import put_file, generate_unique_id, try_store_named_data
+from urban_compute_platform.util import (
+    put_file,
+    generate_unique_id,
+    try_store_named_data,
+)
 from urban_compute_platform.util.log import LOG
 
 
 class Client(Node):
     broker: Broker
     broker_listener: BrokerListener
-    result_dir = ''
+    result_dir = ""
     pending_results: dict[UUID, str]
     result_lock: readerwriterlock.rwlock.RWLockWrite
     all_queued = False
@@ -29,7 +33,13 @@ class Client(Node):
     name_to_uuid: dict[str, UUID]
     json_path: str
 
-    def __init__(self, json_path: str, host: list[str] = '', port: int = 8004, _result_dir: str = ''):
+    def __init__(
+        self,
+        json_path: str,
+        host: list[str] = "",
+        port: int = 8004,
+        _result_dir: str = "",
+    ):
         super().__init__(host, port)
         self.result_dir = _result_dir
         self.broker = None
@@ -58,7 +68,11 @@ class Client(Node):
 
     def select_broker(self) -> Broker:
         with self.broker_listener.lock.gen_rlock():
-            brokers = [b for b in self.broker_listener.brokers.values() if b.executor_count() > 0]
+            brokers = [
+                b
+                for b in self.broker_listener.brokers.values()
+                if b.executor_count() > 0
+            ]
             return random.choice(brokers) if len(brokers) else None
 
     def files_to_upload(self, job_info: JobInfo) -> dict[str, str]:
@@ -87,7 +101,9 @@ class Client(Node):
             raise WasmRestException("Invalid Formatting") from e
         return to_upload
 
-    def run_job(self, job_name: str, job_info: JobInfo, wait_for: Optional[set[UUID]] = None) -> Optional[UUID]:
+    def run_job(
+        self, job_name: str, job_info: JobInfo, wait_for: Optional[set[UUID]] = None
+    ) -> Optional[UUID]:
         job_id = generate_unique_id()
         LOG.debug(f"Starting job {job_id}")
         job = Job(job_id)
@@ -102,7 +118,10 @@ class Client(Node):
         job.transform_job_info_broker(job_info)
         LOG.debug(f"Submitting job {job_id}")
         if self.broker.submit_job(job_info, job_id, wait_for) == job_id:
-            if job_info.result_addr.host in self.addresses or job_info.result_addr.host == "this":
+            if (
+                job_info.result_addr.host in self.addresses
+                or job_info.result_addr.host == "this"
+            ):
                 with self.result_lock.gen_wlock():
                     self.pending_results[job_id] = job_name
             return job_id
@@ -123,7 +142,9 @@ class Client(Node):
             return NodeRole.EXIT
 
     def run(self) -> NodeRole:
-        self.add_service_listener(Node.zeroconf_service_type("broker"), self.broker_listener)
+        self.add_service_listener(
+            Node.zeroconf_service_type("broker"), self.broker_listener
+        )
 
         self.start()
         time.sleep(10)
@@ -176,5 +197,5 @@ class Client(Node):
         return NodeRole.EXIT
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     Client("../../resources/voice.json", ["127.0.0.1"], 8004, "../../results").run()

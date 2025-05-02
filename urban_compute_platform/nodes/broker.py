@@ -13,7 +13,9 @@ class Broker(Node):
     data_broker: DataBroker
     executor_broker: ExecutorBroker
 
-    def __init__(self, host: list[str], port: int, uvicorn_args: Optional[dict[str, Any]] = None):
+    def __init__(
+        self, host: list[str], port: int, uvicorn_args: Optional[dict[str, Any]] = None
+    ):
         super().__init__(host, port, "broker", uvicorn_args)
         self.data_broker = DataBroker()
         self.executor_broker = ExecutorBroker(self.data_broker.add_pending_job)
@@ -28,8 +30,14 @@ class Broker(Node):
             self.executor_broker.delete_job_from_executor(job_id)
 
     def run(self) -> NodeRole:
-        threading.Thread(target=self.executor_broker.job_scheduler, daemon=True, name="broker scheduler").start()
-        self.add_service_listener(Node.zeroconf_service_type("datastore"), self.data_broker.datastore_listener)
+        threading.Thread(
+            target=self.executor_broker.job_scheduler,
+            daemon=True,
+            name="broker scheduler",
+        ).start()
+        self.add_service_listener(
+            Node.zeroconf_service_type("datastore"), self.data_broker.datastore_listener
+        )
         self.do_run()
         return NodeRole.EXIT
 
@@ -38,5 +46,5 @@ class Broker(Node):
         self.executor_broker.stop()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     Broker(["127.0.0.1"], 8000).run()

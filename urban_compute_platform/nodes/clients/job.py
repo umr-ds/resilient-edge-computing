@@ -25,8 +25,10 @@ class Job:
                 if type(job_info.wasm_bin) is str:
                     job_info.wasm_bin = self.job_data_name("exec.wasm")
                 elif type(job_info.wasm_bin) is tuple:
-                    job_info.wasm_bin = (self.job_data_name(job_info.wasm_bin[1]),
-                                            job_info.wasm_bin[1])
+                    job_info.wasm_bin = (
+                        self.job_data_name(job_info.wasm_bin[1]),
+                        job_info.wasm_bin[1],
+                    )
                 else:
                     raise WasmRestException("Invalid Formatting in wasm_bin")
             if not job_info.stdin_is_named:
@@ -34,14 +36,20 @@ class Job:
                     job_info.job_data[self.job_data_name(job_info.stdin[1])] = "stdin"
                     job_info.stdin = "stdin"
                 elif type(job_info.stdin) is tuple:
-                    if job_info.stdin[0] != '':
-                        job_info.job_data[self.job_data_name(job_info.stdin[1])] = job_info.stdin[1]
-                        job_info.stdin = (job_info.job_data[self.job_data_name(job_info.stdin[1])], job_info.stdin[1])
+                    if job_info.stdin[0] != "":
+                        job_info.job_data[self.job_data_name(job_info.stdin[1])] = (
+                            job_info.stdin[1]
+                        )
+                        job_info.stdin = (
+                            job_info.job_data[self.job_data_name(job_info.stdin[1])],
+                            job_info.stdin[1],
+                        )
                 else:
                     raise WasmRestException("Invalid Formatting in stdin")
 
-            job_info.job_data = {self.job_data_name(path): path
-                                 for _, path in job_info.job_data.items()}
+            job_info.job_data = {
+                self.job_data_name(path): path for _, path in job_info.job_data.items()
+            }
 
         except ValueError as e:
             raise WasmRestException("Invalid Formatting") from e

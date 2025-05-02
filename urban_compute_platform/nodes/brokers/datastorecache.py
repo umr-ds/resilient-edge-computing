@@ -31,7 +31,13 @@ class DatastoreCache:
                 return cache_page.datastore
             return None
 
-    def set(self, page: Page, datastore: Datastore, search: str = '', job_id: Optional[UUID] = None) -> None:
+    def set(
+        self,
+        page: Page,
+        datastore: Datastore,
+        search: str = "",
+        job_id: Optional[UUID] = None,
+    ) -> None:
         with self.lock:
             job_dict = self.cache.get(job_id, None)
             if job_dict is None:
@@ -41,7 +47,9 @@ class DatastoreCache:
             if search_list is None:
                 search_list = []
                 job_dict[search] = search_list
-            search_list.append(CachePage(datastore=datastore, page=page, time=time.time()))
+            search_list.append(
+                CachePage(datastore=datastore, page=page, time=time.time())
+            )
 
     def invalidate(self, name: str, job_id: UUID) -> None:
         with self.lock:
@@ -50,7 +58,9 @@ class DatastoreCache:
                 cache_page, job_id, search = res
                 self.cache[job_id][search].remove(cache_page)
 
-    def __get_cache_place(self, name: str, job_id: Optional[UUID]) -> Optional[tuple[CachePage, Optional[UUID], str]]:
+    def __get_cache_place(
+        self, name: str, job_id: Optional[UUID]
+    ) -> Optional[tuple[CachePage, Optional[UUID], str]]:
         page = False
         job_dict = self.cache.get(job_id, None)
         if job_dict is None:
@@ -65,7 +75,10 @@ class DatastoreCache:
                         page = cache_page
                         break
                 if len(remove_list):
-                    self.cache[job_id][search] = [cache_page for cache_page in cache_pages
-                                                  if cache_page not in remove_list]
+                    self.cache[job_id][search] = [
+                        cache_page
+                        for cache_page in cache_pages
+                        if cache_page not in remove_list
+                    ]
             if page:
                 return page, job_id, search

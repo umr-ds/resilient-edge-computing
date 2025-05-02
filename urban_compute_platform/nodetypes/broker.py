@@ -13,12 +13,16 @@ from urban_compute_platform.nodetypes.node import Node
 class Broker(Node):
 
     def register_executor(self, hosts: list[str], executor: Executor) -> bool:
-        data = f"{{\"hosts\": {json.dumps(hosts)}, \"executor\": {executor.model_dump_json()}}}"
+        data = f'{{"hosts": {json.dumps(hosts)}, "executor": {executor.model_dump_json()}}}'
         res = self.put("/executors/register", data=data)
         return res is not None and res.ok
 
-    def heartbeat_executor(self, exec_id: UUID, capabilities: Capabilities) -> bool:  # still connected
-        res = self.put(f"/executors/heartbeat/{exec_id}", data=capabilities.model_dump_json())
+    def heartbeat_executor(
+        self, exec_id: UUID, capabilities: Capabilities
+    ) -> bool:  # still connected
+        res = self.put(
+            f"/executors/heartbeat/{exec_id}", data=capabilities.model_dump_json()
+        )
         return res is not None and res.ok
 
     def executor_count(self) -> int:
@@ -32,7 +36,9 @@ class Broker(Node):
         res = self.put(f"/data/{name}", files={"data": file})
         return res is not None and res.ok
 
-    def get_data(self, file: IO[bytes], name: str, job_id: Optional[UUID] = None) -> bool:
+    def get_data(
+        self, file: IO[bytes], name: str, job_id: Optional[UUID] = None
+    ) -> bool:
         params = {}
         if job_id:
             params["job_id"] = job_id
@@ -56,9 +62,11 @@ class Broker(Node):
         res = self.put(f"/result/{job_id}", files={"data": data})
         return res is not None and res.ok
 
-    def submit_job(self, job_info: JobInfo, job_id: UUID, wait_for: Optional[set[UUID]] = None) -> Optional[UUID]:
+    def submit_job(
+        self, job_info: JobInfo, job_id: UUID, wait_for: Optional[set[UUID]] = None
+    ) -> Optional[UUID]:
         try:
-            data = f"{{\"job_info\": {job_info.model_dump_json()}, \"wait_for\": {json.dumps([str(it) for it in wait_for])}}}"
+            data = f'{{"job_info": {job_info.model_dump_json()}, "wait_for": {json.dumps([str(it) for it in wait_for])}}}'
             res = self.put(f"/job/submit/{job_id}", data=data)
             if res is not None and res.ok:
                 return UUID(json.loads(res.content.decode()))
@@ -87,6 +95,7 @@ def check_and_retry(times: int = 10, interval: int = 10):
             return None
 
         return fun
+
     return decorator
 
 
@@ -108,7 +117,9 @@ class BrokerProxy(Broker):
         return self.broker.register_executor(hosts, executor)
 
     @check_and_retry()
-    def heartbeat_executor(self, exec_id: UUID, capabilities: Capabilities) -> bool:  # still connected
+    def heartbeat_executor(
+        self, exec_id: UUID, capabilities: Capabilities
+    ) -> bool:  # still connected
         return self.broker.heartbeat_executor(exec_id, capabilities)
 
     @check_and_retry()
@@ -120,7 +131,9 @@ class BrokerProxy(Broker):
         return self.broker.store_data(file, name)
 
     @check_and_retry()
-    def get_data(self, file: IO[bytes], name: str, job_id: Optional[UUID] = None) -> bool:
+    def get_data(
+        self, file: IO[bytes], name: str, job_id: Optional[UUID] = None
+    ) -> bool:
         return self.broker.get_data(file, name, job_id)
 
     @check_and_retry()
@@ -132,7 +145,9 @@ class BrokerProxy(Broker):
         return self.broker.send_result(job_id, data)
 
     @check_and_retry()
-    def submit_job(self, job_info: JobInfo, job_id: UUID, wait_for: Optional[set[UUID]] = None) -> Optional[UUID]:
+    def submit_job(
+        self, job_info: JobInfo, job_id: UUID, wait_for: Optional[set[UUID]] = None
+    ) -> Optional[UUID]:
         return self.broker.submit_job(job_info, job_id, wait_for)
 
     @check_and_retry()

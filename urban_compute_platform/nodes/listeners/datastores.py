@@ -34,7 +34,9 @@ class DatastoreListener(ServiceListener):
         node_id = Node.id_from_name(name)
         if info:
             for addr in info.parsed_addresses():
-                datastore = Datastore(id=node_id, address=Address(host=addr, port=info.port))
+                datastore = Datastore(
+                    id=node_id, address=Address(host=addr, port=info.port)
+                )
                 if datastore.ping() == name:
                     with self.lock.gen_wlock():
                         self.datastores[node_id] = datastore

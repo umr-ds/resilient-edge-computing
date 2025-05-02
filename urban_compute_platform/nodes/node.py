@@ -24,8 +24,13 @@ class Node:
     __listeners: list[(str, ServiceListener)]
     __listen_lock: threading.Lock
 
-    def __init__(self, host: list[str], port: int, service_type: Optional[str] = None,
-                 uvicorn_args: dict[str, Any] = None) -> None:
+    def __init__(
+        self,
+        host: list[str],
+        port: int,
+        service_type: Optional[str] = None,
+        uvicorn_args: dict[str, Any] = None,
+    ) -> None:
         self.service_type = service_type
         if uvicorn_args is None:
             uvicorn_args = {}
@@ -61,7 +66,8 @@ class Node:
             Node.zeroconf_service_name(self.service_type, self.id),
             addresses=[socket.inet_aton(address) for address in self.addresses],
             port=self.port,
-            server=Node.zeroconf_service_name(self.service_type, self.id))
+            server=Node.zeroconf_service_name(self.service_type, self.id),
+        )
 
     def add_service_listener(self, _type: str, listener: ServiceListener):
         if self.uvicorn_server.started:
@@ -71,7 +77,9 @@ class Node:
 
     def do_run(self) -> None:
         LOG.debug(f"starting {self.service_type}: {self.id}")
-        threading.Thread(target=self.after_start, daemon=True, name="after_start").start()
+        threading.Thread(
+            target=self.after_start, daemon=True, name="after_start"
+        ).start()
         self.uvicorn_server.run()
         self.stop()
         self.zeroconf.remove_all_service_listeners()
@@ -96,7 +104,11 @@ class Node:
                 break
             time.sleep(10)
         while not self.should_stop:
-            self.zeroconf.send(self.zeroconf.generate_service_broadcast(self.generate_service_info(), None))
+            self.zeroconf.send(
+                self.zeroconf.generate_service_broadcast(
+                    self.generate_service_info(), None
+                )
+            )
             time.sleep(10)
 
     @classmethod
@@ -112,5 +124,9 @@ class Node:
         return UUID(name[-58:-22])
 
 
-if __name__ == '__main__':
-    print(Node.id_from_name(Node(["127.0.0.1"], 8000, "test", None).generate_service_info().name))
+if __name__ == "__main__":
+    print(
+        Node.id_from_name(
+            Node(["127.0.0.1"], 8000, "test", None).generate_service_info().name
+        )
+    )

@@ -14,7 +14,9 @@ class Node(BaseModel):
 
     def get(self, path: str, **kwargs) -> Optional[requests.Response]:
         try:
-            return requests.get(f"http://{self.address.host}:{self.address.port}{path}", **kwargs)
+            return requests.get(
+                f"http://{self.address.host}:{self.address.port}{path}", **kwargs
+            )
         # except requests.exceptions.ConnectTimeout:
         #    raise ConnectionTimeoutException("Could not reach Server")
         except requests.exceptions.RequestException:
@@ -22,13 +24,17 @@ class Node(BaseModel):
 
     def put(self, path: str, **kwargs) -> Optional[requests.Response]:
         try:
-            return requests.put(f"http://{self.address.host}:{self.address.port}{path}", **kwargs)
+            return requests.put(
+                f"http://{self.address.host}:{self.address.port}{path}", **kwargs
+            )
         except requests.exceptions.RequestException:
             return None
 
     def delete(self, path: str, **kwargs) -> Optional[requests.Response]:
         try:
-            return requests.delete(f"http://{self.address.host}:{self.address.port}{path}", **kwargs)
+            return requests.delete(
+                f"http://{self.address.host}:{self.address.port}{path}", **kwargs
+            )
         except requests.exceptions.RequestException:
             return None
 
