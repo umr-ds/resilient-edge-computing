@@ -7,9 +7,9 @@ from zipfile import ZipFile
 from urban_compute_platform.exceptions import WasmRestException
 from urban_compute_platform.model import JobInfo
 from urban_compute_platform.nodetypes.broker import Broker
-from urban_compute_platform.util import (
-    prevent_breakout,
+from urban_compute_platform.util.fs import (
     zip_folder,
+    prevent_breakout,
     try_store_named_data,
     try_download_file,
 )

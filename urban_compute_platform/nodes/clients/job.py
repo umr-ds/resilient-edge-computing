@@ -4,7 +4,7 @@ from uuid import UUID
 from urban_compute_platform.exceptions import WasmRestException
 from urban_compute_platform.model import JobInfo
 from urban_compute_platform.nodetypes.broker import Broker
-from urban_compute_platform.util import try_store_named_data
+from urban_compute_platform.util.fs import try_store_named_data
 
 
 class Job:

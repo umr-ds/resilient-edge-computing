@@ -5,7 +5,7 @@ import sched
 import threading
 import time
 from io import BytesIO
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from uuid import UUID
 
 import psutil
@@ -27,7 +27,7 @@ class Executor(Node):
     self_object: ExecutorObject
 
     broker_listener: BrokerListener
-    broker: Broker
+    broker: Union[Broker, None]
 
     jobs_lock: readerwriterlock.rwlock.RWLockWrite
     jobs: dict[UUID, Job]
@@ -49,7 +49,7 @@ class Executor(Node):
         self.jobs_lock = readerwriterlock.rwlock.RWLockWrite()
         self.jobs = {}
         self.self_object = ExecutorObject(
-            id=self.id, address=Address(address="", port=self.port)
+            id=self.id, address=Address(host="", port=self.port)
         )
         self.broker = None
 

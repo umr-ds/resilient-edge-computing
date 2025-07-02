@@ -2,7 +2,7 @@ import os
 import random
 import time
 from typing import Optional, Union
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import readerwriterlock.rwlock
 from fastapi import UploadFile, HTTPException
@@ -14,11 +14,7 @@ from urban_compute_platform.nodes.clients.job import Job
 from urban_compute_platform.nodes.listeners.brokers import BrokerListener
 from urban_compute_platform.nodes.node import Node
 from urban_compute_platform.nodetypes.broker import Broker
-from urban_compute_platform.util import (
-    put_file,
-    generate_unique_id,
-    try_store_named_data,
-)
+from urban_compute_platform.util.fs import put_file, try_store_named_data
 from urban_compute_platform.util.log import LOG
 
 
@@ -104,7 +100,7 @@ class Client(Node):
     def run_job(
         self, job_name: str, job_info: JobInfo, wait_for: Optional[set[UUID]] = None
     ) -> Optional[UUID]:
-        job_id = generate_unique_id()
+        job_id = uuid4()
         LOG.debug(f"Starting job {job_id}")
         job = Job(job_id)
         to_upload = self.files_to_upload(job_info)

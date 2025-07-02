@@ -13,7 +13,7 @@ from fastapi_pagination import Page, add_pagination, paginate
 from urban_compute_platform.model import NodeRole
 from urban_compute_platform.nodes.listeners.datastores import DatastoreListener
 from urban_compute_platform.nodes.node import Node
-from urban_compute_platform.util import prevent_breakout
+from urban_compute_platform.util.fs import prevent_breakout
 from urban_compute_platform.util.log import LOG
 
 

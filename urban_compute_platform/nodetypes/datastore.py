@@ -53,7 +53,7 @@ class Datastore(Node):
         page_number: int = 1,
         page_size: int = 50,
     ) -> Page:
-        params = {"page": page_number, "size": page_size}
+        params: dict = {"page": page_number, "size": page_size}
         if job_id:
             params["job_id"] = job_id
         res = self.get(f"/list/{name}", params=params)

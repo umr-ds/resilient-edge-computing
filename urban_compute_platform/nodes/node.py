@@ -2,13 +2,12 @@ import socket
 import threading
 import time
 from typing import Any, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI
 from uvicorn import Server as UVServer, Config as UVConfig
 from zeroconf import Zeroconf, ServiceInfo, ServiceListener
 
-from urban_compute_platform.util import generate_unique_id
 from urban_compute_platform.util.log import LOG
 
 
@@ -21,7 +20,7 @@ class Node:
     id: UUID
     service_type: str
     should_stop: bool = False
-    __listeners: list[(str, ServiceListener)]
+    __listeners: list[tuple[str, ServiceListener]]
     __listen_lock: threading.Lock
 
     def __init__(
@@ -53,7 +52,7 @@ class Node:
         config = UVConfig(**uvicorn_args)
         self.uvicorn_server = UVServer(config)
         self.zeroconf = Zeroconf()
-        self.id = generate_unique_id()
+        self.id = uuid4()
         self.__listeners = []
         self.__listen_lock = threading.Lock()
 
