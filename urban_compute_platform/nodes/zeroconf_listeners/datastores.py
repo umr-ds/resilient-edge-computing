@@ -1,6 +1,6 @@
 from uuid import UUID
 
-import readerwriterlock
+from readerwriterlock.rwlock import RWLockWrite
 from zeroconf import ServiceListener, Zeroconf
 
 from urban_compute_platform.model import Address
@@ -11,11 +11,11 @@ from urban_compute_platform.util.log import LOG
 
 class DatastoreListener(ServiceListener):
     datastores: dict[UUID, Datastore]
-    lock: readerwriterlock.rwlock.RWLockWrite
+    lock: RWLockWrite
 
     def __init__(self):
         self.datastores = {}
-        self.lock = readerwriterlock.rwlock.RWLockWrite()
+        self.lock = RWLockWrite()
 
     def remove_datastore(self, node_id: UUID):
         with self.lock.gen_wlock():

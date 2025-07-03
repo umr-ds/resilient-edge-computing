@@ -4,26 +4,26 @@ import time
 from typing import Optional, Union
 from uuid import UUID, uuid4
 
-import readerwriterlock.rwlock
-from fastapi import UploadFile, HTTPException
+from fastapi import HTTPException, UploadFile
 from pydantic import ValidationError
+from readerwriterlock.rwlock import RWLockWrite
 
 from urban_compute_platform.exceptions import WasmRestException
-from urban_compute_platform.model import JobInfo, ExecutionPlan, NodeRole
-from urban_compute_platform.nodes.clients.job import Job
-from urban_compute_platform.nodes.listeners.brokers import BrokerListener
+from urban_compute_platform.job import ClientJob
+from urban_compute_platform.model import ExecutionPlan, JobInfo, NodeRole
 from urban_compute_platform.nodes.node import Node
+from urban_compute_platform.nodes.zeroconf_listeners.brokers import BrokerListener
 from urban_compute_platform.nodetypes.broker import Broker
 from urban_compute_platform.util.fs import put_file, try_store_named_data
 from urban_compute_platform.util.log import LOG
 
 
 class Client(Node):
-    broker: Broker
+    broker: Optional[Broker]
     broker_listener: BrokerListener
     result_dir = ""
     pending_results: dict[UUID, str]
-    result_lock: readerwriterlock.rwlock.RWLockWrite
+    result_lock: RWLockWrite
     all_queued = False
     started_jobs: set[str]
     name_to_uuid: dict[str, UUID]
@@ -41,7 +41,7 @@ class Client(Node):
         self.broker = None
         self.broker_listener = BrokerListener()
         self.pending_results = {}
-        self.result_lock = readerwriterlock.rwlock.RWLockWrite()
+        self.result_lock = RWLockWrite()
         self.started_jobs = set()
         self.name_to_uuid = {}
         self.json_path = json_path
@@ -102,7 +102,7 @@ class Client(Node):
     ) -> Optional[UUID]:
         job_id = uuid4()
         LOG.debug(f"Starting job {job_id}")
-        job = Job(job_id)
+        job = ClientJob(job_id)
         to_upload = self.files_to_upload(job_info)
         LOG.debug(f"Uploading files for job {job_id}")
         for path, name in to_upload.items():

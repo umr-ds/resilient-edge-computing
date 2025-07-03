@@ -1,9 +1,8 @@
-import multiprocessing
 import multiprocessing.connection
 import os
 from typing import Optional
 
-from wasmtime import Store, Module, Linker, WasiConfig, Trap, WasmtimeError
+from wasmtime import Linker, Module, Store, Trap, WasiConfig, WasmtimeError
 
 from urban_compute_platform.exceptions import WasmRestException
 from urban_compute_platform.util.log import LOG

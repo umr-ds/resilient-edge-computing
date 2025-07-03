@@ -5,18 +5,18 @@ import sched
 import threading
 import time
 from io import BytesIO
-from typing import Any, Optional, Union
+from typing import Any, Optional
 from uuid import UUID
 
 import psutil
-import readerwriterlock.rwlock
 from fastapi import HTTPException
+from readerwriterlock.rwlock import RWLockWrite
 
 from urban_compute_platform.exceptions import WasmRestException
-from urban_compute_platform.model import JobInfo, NodeRole, Capabilities, Address
-from urban_compute_platform.nodes.executors.job import Job
-from urban_compute_platform.nodes.listeners.brokers import BrokerListener
+from urban_compute_platform.job import ExecutorJob
+from urban_compute_platform.model import Address, Capabilities, JobInfo, NodeRole
 from urban_compute_platform.nodes.node import Node
+from urban_compute_platform.nodes.zeroconf_listeners.brokers import BrokerListener
 from urban_compute_platform.nodetypes.broker import Broker
 from urban_compute_platform.nodetypes.executor import Executor as ExecutorObject
 from urban_compute_platform.util.log import LOG
@@ -27,10 +27,10 @@ class Executor(Node):
     self_object: ExecutorObject
 
     broker_listener: BrokerListener
-    broker: Union[Broker, None]
+    broker: Optional[Broker]
 
-    jobs_lock: readerwriterlock.rwlock.RWLockWrite
-    jobs: dict[UUID, Job]
+    jobs_lock: RWLockWrite
+    jobs: dict[UUID, ExecutorJob]
     root_dir: str = ""
 
     exit_code = NodeRole.EXIT
@@ -46,7 +46,7 @@ class Executor(Node):
         self.root_dir = rootdir
         self.heartbeat_scheduler = sched.scheduler()
         self.broker_listener = BrokerListener()
-        self.jobs_lock = readerwriterlock.rwlock.RWLockWrite()
+        self.jobs_lock = RWLockWrite()
         self.jobs = {}
         self.self_object = ExecutorObject(
             id=self.id, address=Address(host="", port=self.port)
@@ -96,7 +96,9 @@ class Executor(Node):
         def submit_job(job_id: UUID, job_info: JobInfo) -> None:
             LOG.debug(f"Submitting job {job_id}")
             try:
-                job = Job(self.root_dir, job_id, job_info, self.store_job_in_datastore)
+                job = ExecutorJob(
+                    self.root_dir, job_id, job_info, self.store_job_in_datastore
+                )
             except WasmRestException as e:
                 LOG.error(e.msg)
                 raise HTTPException(503, e.msg)
@@ -125,7 +127,7 @@ class Executor(Node):
                     LOG.error(f"Failed to delete job {job_id}")
                     raise HTTPException(404, "Job not found")
 
-    def start_job(self, job: Job) -> None:
+    def start_job(self, job: ExecutorJob) -> None:
         LOG.debug(f"Resolving data globs for job {job.id}")
         job.resolve_glob_data(self.broker)
         LOG.debug(f"Downloading data for job {job.id}")
@@ -143,7 +145,7 @@ class Executor(Node):
             return
         LOG.debug(f"Finished job {job.id}")
 
-    def do_store_in_datastore(self, job: Job) -> None:
+    def do_store_in_datastore(self, job: ExecutorJob) -> None:
         LOG.debug(f"Storing named results for job {job.id}")
         for _ in range(10):
             if job.store_named(self.broker):
@@ -176,7 +178,7 @@ class Executor(Node):
             time.sleep(10)
         LOG.error(f"Failed to store error for job {job.id}")
 
-    def store_job_in_datastore(self, job: Job) -> None:
+    def store_job_in_datastore(self, job: ExecutorJob) -> None:
         self.do_store_in_datastore(job)
         self.broker.job_done(job.id)
         if job.job_info.delete:

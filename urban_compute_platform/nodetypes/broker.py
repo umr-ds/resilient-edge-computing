@@ -1,11 +1,11 @@
 import json
 import time
-from typing import Optional, IO
+from typing import IO, Optional
 from uuid import UUID
 
 import requests
 
-from urban_compute_platform.model import JobInfo, Capabilities
+from urban_compute_platform.model import Capabilities, JobInfo
 from urban_compute_platform.nodetypes.executor import Executor
 from urban_compute_platform.nodetypes.node import Node
 
@@ -31,6 +31,8 @@ class Broker(Node):
             return -1
         if res.ok:
             return int(res.content)
+        else:
+            return -1
 
     def store_data(self, file: IO[bytes], name: str) -> bool:
         res = self.put(f"/data/{name}", files={"data": file})

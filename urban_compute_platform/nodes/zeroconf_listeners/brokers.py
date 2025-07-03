@@ -1,6 +1,7 @@
+from typing import override
 from uuid import UUID
 
-import readerwriterlock.rwlock
+from readerwriterlock.rwlock import RWLockWrite
 from zeroconf import ServiceListener, Zeroconf
 
 from urban_compute_platform.model import Address
@@ -11,11 +12,11 @@ from urban_compute_platform.util.log import LOG
 
 class BrokerListener(ServiceListener):
     brokers: dict[UUID, Broker]
-    lock: readerwriterlock.rwlock.RWLockWrite
+    lock: RWLockWrite
 
     def __init__(self):
         self.brokers = {}
-        self.lock = readerwriterlock.rwlock.RWLockWrite()
+        self.lock = RWLockWrite()
 
     def remove_broker(self, node_id: UUID):
         with self.lock.gen_wlock():
@@ -23,12 +24,15 @@ class BrokerListener(ServiceListener):
         if node:
             LOG.info(f"Lost connection to broker {node_id}")
 
+    @override
     def update_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         pass
 
+    @override
     def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         self.remove_broker(Node.id_from_name(name))
 
+    @override
     def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
         info = zc.get_service_info(type_, name)
         node_id = Node.id_from_name(name)

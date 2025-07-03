@@ -1,16 +1,15 @@
 import random
-import uuid
-from typing import Optional, Callable, Any
-from uuid import UUID
+from typing import Any, Callable, Optional
+from uuid import UUID, uuid4
 
-import readerwriterlock.rwlock
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from fastapi_pagination import Page
+from readerwriterlock.rwlock import RWLockWrite
 
 from urban_compute_platform.model import Address, JobInfo
 from urban_compute_platform.nodes.brokers.datastorecache import DatastoreCache
-from urban_compute_platform.nodes.listeners.datastores import DatastoreListener
+from urban_compute_platform.nodes.zeroconf_listeners.datastores import DatastoreListener
 from urban_compute_platform.nodetypes.client import Client
 from urban_compute_platform.nodetypes.datastore import Datastore
 from urban_compute_platform.util.log import LOG
@@ -20,13 +19,13 @@ class DataBroker:
     datastore_listener: DatastoreListener
     job_datastore_cache: DatastoreCache
     pending_results: dict[UUID, Address]
-    results_lock: readerwriterlock.rwlock.RWLockWrite
+    results_lock: RWLockWrite
 
     def __init__(self):
         self.datastore_listener = DatastoreListener()
         self.job_datastore_cache = DatastoreCache()
         self.pending_results = {}
-        self.results_lock = readerwriterlock.rwlock.RWLockWrite()
+        self.results_lock = RWLockWrite()
 
     def add_endpoints(self, fastapi_app: FastAPI) -> None:
 
@@ -75,7 +74,7 @@ class DataBroker:
             with self.results_lock.gen_rlock():
                 address = self.pending_results.get(job_id, None)
             if address:
-                client = Client(address=address, id=uuid.uuid4())
+                client = Client(address=address, id=uuid4())
                 if client.send_result(job_id, data.file):
                     with self.results_lock.gen_wlock():
                         self.pending_results.pop(job_id, None)

@@ -1,10 +1,8 @@
 #! /usr/bin/env python3
-
 import argparse
 import logging
 import random
 
-import urban_compute_platform.util.log
 from urban_compute_platform.model import NodeRole
 from urban_compute_platform.nodes.broker import Broker
 from urban_compute_platform.nodes.client import Client
@@ -71,7 +69,7 @@ def main():
 
     log_level = logging.DEBUG if args.v else logging.INFO if args.i else logging.ERROR
     uvicorn_args = {"log_level": log_level}
-    urban_compute_platform.util.log.LOG.setLevel(log_level)
+    LOG.setLevel(log_level)
 
     if hasattr(args, "hosts") and args.hosts is not None:
         host = args.hosts.split(",")

@@ -42,3 +42,4 @@ class Node(BaseModel):
         res = self.get("/ping", timeout=timeout_s)
         if res is not None and res.ok:
             return json.loads(res.content)
+        return None

@@ -2,14 +2,14 @@ import random
 import threading
 import time
 from queue import Queue
-from typing import Optional, Callable
+from typing import Callable, Optional
 from uuid import UUID
 
-import readerwriterlock.rwlock
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
+from readerwriterlock.rwlock import RWLockWrite
 
-from urban_compute_platform.model import JobInfo, Capabilities
+from urban_compute_platform.model import Capabilities, JobInfo
 from urban_compute_platform.nodes.node import Node
 from urban_compute_platform.nodetypes.executor import Executor
 from urban_compute_platform.util.log import LOG
@@ -23,7 +23,7 @@ class QueuedJob(BaseModel):
 
 class ExecutorBroker:
     executors: dict[UUID, Executor]
-    executor_lock: readerwriterlock.rwlock.RWLockWrite
+    executor_lock: RWLockWrite
     queued_jobs: Queue[QueuedJob]
     completed_jobs: set[UUID]
     cj_lock: threading.Lock
@@ -32,7 +32,7 @@ class ExecutorBroker:
 
     def __init__(self, on_job_started: Callable[[UUID, JobInfo], None]):
         self.executors = {}
-        self.executor_lock = readerwriterlock.rwlock.RWLockWrite()
+        self.executor_lock = RWLockWrite()
         self.queued_jobs = Queue()
         self.completed_jobs = set()
         self.cj_lock = threading.Lock()

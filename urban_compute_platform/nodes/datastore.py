@@ -1,18 +1,18 @@
 import os
 import threading
 from enum import Enum
-from typing import Any, Optional, IO
+from typing import Any, IO, Optional
 from uuid import UUID
 
 import psutil
-import readerwriterlock.rwlock
-from fastapi import UploadFile, HTTPException
+from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from fastapi_pagination import Page, add_pagination, paginate
+from fastapi_pagination import add_pagination, Page, paginate
+from readerwriterlock.rwlock import RWLockWrite
 
 from urban_compute_platform.model import NodeRole
-from urban_compute_platform.nodes.listeners.datastores import DatastoreListener
 from urban_compute_platform.nodes.node import Node
+from urban_compute_platform.nodes.zeroconf_listeners.datastores import DatastoreListener
 from urban_compute_platform.util.fs import prevent_breakout
 from urban_compute_platform.util.log import LOG
 
@@ -26,14 +26,14 @@ class FileStatus(Enum):
 class File:
     path: str
     int_lock: threading.Lock
-    write_lock: readerwriterlock.rwlock.RWLockWrite
+    write_lock: RWLockWrite
     interrupt: int = 0
     deleted: bool = False
 
     def __init__(self, path: str):
         self.path = path
         self.int_lock = threading.Lock()
-        self.write_lock = readerwriterlock.rwlock.RWLockWrite()
+        self.write_lock = RWLockWrite()
 
     def store(self, file: IO[bytes]) -> FileStatus:
         with self.int_lock:
@@ -79,7 +79,7 @@ class Datastore(Node):
     datastore_listener: DatastoreListener
     data_files: dict[str, File]
     stored_data: dict[str, str]
-    data_lock: readerwriterlock.rwlock.RWLockWrite
+    data_lock: RWLockWrite
 
     def __init__(
         self,
@@ -93,7 +93,7 @@ class Datastore(Node):
         self.data_files = {}
         self.stored_data = {}
         self.datastore_listener = DatastoreListener()
-        self.data_lock = readerwriterlock.rwlock.RWLockWrite()
+        self.data_lock = RWLockWrite()
 
     def add_endpoints(self):
         @self.fastapi_app.put("/data/{name:path}")

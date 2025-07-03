@@ -1,26 +1,81 @@
 import glob
 import os
-from typing import Callable, Optional
+from typing import Callable, IO, Optional
 from uuid import UUID
 from zipfile import ZipFile
 
 from urban_compute_platform.exceptions import WasmRestException
 from urban_compute_platform.model import JobInfo
 from urban_compute_platform.nodetypes.broker import Broker
-from urban_compute_platform.util.fs import (
-    zip_folder,
-    prevent_breakout,
-    try_store_named_data,
-    try_download_file,
-)
 from urban_compute_platform.util.execute_wasm import run_webassembly
+from urban_compute_platform.util.fs import (
+    prevent_breakout,
+    try_download_file,
+    try_store_named_data,
+    zip_folder,
+)
 from urban_compute_platform.util.log import LOG
+
+
+class ClientJob:
+    id: UUID
+
+    def __init__(self, job_id: UUID) -> None:
+        self.id = job_id
+
+    def job_data_name(self, name: str) -> str:
+        return f"{self.id}/{name}"
+
+    def upload_job_file(self, name: str, path: str, broker: Broker) -> bool:
+        return try_store_named_data(self.job_data_name(name), path, broker)
+
+    def transform_job_info_broker(self, job_info: JobInfo) -> None:
+        try:
+            if not job_info.wasm_bin_is_named:
+                if type(job_info.wasm_bin) is str:
+                    job_info.wasm_bin = self.job_data_name("exec.wasm")
+                elif type(job_info.wasm_bin) is tuple:
+                    job_info.wasm_bin = (
+                        self.job_data_name(job_info.wasm_bin[1]),
+                        job_info.wasm_bin[1],
+                    )
+                else:
+                    raise WasmRestException("Invalid Formatting in wasm_bin")
+            if not job_info.stdin_is_named:
+                if type(job_info.stdin) is str:
+                    job_info.job_data[self.job_data_name(job_info.stdin[1])] = "stdin"
+                    job_info.stdin = "stdin"
+                elif type(job_info.stdin) is tuple:
+                    if job_info.stdin[0] != "":
+                        job_info.job_data[self.job_data_name(job_info.stdin[1])] = (
+                            job_info.stdin[1]
+                        )
+                        job_info.stdin = (
+                            job_info.job_data[self.job_data_name(job_info.stdin[1])],
+                            job_info.stdin[1],
+                        )
+                else:
+                    raise WasmRestException("Invalid Formatting in stdin")
+
+            job_info.job_data = {
+                self.job_data_name(path): path for _, path in job_info.job_data.items()
+            }
+
+        except ValueError as e:
+            raise WasmRestException("Invalid Formatting") from e
+
+    def poll_finished(self, file: Optional[IO[bytes]], broker: Broker) -> bool:
+        return broker.get_data(file, f"{self.id}/result", self.id)
+
+    def delete(self, broker: Broker):
+        broker.delete_job(self.id)
+
 
 send_retry = 10
 send_timeout = 10
 
 
-class InternalJobInfo:
+class ExecutorInternalJobInfo:
     wasm_bin: tuple[str, str]
 
     stdin: Optional[str] = None
@@ -34,7 +89,7 @@ class InternalJobInfo:
     zip_results: dict[str, str]
     named_results: dict[str, str]
 
-    def __init__(self, job_info: JobInfo, job: "Job") -> None:
+    def __init__(self, job_info: JobInfo, job: "ExecutorJob") -> None:
         try:
             if type(job_info.wasm_bin) is str:
                 self.wasm_bin = (
@@ -97,7 +152,7 @@ class InternalJobInfo:
             raise WasmRestException("Invalid Formatting") from e
 
 
-class Job:
+class ExecutorJob:
     id: UUID
     dir: str
     code_dir: str
@@ -105,15 +160,15 @@ class Job:
     out_dir: str
     result_path: str
     job_info: JobInfo
-    internal_job_info: InternalJobInfo
-    __on_complete: Callable[["Job"], None]
+    internal_job_info: ExecutorInternalJobInfo
+    __on_complete: Callable[["ExecutorJob"], None]
 
     def __init__(
         self,
         root_dir: str,
         job_id: UUID,
         job_info: JobInfo,
-        on_complete: Callable[["Job"], None],
+        on_complete: Callable[["ExecutorJob"], None],
     ) -> None:
         self.__on_complete = on_complete
         self.job_info = job_info
@@ -130,7 +185,7 @@ class Job:
         except OSError:
             raise WasmRestException("failed create")
         self.mkdirs()
-        self.internal_job_info = InternalJobInfo(job_info, self)
+        self.internal_job_info = ExecutorInternalJobInfo(job_info, self)
 
     def mkdirs(self) -> None:
         for dir_to_create in [

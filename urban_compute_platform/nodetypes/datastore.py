@@ -1,5 +1,5 @@
 import json
-from typing import IO, Optional, Iterator
+from typing import IO, Iterator, Optional
 from uuid import UUID
 
 import requests

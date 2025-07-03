@@ -5,8 +5,8 @@ from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI
-from uvicorn import Server as UVServer, Config as UVConfig
-from zeroconf import Zeroconf, ServiceInfo, ServiceListener
+from uvicorn import Config as UVConfig, Server as UVServer
+from zeroconf import ServiceInfo, ServiceListener, Zeroconf
 
 from urban_compute_platform.util.log import LOG
 
@@ -20,8 +20,8 @@ class Node:
     id: UUID
     service_type: str
     should_stop: bool = False
-    __listeners: list[tuple[str, ServiceListener]]
-    __listen_lock: threading.Lock
+    __zeroconf_listeners: list[tuple[str, ServiceListener]]
+    __zeroconf_listen_lock: threading.Lock
 
     def __init__(
         self,
@@ -53,8 +53,8 @@ class Node:
         self.uvicorn_server = UVServer(config)
         self.zeroconf = Zeroconf()
         self.id = uuid4()
-        self.__listeners = []
-        self.__listen_lock = threading.Lock()
+        self.__zeroconf_listeners = []
+        self.__zeroconf_listen_lock = threading.Lock()
 
     def add_endpoints(self):
         pass
@@ -71,8 +71,8 @@ class Node:
     def add_service_listener(self, _type: str, listener: ServiceListener):
         if self.uvicorn_server.started:
             self.zeroconf.add_service_listener(_type, listener)
-        with self.__listen_lock:
-            self.__listeners.append((_type, listener))
+        with self.__zeroconf_listen_lock:
+            self.__zeroconf_listeners.append((_type, listener))
 
     def do_run(self) -> None:
         LOG.debug(f"starting {self.service_type}: {self.id}")
@@ -97,8 +97,8 @@ class Node:
             if self.uvicorn_server.started:
                 if self.service_type is not None:
                     self.zeroconf.register_service(self.generate_service_info())
-                with self.__listen_lock:
-                    for _type, listener in self.__listeners:
+                with self.__zeroconf_listen_lock:
+                    for _type, listener in self.__zeroconf_listeners:
                         self.zeroconf.add_service_listener(_type, listener)
                 break
             time.sleep(10)
