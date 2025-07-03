@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "urban_compute_platform"
+name = "rec"
 version = "0.1.0"
 description = "Run jobs in a distributed, resilient local execution network."
 #readme = "Readme.md"
@@ -38,7 +38,7 @@ classifiers = [
 ]
 
 [project.scripts]
-ucp = "urban_compute_platform.ucp:main"
+rec = "rec.run:main"
 
 [project.urls]
-Repository = "https://github.com/umr-ds/urban-compute-platform"
+Repository = "https://github.com/umr-ds/resilient-edge-computing"

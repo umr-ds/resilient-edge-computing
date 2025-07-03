@@ -8,14 +8,14 @@ from fastapi import HTTPException, UploadFile
 from pydantic import ValidationError
 from readerwriterlock.rwlock import RWLockWrite
 
-from urban_compute_platform.exceptions import WasmRestException
-from urban_compute_platform.job import ClientJob
-from urban_compute_platform.model import ExecutionPlan, JobInfo, NodeRole
-from urban_compute_platform.nodes.node import Node
-from urban_compute_platform.nodes.zeroconf_listeners.brokers import BrokerListener
-from urban_compute_platform.nodetypes.broker import Broker
-from urban_compute_platform.util.fs import put_file, try_store_named_data
-from urban_compute_platform.util.log import LOG
+from rec.exceptions import WasmRestException
+from rec.job import ClientJob
+from rec.model import ExecutionPlan, JobInfo, NodeRole
+from rec.nodes.node import Node
+from rec.nodes.zeroconf_listeners.brokers import BrokerListener
+from rec.nodetypes.broker import Broker
+from rec.util.fs import put_file, try_store_named_data
+from rec.util.log import LOG
 
 
 class Client(Node):

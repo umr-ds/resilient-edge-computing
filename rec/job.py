@@ -4,17 +4,17 @@ from typing import Callable, IO, Optional
 from uuid import UUID
 from zipfile import ZipFile
 
-from urban_compute_platform.exceptions import WasmRestException
-from urban_compute_platform.model import JobInfo
-from urban_compute_platform.nodetypes.broker import Broker
-from urban_compute_platform.util.execute_wasm import run_webassembly
-from urban_compute_platform.util.fs import (
+from rec.exceptions import WasmRestException
+from rec.model import JobInfo
+from rec.nodetypes.broker import Broker
+from rec.util.execute_wasm import run_webassembly
+from rec.util.fs import (
     prevent_breakout,
     try_download_file,
     try_store_named_data,
     zip_folder,
 )
-from urban_compute_platform.util.log import LOG
+from rec.util.log import LOG
 
 
 class ClientJob:

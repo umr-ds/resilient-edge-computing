@@ -10,11 +10,11 @@ from fastapi.responses import FileResponse
 from fastapi_pagination import add_pagination, Page, paginate
 from readerwriterlock.rwlock import RWLockWrite
 
-from urban_compute_platform.model import NodeRole
-from urban_compute_platform.nodes.node import Node
-from urban_compute_platform.nodes.zeroconf_listeners.datastores import DatastoreListener
-from urban_compute_platform.util.fs import prevent_breakout
-from urban_compute_platform.util.log import LOG
+from rec.model import NodeRole
+from rec.nodes.node import Node
+from rec.nodes.zeroconf_listeners.datastores import DatastoreListener
+from rec.util.fs import prevent_breakout
+from rec.util.log import LOG
 
 
 class FileStatus(Enum):

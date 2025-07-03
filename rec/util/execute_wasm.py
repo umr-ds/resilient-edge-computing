@@ -4,8 +4,8 @@ from typing import Optional
 
 from wasmtime import Linker, Module, Store, Trap, WasiConfig, WasmtimeError
 
-from urban_compute_platform.exceptions import WasmRestException
-from urban_compute_platform.util.log import LOG
+from rec.exceptions import WasmRestException
+from rec.util.log import LOG
 
 
 def run_webassembly(

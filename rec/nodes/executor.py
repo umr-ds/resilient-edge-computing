@@ -12,14 +12,14 @@ import psutil
 from fastapi import HTTPException
 from readerwriterlock.rwlock import RWLockWrite
 
-from urban_compute_platform.exceptions import WasmRestException
-from urban_compute_platform.job import ExecutorJob
-from urban_compute_platform.model import Address, Capabilities, JobInfo, NodeRole
-from urban_compute_platform.nodes.node import Node
-from urban_compute_platform.nodes.zeroconf_listeners.brokers import BrokerListener
-from urban_compute_platform.nodetypes.broker import Broker
-from urban_compute_platform.nodetypes.executor import Executor as ExecutorObject
-from urban_compute_platform.util.log import LOG
+from rec.exceptions import WasmRestException
+from rec.job import ExecutorJob
+from rec.model import Address, Capabilities, JobInfo, NodeRole
+from rec.nodes.node import Node
+from rec.nodes.zeroconf_listeners.brokers import BrokerListener
+from rec.nodetypes.broker import Broker
+from rec.nodetypes.executor import Executor as ExecutorObject
+from rec.util.log import LOG
 
 
 class Executor(Node):

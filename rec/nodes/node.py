@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from uvicorn import Config as UVConfig, Server as UVServer
 from zeroconf import ServiceInfo, ServiceListener, Zeroconf
 
-from urban_compute_platform.util.log import LOG
+from rec.util.log import LOG
 
 
 class Node:

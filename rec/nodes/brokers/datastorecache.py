@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi_pagination import Page
 from pydantic import BaseModel
 
-from urban_compute_platform.nodetypes.datastore import Datastore
+from rec.nodetypes.datastore import Datastore
 
 
 class CachePage(BaseModel):

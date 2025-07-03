@@ -9,10 +9,10 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from readerwriterlock.rwlock import RWLockWrite
 
-from urban_compute_platform.model import Capabilities, JobInfo
-from urban_compute_platform.nodes.node import Node
-from urban_compute_platform.nodetypes.executor import Executor
-from urban_compute_platform.util.log import LOG
+from rec.model import Capabilities, JobInfo
+from rec.nodes.node import Node
+from rec.nodetypes.executor import Executor
+from rec.util.log import LOG
 
 
 class QueuedJob(BaseModel):

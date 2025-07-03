@@ -4,10 +4,10 @@ from uuid import UUID
 from readerwriterlock.rwlock import RWLockWrite
 from zeroconf import ServiceListener, Zeroconf
 
-from urban_compute_platform.model import Address
-from urban_compute_platform.nodes.node import Node
-from urban_compute_platform.nodetypes.broker import Broker
-from urban_compute_platform.util.log import LOG
+from rec.model import Address
+from rec.nodes.node import Node
+from rec.nodetypes.broker import Broker
+from rec.util.log import LOG
 
 
 class BrokerListener(ServiceListener):

@@ -5,9 +5,9 @@ from uuid import UUID
 
 import requests
 
-from urban_compute_platform.model import Capabilities, JobInfo
-from urban_compute_platform.nodetypes.executor import Executor
-from urban_compute_platform.nodetypes.node import Node
+from rec.model import Capabilities, JobInfo
+from rec.nodetypes.executor import Executor
+from rec.nodetypes.node import Node
 
 
 class Broker(Node):

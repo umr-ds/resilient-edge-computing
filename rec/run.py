@@ -3,12 +3,12 @@ import argparse
 import logging
 import random
 
-from urban_compute_platform.model import NodeRole
-from urban_compute_platform.nodes.broker import Broker
-from urban_compute_platform.nodes.client import Client
-from urban_compute_platform.nodes.datastore import Datastore
-from urban_compute_platform.nodes.executor import Executor
-from urban_compute_platform.util.log import LOG
+from rec.model import NodeRole
+from rec.nodes.broker import Broker
+from rec.nodes.client import Client
+from rec.nodes.datastore import Datastore
+from rec.nodes.executor import Executor
+from rec.util.log import LOG
 
 
 def main():

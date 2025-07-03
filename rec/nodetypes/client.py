@@ -1,7 +1,7 @@
 from typing import IO
 from uuid import UUID
 
-from urban_compute_platform.nodetypes.node import Node
+from rec.nodetypes.node import Node
 
 
 class Client(Node):

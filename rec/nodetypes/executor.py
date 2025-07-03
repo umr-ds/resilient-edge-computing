@@ -3,8 +3,8 @@ import time
 from typing import Optional
 from uuid import UUID
 
-from urban_compute_platform.model import Capabilities, JobInfo
-from urban_compute_platform.nodetypes.node import Node
+from rec.model import Capabilities, JobInfo
+from rec.nodetypes.node import Node
 
 
 class Executor(Node):

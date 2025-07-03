@@ -7,12 +7,12 @@ from fastapi.responses import StreamingResponse
 from fastapi_pagination import Page
 from readerwriterlock.rwlock import RWLockWrite
 
-from urban_compute_platform.model import Address, JobInfo
-from urban_compute_platform.nodes.brokers.datastorecache import DatastoreCache
-from urban_compute_platform.nodes.zeroconf_listeners.datastores import DatastoreListener
-from urban_compute_platform.nodetypes.client import Client
-from urban_compute_platform.nodetypes.datastore import Datastore
-from urban_compute_platform.util.log import LOG
+from rec.model import Address, JobInfo
+from rec.nodes.brokers.datastorecache import DatastoreCache
+from rec.nodes.zeroconf_listeners.datastores import DatastoreListener
+from rec.nodetypes.client import Client
+from rec.nodetypes.datastore import Datastore
+from rec.util.log import LOG
 
 
 class DataBroker:

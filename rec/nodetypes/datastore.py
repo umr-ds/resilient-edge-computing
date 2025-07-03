@@ -5,7 +5,7 @@ from uuid import UUID
 import requests
 from fastapi_pagination import Page
 
-from urban_compute_platform.nodetypes.node import Node
+from rec.nodetypes.node import Node
 
 
 class Datastore(Node):

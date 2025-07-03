@@ -2,11 +2,11 @@ import threading
 from typing import Any, Optional
 from uuid import UUID
 
-from urban_compute_platform.model import NodeRole
-from urban_compute_platform.nodes.brokers.databroker import DataBroker
-from urban_compute_platform.nodes.brokers.executorbroker import ExecutorBroker
-from urban_compute_platform.nodes.node import Node
-from urban_compute_platform.util.log import LOG
+from rec.model import NodeRole
+from rec.nodes.brokers.databroker import DataBroker
+from rec.nodes.brokers.executorbroker import ExecutorBroker
+from rec.nodes.node import Node
+from rec.util.log import LOG
 
 
 class Broker(Node):

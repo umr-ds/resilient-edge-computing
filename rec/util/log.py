@@ -28,8 +28,8 @@ class LogFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-LOG = logging.Logger("urban_compute_platform_logger")
-if __name__ == "urban_compute_platform.util.log":
+LOG = logging.Logger("rec_logger")
+if __name__ == "rec.util.log":
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(LogFormatter())
     handler.setLevel(logging.DEBUG)
