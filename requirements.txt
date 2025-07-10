@@ -11,3 +11,4 @@ zeroconf
 pydantic
 readerwriterlock
 black
+pre-commit
