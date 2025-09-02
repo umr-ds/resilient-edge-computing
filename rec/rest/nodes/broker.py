@@ -2,10 +2,10 @@ import threading
 from typing import Any, Optional
 from uuid import UUID
 
-from rec.model import NodeRole
-from rec.nodes.brokers.databroker import DataBroker
-from rec.nodes.brokers.executorbroker import ExecutorBroker
-from rec.nodes.node import Node
+from rec.rest.model import NodeRole
+from rec.rest.nodes.brokers.databroker import DataBroker
+from rec.rest.nodes.brokers.executorbroker import ExecutorBroker
+from rec.rest.nodes.node import Node
 from rec.util.log import LOG
 
 

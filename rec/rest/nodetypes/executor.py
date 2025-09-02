@@ -3,8 +3,8 @@ import time
 from typing import Optional
 from uuid import UUID
 
-from rec.model import Capabilities, JobInfo
-from rec.nodetypes.node import Node
+from rec.rest.model import Capabilities, JobInfo
+from rec.rest.nodetypes.node import Node
 
 
 class Executor(Node):

@@ -9,9 +9,9 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from readerwriterlock.rwlock import RWLockWrite
 
-from rec.model import Capabilities, JobInfo
-from rec.nodes.node import Node
-from rec.nodetypes.executor import Executor
+from rec.rest.model import Capabilities, JobInfo
+from rec.rest.nodes.node import Node
+from rec.rest.nodetypes.executor import Executor
 from rec.util.log import LOG
 
 

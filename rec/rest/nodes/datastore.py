@@ -10,9 +10,9 @@ from fastapi.responses import FileResponse
 from fastapi_pagination import add_pagination, Page, paginate
 from readerwriterlock.rwlock import RWLockWrite
 
-from rec.model import NodeRole
-from rec.nodes.node import Node
-from rec.nodes.zeroconf_listeners.datastores import DatastoreListener
+from rec.rest.model import NodeRole
+from rec.rest.nodes.node import Node
+from rec.rest.nodes.zeroconf_listeners.datastores import DatastoreListener
 from rec.util.fs import prevent_breakout
 from rec.util.log import LOG
 

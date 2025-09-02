@@ -4,9 +4,9 @@ from typing import Callable, IO, Optional
 from uuid import UUID
 from zipfile import ZipFile
 
-from rec.exceptions import WasmRestException
-from rec.model import JobInfo
-from rec.nodetypes.broker import Broker
+from rec.util.exceptions import WasmRestException
+from rec.rest.model import JobInfo
+from rec.rest.nodetypes.broker import Broker
 from rec.util.execute_wasm import run_webassembly
 from rec.util.fs import (
     prevent_breakout,

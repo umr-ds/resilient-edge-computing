@@ -7,11 +7,11 @@ from fastapi.responses import StreamingResponse
 from fastapi_pagination import Page
 from readerwriterlock.rwlock import RWLockWrite
 
-from rec.model import Address, JobInfo
-from rec.nodes.brokers.datastorecache import DatastoreCache
-from rec.nodes.zeroconf_listeners.datastores import DatastoreListener
-from rec.nodetypes.client import Client
-from rec.nodetypes.datastore import Datastore
+from rec.rest.model import Address, JobInfo
+from rec.rest.nodes.brokers.datastorecache import DatastoreCache
+from rec.rest.nodes.zeroconf_listeners.datastores import DatastoreListener
+from rec.rest.nodetypes.client import Client
+from rec.rest.nodetypes.datastore import Datastore
 from rec.util.log import LOG
 
 

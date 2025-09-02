@@ -8,12 +8,12 @@ from fastapi import HTTPException, UploadFile
 from pydantic import ValidationError
 from readerwriterlock.rwlock import RWLockWrite
 
-from rec.exceptions import WasmRestException
-from rec.job import ClientJob
-from rec.model import ExecutionPlan, JobInfo, NodeRole
-from rec.nodes.node import Node
-from rec.nodes.zeroconf_listeners.brokers import BrokerListener
-from rec.nodetypes.broker import Broker
+from rec.rest.job import ClientJob
+from rec.rest.model import ExecutionPlan, JobInfo, NodeRole
+from rec.rest.nodes.node import Node
+from rec.rest.nodes.zeroconf_listeners.brokers import BrokerListener
+from rec.rest.nodetypes.broker import Broker
+from rec.util.exceptions import WasmRestException
 from rec.util.fs import put_file, try_store_named_data
 from rec.util.log import LOG
 

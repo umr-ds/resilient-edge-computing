@@ -1,7 +1,7 @@
 from typing import IO
 from uuid import UUID
 
-from rec.nodetypes.node import Node
+from rec.rest.nodetypes.node import Node
 
 
 class Client(Node):

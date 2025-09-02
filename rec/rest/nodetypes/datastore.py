@@ -5,7 +5,7 @@ from uuid import UUID
 import requests
 from fastapi_pagination import Page
 
-from rec.nodetypes.node import Node
+from rec.rest.nodetypes.node import Node
 
 
 class Datastore(Node):

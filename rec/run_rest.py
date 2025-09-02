@@ -3,11 +3,11 @@ import argparse
 import logging
 import random
 
-from rec.model import NodeRole
-from rec.nodes.broker import Broker
-from rec.nodes.client import Client
-from rec.nodes.datastore import Datastore
-from rec.nodes.executor import Executor
+from rec.rest.model import NodeRole
+from rec.rest.nodes.broker import Broker
+from rec.rest.nodes.client import Client
+from rec.rest.nodes.datastore import Datastore
+from rec.rest.nodes.executor import Executor
 from rec.util.log import LOG
 
 

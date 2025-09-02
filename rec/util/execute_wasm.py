@@ -4,7 +4,7 @@ from typing import Optional
 
 from wasmtime import Linker, Module, Store, Trap, WasiConfig, WasmtimeError
 
-from rec.exceptions import WasmRestException
+from rec.util.exceptions import WasmRestException
 from rec.util.log import LOG
 
 

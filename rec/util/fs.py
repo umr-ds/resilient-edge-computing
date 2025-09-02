@@ -3,7 +3,7 @@ from typing import IO, Optional
 from uuid import UUID
 from zipfile import ZipFile
 
-from rec.nodetypes.broker import Broker
+from rec.rest.nodetypes.broker import Broker
 
 
 def zip_folder(zip_file: ZipFile, host: str, to_zip: str) -> None:

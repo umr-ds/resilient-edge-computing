@@ -5,7 +5,7 @@ from uuid import UUID
 import requests
 from pydantic import BaseModel
 
-from rec.model import Address
+from rec.rest.model import Address
 
 
 class Node(BaseModel):

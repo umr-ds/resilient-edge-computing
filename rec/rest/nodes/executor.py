@@ -12,13 +12,13 @@ import psutil
 from fastapi import HTTPException
 from readerwriterlock.rwlock import RWLockWrite
 
-from rec.exceptions import WasmRestException
-from rec.job import ExecutorJob
-from rec.model import Address, Capabilities, JobInfo, NodeRole
-from rec.nodes.node import Node
-from rec.nodes.zeroconf_listeners.brokers import BrokerListener
-from rec.nodetypes.broker import Broker
-from rec.nodetypes.executor import Executor as ExecutorObject
+from rec.rest.job import ExecutorJob
+from rec.rest.model import Address, Capabilities, JobInfo, NodeRole
+from rec.rest.nodes.node import Node
+from rec.rest.nodes.zeroconf_listeners.brokers import BrokerListener
+from rec.rest.nodetypes.broker import Broker
+from rec.rest.nodetypes.executor import Executor as ExecutorObject
+from rec.util.exceptions import WasmRestException
 from rec.util.log import LOG
 
 

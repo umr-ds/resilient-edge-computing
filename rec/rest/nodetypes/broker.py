@@ -5,9 +5,9 @@ from uuid import UUID
 
 import requests
 
-from rec.model import Capabilities, JobInfo
-from rec.nodetypes.executor import Executor
-from rec.nodetypes.node import Node
+from rec.rest.model import Capabilities, JobInfo
+from rec.rest.nodetypes.executor import Executor
+from rec.rest.nodetypes.node import Node
 
 
 class Broker(Node):

@@ -38,7 +38,7 @@ classifiers = [
 ]
 
 [project.scripts]
-rec = "rec.run:main"
+rec_rest = "rec.run_rest:main"
 
 [project.urls]
 Repository = "https://github.com/umr-ds/resilient-edge-computing"

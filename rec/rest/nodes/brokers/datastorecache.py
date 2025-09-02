@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi_pagination import Page
 from pydantic import BaseModel
 
-from rec.nodetypes.datastore import Datastore
+from rec.rest.nodetypes.datastore import Datastore
 
 
 class CachePage(BaseModel):
