@@ -1,4 +1,12 @@
 from abc import ABC, abstractmethod
+from enum import IntEnum
+
+
+class NodeType(IntEnum):
+    BROKER = 1
+    EXECUTOR = 2
+    DATASTORE = 3
+    CLIENT = 4
 
 
 class Node(ABC):
