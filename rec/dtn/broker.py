@@ -1,17 +1,7 @@
 from queue import Queue
-from typing import override
 from socket import socket, AF_UNIX, SOCK_STREAM
 
-from rec.dtn.messages import (
-    serialize,
-    deserialize,
-    Message,
-    Reply,
-    MsgType,
-    MsgStatus,
-    JobsQuery,
-    JobsReply,
-)
+from rec.dtn.messages import *
 from rec.dtn.node import Node
 from rec.util.log import LOG
 
@@ -30,49 +20,46 @@ class Broker(Node):
 
     @override
     def run(self) -> None:
-        LOG.info(f"Staring unix listener on {self.dtn_agent_socket}")
+        message = Register(Type=MsgType.REGISTER, EID=self.node_id)
+        _ = self._send_message(message=message)
+
+    def _send_message(self, message: Message) -> Reply:
+        LOG.info(f"Connecting to dtnd on {self.dtn_agent_socket}")
         with socket(AF_UNIX, SOCK_STREAM) as s:
-            s.bind(self.dtn_agent_socket)
-            s.listen(1)
+            s.connect(self.dtn_agent_socket)
+            LOG.debug("Connected to dtnd")
 
-            conn, _ = s.accept()
-            with conn:
-                LOG.debug("Accepted connection")
+            ## serialize and send message
+            message_bytes = serialize(message=message)
+            message_length = len(message_bytes)
+            LOG.debug(f"Message length: {message_length}")
+            message_length_bytes = message_length.to_bytes(
+                length=8, byteorder="big", signed=False
+            )
 
-                # receive and deserialize message
-                data = conn.recv(4)
-                message_length = int.from_bytes(
-                    bytes=data, byteorder="big", signed=False
-                )
-                LOG.debug(f"Message length: {message_length}")
+            s.sendall(message_length_bytes)
+            LOG.debug("Sent message length")
+            s.sendall(message_bytes)
+            LOG.debug("Sent message")
 
-                data = conn.recv(message_length)
-                message = deserialize(data=data)
+            # receive and deserialize reply
+            data = s.recv(8)
+            reply_length = int.from_bytes(bytes=data, byteorder="big", signed=False)
+            LOG.debug(f"Reply length: {reply_length}")
 
-                LOG.debug(f"Received message: {message}")
+            data = s.recv(reply_length)
+            reply = deserialize(data=data)
+            LOG.debug(f"Received reply: {reply}")
 
-                reply = self._handle_message(message=message)
-                LOG.debug(f"Sending reply: {reply}")
+            assert isinstance(reply, Reply)
+            return reply
 
-                ## serialize and send reply
-                reply_bytes = serialize(message=reply)
-                reply_length = len(reply_bytes)
-                LOG.debug(f"Reply length: {reply_length}")
-                reply_length_bytes = reply_length.to_bytes(
-                    length=4, byteorder="big", signed=False
-                )
-
-                s.sendall(reply_length_bytes)
-                LOG.debug("Sent reply length")
-                s.sendall(reply_bytes)
-                LOG.debug("Sent reply")
-
-    def _handle_message(self, message: Message) -> Message:
+    def _handle_bundle_message(self, message: BundleMessage) -> Message:
         if isinstance(message, JobsQuery):
             return self._handle_jobs_query(message)
 
-        return Reply(
-            Type=MsgType.GENERAL_REPLY,
+        return BundleReply(
+            Type=MsgType.REPLY,
             Sender=self.dtn_id,
             Recipient=message.Sender,
             Status=MsgStatus.FAILURE,

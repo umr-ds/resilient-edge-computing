@@ -56,7 +56,6 @@ class Reply(Message):
 @dataclass
 class Register(Message):
     EID: str
-    NType: NodeType
 
     @override
     def dictify(self) -> dict:
@@ -84,9 +83,7 @@ class FetchReply(Reply):
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
-        own_dict = {
-            "Messages": [message.dictify() for message in self.Messages]
-        }
+        own_dict = {"Messages": [message.dictify() for message in self.Messages]}
         return parent_dict | own_dict
 
 
@@ -148,11 +145,9 @@ def serialize(message: Message) -> bytes:
 def deserialize(data: bytes) -> Message:
     data_dict = unpackb(data)
 
-    if data_dict["Type"] == MsgType.JOBS_QUERY:
-        LOG.debug("Message is JobsQuery")
-        return JobsQuery(**data_dict)
-    if data_dict["Type"] == MsgType.JOBS_REPLY:
-        LOG.debug("Message is JobsReply")
-        return JobsReply(**data_dict)
-
-    raise InvalidMessageError(data_dict)
+    match data_dict["Type"]:
+        case MsgType.REPLY:
+            LOG.debug("Message is control reply")
+            return Reply(**data_dict)
+        case _:
+            raise InvalidMessageError(data_dict)
