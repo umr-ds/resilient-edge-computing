@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import logging
+import asyncio
 
 from argparse import ArgumentParser, Namespace
 
@@ -11,7 +12,7 @@ from rec.util.log import LOG
 def _run_broker(args: Namespace) -> None:
     LOG.info("Running in broker-mode")
     broker = Broker(node_id=args.id, dtn_agent_socket=args.socket)
-    broker.run()
+    asyncio.run(broker.run())
 
 
 def _run_client(args: Namespace) -> None:

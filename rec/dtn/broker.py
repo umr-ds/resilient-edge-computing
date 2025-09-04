@@ -1,3 +1,4 @@
+import asyncio
 from queue import Queue
 from socket import socket, AF_UNIX, SOCK_STREAM
 
@@ -19,11 +20,12 @@ class Broker(Node):
         self.queued_jobs = Queue()
 
     @override
-    def run(self) -> None:
+    async def run(self) -> None:
         message = Register(Type=MsgType.REGISTER, EID=self.node_id)
-        _ = self._send_message(message=message)
+        _ = await self._send_message(message=message)
 
-    def _send_message(self, message: Message) -> Reply:
+    async def _send_message(self, message: Message) -> Reply:
+        loop = asyncio.get_running_loop()
         LOG.info(f"Connecting to dtnd on {self.dtn_agent_socket}")
         with socket(AF_UNIX, SOCK_STREAM) as s:
             s.connect(self.dtn_agent_socket)
@@ -37,17 +39,17 @@ class Broker(Node):
                 length=8, byteorder="big", signed=False
             )
 
-            s.sendall(message_length_bytes)
+            await loop.sock_sendall(s, message_length_bytes)
             LOG.debug("Sent message length")
-            s.sendall(message_bytes)
+            await loop.sock_sendall(s, message_bytes)
             LOG.debug("Sent message")
 
             # receive and deserialize reply
-            data = s.recv(8)
+            data = await loop.sock_recv(s, 8)
             reply_length = int.from_bytes(bytes=data, byteorder="big", signed=False)
             LOG.debug(f"Reply length: {reply_length}")
 
-            data = s.recv(reply_length)
+            data = await loop.sock_recv(s, reply_length)
             reply = deserialize(data=data)
             LOG.debug(f"Received reply: {reply}")
 

@@ -14,5 +14,5 @@ class Node(ABC):
     dtn_agent_socket: str
 
     @abstractmethod
-    def run(self) -> None:
+    async def run(self) -> None:
         pass
