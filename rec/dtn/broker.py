@@ -1,6 +1,5 @@
 import asyncio
 from queue import Queue
-from socket import socket, AF_UNIX, SOCK_STREAM
 
 from rec.dtn.messages import *
 from rec.dtn.node import Node
@@ -22,57 +21,34 @@ class Broker(Node):
     @override
     async def run(self) -> None:
         message = Register(Type=MsgType.REGISTER, EID=self.node_id)
-        _ = await self._send_message(message=message)
 
-    async def _send_message(self, message: Message) -> Reply:
-        loop = asyncio.get_running_loop()
-        LOG.info(f"Connecting to dtnd on {self.dtn_agent_socket}")
-        with socket(AF_UNIX, SOCK_STREAM) as s:
-            s.connect(self.dtn_agent_socket)
-            LOG.debug("Connected to dtnd")
+        try:
+            reply = await self._send_message(message=message)
+        except FileNotFoundError as err:
+            LOG.critical("Error connecting to dtnd: %s", err, exc_info=True)
+            return
 
-            ## serialize and send message
-            message_bytes = serialize(message=message)
-            message_length = len(message_bytes)
-            LOG.debug(f"Message length: {message_length}")
-            message_length_bytes = message_length.to_bytes(
-                length=8, byteorder="big", signed=False
-            )
+        if not reply.Success:
+            LOG.critical("Error registering with dtnd: %s", reply.Error)
+            return
 
-            await loop.sock_sendall(s, message_length_bytes)
-            LOG.debug("Sent message length")
-            await loop.sock_sendall(s, message_bytes)
-            LOG.debug("Sent message")
+        async with asyncio.TaskGroup() as tg:
+            bundle_handler = tg.create_task(self._handle_bundle_messages())
+            job_scheduler = tg.create_task(self._schedule_jobs())
 
-            # receive and deserialize reply
-            data = await loop.sock_recv(s, 8)
-            reply_length = int.from_bytes(bytes=data, byteorder="big", signed=False)
-            LOG.debug(f"Reply length: {reply_length}")
+    async def _handle_bundle_messages(self) -> None:
+        while True:
+            await asyncio.sleep(11)
 
-            data = await loop.sock_recv(s, reply_length)
-            reply = deserialize(data=data)
-            LOG.debug(f"Received reply: {reply}")
+    async def _schedule_jobs(self) -> None:
+        while True:
+            await asyncio.sleep(1)
 
-            assert isinstance(reply, Reply)
-            return reply
-
-    def _handle_bundle_message(self, message: BundleMessage) -> Message:
-        if isinstance(message, JobsQuery):
-            return self._handle_jobs_query(message)
-
-        return BundleReply(
-            Type=MsgType.REPLY,
-            Sender=self.dtn_id,
-            Recipient=message.Sender,
-            Status=MsgStatus.FAILURE,
-            Text="Unsupported Message",
-        )
-
-    def _handle_jobs_query(self, message: JobsQuery) -> Message:
+    def _handle_jobs_query(self, message: JobsQuery) -> BundleMessage:
         queued = [job.job_id for job in list(self.queued_jobs.queue)]
         completed = list(self.completed_jobs)
         return JobsReply(
-            Type=MsgType.JOBS_REPLY,
+            Type=BundleType.JOBS_REPLY,
             Sender=self.dtn_id,
             Recipient=message.Sender,
             Queued=queued,

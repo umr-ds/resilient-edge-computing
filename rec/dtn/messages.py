@@ -7,7 +7,6 @@ from uuid import UUID
 
 from msgpack import packb, unpackb
 
-from rec.dtn.node import NodeType
 from rec.util.log import LOG
 
 
@@ -23,14 +22,14 @@ class MsgType(IntEnum):
     REPLY = 1
     REGISTER = 2
     FETCH = 3
-    BUNDLE_REPLY = 4
-    JOBS_QUERY = 5
-    JOBS_REPLY = 6
+    FETCH_REPLY = 4
 
 
-class MsgStatus(IntEnum):
-    SUCCESS = 1
-    FAILURE = 2
+class NodeType(IntEnum):
+    BROKER = 1
+    EXECUTOR = 2
+    DATASTORE = 3
+    CLIENT = 4
 
 
 @dataclass
@@ -43,8 +42,8 @@ class Message:
 
 @dataclass
 class Reply(Message):
-    Status: MsgStatus
-    Text: str
+    Success: bool
+    Error: str
 
     @override
     def dictify(self) -> dict:
@@ -88,27 +87,29 @@ class FetchReply(Reply):
 
 
 @dataclass
-class BundleMessage(Message):
-    Sender: str
-    Recipient: str
+class BundleCreate(Message):
+    Bndl: BundleMessage
 
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
-        own_dict = self.__dict__
+        own_dict = {"Bndl": self.Bndl.dictify()}
         return parent_dict | own_dict
+
+
+class BundleType(IntEnum):
+    JOBS_QUERY = 1
+    JOBS_REPLY = 2
 
 
 @dataclass
-class BundleReply(Reply):
+class BundleMessage:
+    Type: BundleType
     Sender: str
     Recipient: str
 
-    @override
     def dictify(self) -> dict:
-        parent_dict = super().dictify()
-        own_dict = self.__dict__
-        return parent_dict | own_dict
+        return self.__dict__
 
 
 @dataclass
@@ -123,7 +124,7 @@ class JobsQuery(BundleMessage):
 
 
 @dataclass
-class JobsReply(BundleReply):
+class JobsReply(BundleMessage):
     Queued: list[UUID]
     Completed: list[UUID]
 
