@@ -23,6 +23,7 @@ class MsgType(IntEnum):
     REGISTER = 2
     FETCH = 3
     FETCH_REPLY = 4
+    CREATE = 5
 
 
 class NodeType(IntEnum):
@@ -77,7 +78,7 @@ class Fetch(Message):
 
 @dataclass
 class FetchReply(Reply):
-    Messages: list[BundleMessage]
+    Messages: list[BundleData]
 
     @override
     def dictify(self) -> dict:
@@ -88,12 +89,12 @@ class FetchReply(Reply):
 
 @dataclass
 class BundleCreate(Message):
-    Bndl: BundleMessage
+    Bundle: BundleData
 
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
-        own_dict = {"Bndl": self.Bndl.dictify()}
+        own_dict = {"Bundle": self.Bundle.dictify()}
         return parent_dict | own_dict
 
 
@@ -103,39 +104,15 @@ class BundleType(IntEnum):
 
 
 @dataclass
-class BundleMessage:
+class BundleData:
     Type: BundleType
     Sender: str
     Recipient: str
+    Payload: bytes
+    Metadata: dict[str, str]
 
     def dictify(self) -> dict:
         return self.__dict__
-
-
-@dataclass
-class JobsQuery(BundleMessage):
-    Submitter: str
-
-    @override
-    def dictify(self) -> dict:
-        parent_dict = super().dictify()
-        own_dict = self.__dict__
-        return parent_dict | own_dict
-
-
-@dataclass
-class JobsReply(BundleMessage):
-    Queued: list[UUID]
-    Completed: list[UUID]
-
-    @override
-    def dictify(self) -> dict:
-        parent_dict = super().dictify()
-        own_dict = {
-            "Queued": [str(uid) for uid in self.Queued],
-            "Completed": [str(uid) for uid in self.Completed],
-        }
-        return parent_dict | own_dict
 
 
 def serialize(message: Message) -> bytes:

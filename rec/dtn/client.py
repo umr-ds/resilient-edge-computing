@@ -1,31 +1,41 @@
 #! /usr/bin/env python3
 
-from socket import socket, AF_UNIX, SOCK_STREAM
+import asyncio
 
-from rec.dtn.messages import JobsQuery, MsgType
+from rec.dtn.messages import *
+from rec.dtn.node import Node
 
 
-DTN_ID = "dtn://test_1/"
+DTN_ID = "dtn://client_1/"
 DTN_SOCKET = "/tmp/rec_test_1.sock"
 
 
+@dataclass
+class Client(Node):
+
+    @override
+    async def run(self) -> None:
+        message = Register(Type=MsgType.REGISTER, EID=self.node_id)
+
+        try:
+            reply = await self._send_message(message=message)
+        except FileNotFoundError as err:
+            LOG.critical("Error connecting to dtnd: %s", err, exc_info=True)
+            return
+
+        if not reply.Success:
+            LOG.critical("Error registering with dtnd: %s", reply.Error)
+            return
+
+        test_bundle = BundleData(Type=BundleType.JOBS_QUERY, Sender=self.node_id, Recipient="dtn://broker_1/", Payload=b'test', Metadata={})
+        message = BundleCreate(Type=MsgType.CREATE, Bundle=test_bundle)
+        reply = await self._send_message(message=message)
+        print(reply)
+
+
 def main() -> None:
-    with socket(AF_UNIX, SOCK_STREAM) as s:
-        s.connect(DTN_SOCKET)
-        print("Connected")
-
-        message = JobsQuery(Type=MsgType.JOBS_QUERY, Sender=DTN_ID, Submitter=DTN_ID)
-        message_bytes = message.serialize()
-        message_length = len(message_bytes)
-        print(f"Message length: {message_length}")
-        message_length_bytes = message_length.to_bytes(
-            length=4, byteorder="big", signed=False
-        )
-
-        s.sendall(message_length_bytes)
-        print("Sent message length")
-        s.sendall(message_bytes)
-        print("Sent message")
+    client = Client(node_id=DTN_ID, dtn_agent_socket=DTN_SOCKET)
+    asyncio.run(client.run())
 
 
 if __name__ == "__main__":

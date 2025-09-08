@@ -6,8 +6,9 @@ from socket import socket, AF_UNIX, SOCK_STREAM
 from rec.dtn.messages import *
 
 
+@dataclass
 class Node(ABC):
-    dtn_id: str
+    node_id: str
     dtn_agent_socket: str
 
     @abstractmethod

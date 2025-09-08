@@ -22,7 +22,7 @@ def _run_client(args: Namespace) -> None:
 def main() -> None:
     parser = ArgumentParser(prog="rec")
     parser.add_argument(
-        "-i", "--id", default="dtn://test/", help="NodeID (must be valid bpv7 node id)"
+        "-i", "--id", default="dtn://broker_1/", help="NodeID (must be valid bpv7 node id)"
     )
     parser.add_argument(
         "-s",

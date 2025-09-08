@@ -7,14 +7,11 @@ from rec.util.log import LOG
 
 
 class Broker(Node):
-    node_id: str
-    dtn_agent_socket: str
     completed_jobs: set
     queued_jobs: Queue
 
     def __init__(self, node_id: str, dtn_agent_socket: str):
-        self.node_id = node_id
-        self.dtn_agent_socket = dtn_agent_socket
+        super().__init__(node_id=node_id, dtn_agent_socket=dtn_agent_socket)
         self.completed_jobs = set()
         self.queued_jobs = Queue()
 
@@ -44,7 +41,7 @@ class Broker(Node):
         while True:
             await asyncio.sleep(1)
 
-    def _handle_jobs_query(self, message: JobsQuery) -> BundleMessage:
+    def _handle_jobs_query(self, message: JobsQuery) -> BundleData:
         queued = [job.job_id for job in list(self.queued_jobs.queue)]
         completed = list(self.completed_jobs)
         return JobsReply(
