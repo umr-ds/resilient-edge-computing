@@ -4,6 +4,7 @@ import asyncio
 
 from rec.dtn.messages import *
 from rec.dtn.node import Node
+from rec.util.log import LOG
 
 
 DTN_ID = "dtn://client_1/"
@@ -15,7 +16,7 @@ class Client(Node):
 
     @override
     async def run(self) -> None:
-        message = Register(Type=MsgType.REGISTER, EID=self.node_id)
+        message = Register(Type=MessageType.REGISTER, EndpointID=self.node_id)
 
         try:
             reply = await self._send_message(message=message)
@@ -24,11 +25,16 @@ class Client(Node):
             return
 
         if not reply.Success:
-            LOG.critical("Error registering with dtnd: %s", reply.Error)
-            return
+            LOG.info("Error registering with dtnd: %s", reply.Error)
 
-        test_bundle = BundleData(Type=BundleType.JOBS_QUERY, Sender=self.node_id, Recipient="dtn://broker_1/", Payload=b'test', Metadata={})
-        message = BundleCreate(Type=MsgType.CREATE, Bundle=test_bundle)
+        test_bundle = BundleData(
+            Type=BundleType.JOBS_QUERY,
+            Source=self.node_id,
+            Destination="dtn://broker_1/",
+            Payload=b"test",
+            Metadata={"Submitter": "dtn://client_1/"},
+        )
+        message = BundleCreate(Type=MessageType.CREATE, Bundle=test_bundle)
         reply = await self._send_message(message=message)
         print(reply)
 

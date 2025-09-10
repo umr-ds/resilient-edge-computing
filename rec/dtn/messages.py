@@ -3,11 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import override
-from uuid import UUID
 
 from msgpack import packb, unpackb
-
-from rec.util.log import LOG
 
 
 @dataclass
@@ -18,7 +15,7 @@ class InvalidMessageError(Exception):
         return f"Data is not valid message: {self.data}"
 
 
-class MsgType(IntEnum):
+class MessageType(IntEnum):
     REPLY = 1
     REGISTER = 2
     FETCH = 3
@@ -35,7 +32,7 @@ class NodeType(IntEnum):
 
 @dataclass
 class Message:
-    Type: MsgType
+    Type: MessageType
 
     def dictify(self) -> dict:
         return self.__dict__
@@ -55,7 +52,7 @@ class Reply(Message):
 
 @dataclass
 class Register(Message):
-    EID: str
+    EndpointID: str
 
     @override
     def dictify(self) -> dict:
@@ -66,8 +63,8 @@ class Register(Message):
 
 @dataclass
 class Fetch(Message):
-    EID: str
-    NType: NodeType
+    EndpointID: str
+    NodeType: NodeType
 
     @override
     def dictify(self) -> dict:
@@ -76,20 +73,33 @@ class Fetch(Message):
         return parent_dict | own_dict
 
 
-@dataclass
+@dataclass(init=False)
 class FetchReply(Reply):
-    Messages: list[BundleData]
+    Bundles: list[BundleData]
+
+    def __init__(self, *args, Bundles: list[dict], **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.Bundles = []
+        for bundle in Bundles:
+            self.Bundles.append(BundleData(**bundle))
 
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
-        own_dict = {"Messages": [message.dictify() for message in self.Messages]}
+        own_dict = {"Bundles": [message.dictify() for message in self.Bundles]}
         return parent_dict | own_dict
 
 
-@dataclass
+@dataclass(init=False)
 class BundleCreate(Message):
     Bundle: BundleData
+
+    def __init__(self, *args, Bundle: dict | BundleData, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        if isinstance(Bundle, BundleData):
+            self.Bundle = Bundle
+        else:
+            self.Bundle = BundleData(**Bundle)
 
     @override
     def dictify(self) -> dict:
@@ -106,8 +116,8 @@ class BundleType(IntEnum):
 @dataclass
 class BundleData:
     Type: BundleType
-    Sender: str
-    Recipient: str
+    Source: str
+    Destination: str
     Payload: bytes
     Metadata: dict[str, str]
 
@@ -120,12 +130,19 @@ def serialize(message: Message) -> bytes:
     return packb(data)
 
 
+MESSAGE_CONSTRUCTORS: dict[MessageType, type[Message]] = {
+    MessageType.REPLY: Reply,
+    MessageType.REGISTER: Register,
+    MessageType.FETCH: Fetch,
+    MessageType.FETCH_REPLY: FetchReply,
+    MessageType.CREATE: BundleCreate,
+}
+
+
 def deserialize(data: bytes) -> Message:
     data_dict = unpackb(data)
 
-    match data_dict["Type"]:
-        case MsgType.REPLY:
-            LOG.debug("Message is control reply")
-            return Reply(**data_dict)
-        case _:
-            raise InvalidMessageError(data_dict)
+    if data_dict["Type"] not in MESSAGE_CONSTRUCTORS:
+        raise InvalidMessageError(data_dict)
+
+    return MESSAGE_CONSTRUCTORS[data_dict["Type"]](**data_dict)
