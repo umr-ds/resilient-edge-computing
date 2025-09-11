@@ -1,6 +1,9 @@
 #! /usr/bin/env python3
 
 import asyncio
+import time
+
+import msgpack
 
 from rec.dtn.messages import *
 from rec.dtn.node import Node
@@ -37,6 +40,12 @@ class Client(Node):
         message = BundleCreate(Type=MessageType.CREATE, Bundle=test_bundle)
         reply = await self._send_message(message=message)
         print(reply)
+
+        time.sleep(30)
+
+        bundles = await self._get_new_bundles(NodeType.CLIENT)
+        jobs = msgpack.unpackb(bundles[0].Payload)
+        print(jobs)
 
 
 def main() -> None:

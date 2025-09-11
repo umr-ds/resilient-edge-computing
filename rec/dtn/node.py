@@ -47,3 +47,21 @@ class Node(ABC):
 
             assert isinstance(reply, Reply)
             return reply
+
+    async def _get_new_bundles(self, node_type: NodeType) -> list[BundleData]:
+        LOG.debug("Retrieving new bundles")
+        bundles: list[BundleData] = []
+
+        message = Fetch(
+            Type=MessageType.FETCH, EndpointID=self.node_id, NodeType=node_type
+        )
+        reply = await self._send_message(message=message)
+
+        assert isinstance(reply, FetchReply)
+
+        if reply.Success:
+            bundles = reply.Bundles
+        else:
+            LOG.error("dtnd replied with error: %s", reply.Error)
+
+        return bundles

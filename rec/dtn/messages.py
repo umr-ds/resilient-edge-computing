@@ -15,19 +15,19 @@ class InvalidMessageError(Exception):
         return f"Data is not valid message: {self.data}"
 
 
+class NodeType(IntEnum):
+    BROKER = 1
+    EXECUTOR = 2
+    DATASTORE = 3
+    CLIENT = 4
+
+
 class MessageType(IntEnum):
     REPLY = 1
     REGISTER = 2
     FETCH = 3
     FETCH_REPLY = 4
     CREATE = 5
-
-
-class NodeType(IntEnum):
-    BROKER = 1
-    EXECUTOR = 2
-    DATASTORE = 3
-    CLIENT = 4
 
 
 @dataclass
@@ -79,9 +79,7 @@ class FetchReply(Reply):
 
     def __init__(self, *args, Bundles: list[dict], **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.Bundles = []
-        for bundle in Bundles:
-            self.Bundles.append(BundleData(**bundle))
+        self.Bundles = [BundleData(**bundle) for bundle in Bundles]
 
     @override
     def dictify(self) -> dict:
@@ -106,6 +104,12 @@ class BundleCreate(Message):
         parent_dict = super().dictify()
         own_dict = {"Bundle": self.Bundle.dictify()}
         return parent_dict | own_dict
+
+
+BROKER_MULTICAST_ADDRESS = "dtn://rec.broker/~"
+DATASTORE_MULTICAST_ADDRESS = "dtn://rec.store/~"
+EXECUTOR_MULTICAST_ADDRESS = "dtn://rec.executor/~"
+CLIENT_MULTICAST_ADDRESS = "dtn://rec.client/~"
 
 
 class BundleType(IntEnum):
@@ -140,7 +144,7 @@ MESSAGE_CONSTRUCTORS: dict[MessageType, type[Message]] = {
 
 
 def deserialize(data: bytes) -> Message:
-    data_dict = unpackb(data)
+    data_dict: dict = unpackb(data)
 
     if data_dict["Type"] not in MESSAGE_CONSTRUCTORS:
         raise InvalidMessageError(data_dict)
