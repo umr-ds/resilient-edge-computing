@@ -32,7 +32,7 @@ class MessageType(IntEnum):
 
 @dataclass
 class Message:
-    Type: MessageType
+    type: MessageType
 
     def dictify(self) -> dict:
         return self.__dict__
@@ -40,8 +40,8 @@ class Message:
 
 @dataclass
 class Reply(Message):
-    Success: bool
-    Error: str
+    success: bool
+    error: str
 
     @override
     def dictify(self) -> dict:
@@ -52,7 +52,7 @@ class Reply(Message):
 
 @dataclass
 class Register(Message):
-    EndpointID: str
+    endpoint_id: str
 
     @override
     def dictify(self) -> dict:
@@ -63,8 +63,8 @@ class Register(Message):
 
 @dataclass
 class Fetch(Message):
-    EndpointID: str
-    NodeType: NodeType
+    endpoint_id: str
+    node_type: NodeType
 
     @override
     def dictify(self) -> dict:
@@ -75,34 +75,34 @@ class Fetch(Message):
 
 @dataclass(init=False)
 class FetchReply(Reply):
-    Bundles: list[BundleData]
+    bundles: list[BundleData]
 
-    def __init__(self, *args, Bundles: list[dict], **kwargs) -> None:
+    def __init__(self, *args, bundles: list[dict], **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.Bundles = [BundleData(**bundle) for bundle in Bundles]
+        self.bundles = [BundleData(**bundle) for bundle in bundles]
 
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
-        own_dict = {"Bundles": [message.dictify() for message in self.Bundles]}
+        own_dict = {"bundles": [message.dictify() for message in self.bundles]}
         return parent_dict | own_dict
 
 
 @dataclass(init=False)
 class BundleCreate(Message):
-    Bundle: BundleData
+    bundle: BundleData
 
-    def __init__(self, *args, Bundle: dict | BundleData, **kwargs) -> None:
+    def __init__(self, *args, bundle: dict | BundleData, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        if isinstance(Bundle, BundleData):
-            self.Bundle = Bundle
+        if isinstance(bundle, BundleData):
+            self.bundle = bundle
         else:
-            self.Bundle = BundleData(**Bundle)
+            self.bundle = BundleData(**bundle)
 
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
-        own_dict = {"Bundle": self.Bundle.dictify()}
+        own_dict = {"bundle": self.bundle.dictify()}
         return parent_dict | own_dict
 
 
@@ -119,14 +119,18 @@ class BundleType(IntEnum):
 
 @dataclass
 class BundleData:
-    Type: BundleType
-    Source: str
-    Destination: str
-    Payload: bytes
-    Metadata: dict[str, str]
+    type: BundleType
+    source: str
+    destination: str
+    payload: bytes
+    submitter: str = ""
 
     def dictify(self) -> dict:
-        return self.__dict__
+        own_dict = self.__dict__
+        if self.submitter == "":
+            del own_dict["submitter"]
+
+        return own_dict
 
 
 def serialize(message: Message) -> bytes:
@@ -146,7 +150,7 @@ MESSAGE_CONSTRUCTORS: dict[MessageType, type[Message]] = {
 def deserialize(data: bytes) -> Message:
     data_dict: dict = unpackb(data)
 
-    if data_dict["Type"] not in MESSAGE_CONSTRUCTORS:
+    if data_dict["type"] not in MESSAGE_CONSTRUCTORS:
         raise InvalidMessageError(data_dict)
 
-    return MESSAGE_CONSTRUCTORS[data_dict["Type"]](**data_dict)
+    return MESSAGE_CONSTRUCTORS[data_dict["type"]](**data_dict)

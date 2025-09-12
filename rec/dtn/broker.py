@@ -28,7 +28,7 @@ class Broker(Node):
 
     @override
     async def run(self) -> None:
-        message = Register(Type=MessageType.REGISTER, EndpointID=self.node_id)
+        message = Register(type=MessageType.REGISTER, endpoint_id=self.node_id)
 
         try:
             reply = await self._send_message(message=message)
@@ -36,8 +36,8 @@ class Broker(Node):
             LOG.critical("Error connecting to dtnd: %s", err, exc_info=True)
             return
 
-        if not reply.Success:
-            LOG.critical("Error registering with dtnd: %s", reply.Error)
+        if not reply.success:
+            LOG.critical("Error registering with dtnd: %s", reply.error)
             return
 
         async with asyncio.TaskGroup() as tg:
@@ -64,11 +64,11 @@ class Broker(Node):
                 LOG.exception("Error fetching bundles: %s", err)
 
     async def _handle_bundle(self, bundle: BundleData) -> None:
-        if bundle.Type not in self.bundle_handlers:
+        if bundle.type not in self.bundle_handlers:
             LOG.error("Don't know how to handle bundle")
             return
 
-        await self.bundle_handlers[bundle.Type](bundle)
+        await self.bundle_handlers[bundle.type](bundle)
 
     async def _handle_jobs_query(self, bundle: BundleData) -> None:
         LOG.debug("Handling jobs query")
@@ -79,18 +79,18 @@ class Broker(Node):
             }
             jobs_bytes = msgpack.packb(jobs)
             bundle_response = BundleData(
-                Type=BundleType.JOBS_REPLY,
-                Source=self.node_id,
-                Destination=bundle.Source,
-                Metadata=bundle.Metadata,
-                Payload=jobs_bytes,
+                type=BundleType.JOBS_REPLY,
+                source=self.node_id,
+                destination=bundle.source,
+                submitter=bundle.submitter,
+                payload=jobs_bytes,
             )
 
-        message = BundleCreate(Type=MessageType.CREATE, Bundle=bundle_response)
+        message = BundleCreate(type=MessageType.CREATE, bundle=bundle_response)
         try:
             dtnd_reply = await self._send_message(message=message)
-            if not dtnd_reply.Success:
-                LOG.error("dtnd replied with error: %s", dtnd_reply.Error)
+            if not dtnd_reply.success:
+                LOG.error("dtnd replied with error: %s", dtnd_reply.error)
         except Exception as err:
             LOG.exception("Error creating bundle: %s", err)
 

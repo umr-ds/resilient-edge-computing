@@ -19,7 +19,7 @@ class Client(Node):
 
     @override
     async def run(self) -> None:
-        message = Register(Type=MessageType.REGISTER, EndpointID=self.node_id)
+        message = Register(type=MessageType.REGISTER, endpoint_id=self.node_id)
 
         try:
             reply = await self._send_message(message=message)
@@ -27,24 +27,24 @@ class Client(Node):
             LOG.critical("Error connecting to dtnd: %s", err, exc_info=True)
             return
 
-        if not reply.Success:
-            LOG.info("Error registering with dtnd: %s", reply.Error)
+        if not reply.success:
+            LOG.info("Error registering with dtnd: %s", reply.error)
 
         test_bundle = BundleData(
-            Type=BundleType.JOBS_QUERY,
-            Source=self.node_id,
-            Destination="dtn://broker_1/",
-            Payload=b"test",
-            Metadata={"Submitter": "dtn://client_1/"},
+            type=BundleType.JOBS_QUERY,
+            source=self.node_id,
+            destination="dtn://broker_1/",
+            payload=b"test",
+            submitter="dtn://client_1/",
         )
-        message = BundleCreate(Type=MessageType.CREATE, Bundle=test_bundle)
+        message = BundleCreate(type=MessageType.CREATE, bundle=test_bundle)
         reply = await self._send_message(message=message)
         print(reply)
 
         time.sleep(30)
 
         bundles = await self._get_new_bundles(NodeType.CLIENT)
-        jobs = msgpack.unpackb(bundles[0].Payload)
+        jobs = msgpack.unpackb(bundles[0].payload)
         print(jobs)
 
 

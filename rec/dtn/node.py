@@ -53,15 +53,15 @@ class Node(ABC):
         bundles: list[BundleData] = []
 
         message = Fetch(
-            Type=MessageType.FETCH, EndpointID=self.node_id, NodeType=node_type
+            type=MessageType.FETCH, endpoint_id=self.node_id, node_type=node_type
         )
         reply = await self._send_message(message=message)
 
         assert isinstance(reply, FetchReply)
 
-        if reply.Success:
-            bundles = reply.Bundles
+        if reply.success:
+            bundles = reply.bundles
         else:
-            LOG.error("dtnd replied with error: %s", reply.Error)
+            LOG.error("dtnd replied with error: %s", reply.error)
 
         return bundles
