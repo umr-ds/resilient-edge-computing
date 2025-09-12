@@ -28,17 +28,7 @@ class Broker(Node):
 
     @override
     async def run(self) -> None:
-        message = Register(type=MessageType.REGISTER, endpoint_id=self.node_id)
-
-        try:
-            reply = await self._send_message(message=message)
-        except FileNotFoundError as err:
-            LOG.critical("Error connecting to dtnd: %s", err, exc_info=True)
-            return
-
-        if not reply.success:
-            LOG.critical("Error registering with dtnd: %s", reply.error)
-            return
+        await self._register()
 
         async with asyncio.TaskGroup() as tg:
             bundle_handler = tg.create_task(self._handle_bundle_messages())

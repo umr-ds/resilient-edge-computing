@@ -48,6 +48,19 @@ class Node(ABC):
             assert isinstance(reply, Reply)
             return reply
 
+    async def _register(self) -> None:
+        message = Register(type=MessageType.REGISTER, endpoint_id=self.node_id)
+
+        try:
+            reply = await self._send_message(message=message)
+        except FileNotFoundError as err:
+            LOG.critical("Error connecting to dtnd: %s", err, exc_info=True)
+            return
+
+        if not reply.success:
+            LOG.critical("Error registering with dtnd: %s", reply.error)
+            return
+
     async def _get_new_bundles(self, node_type: NodeType) -> list[BundleData]:
         LOG.debug("Retrieving new bundles")
         bundles: list[BundleData] = []
