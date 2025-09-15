@@ -77,7 +77,7 @@ class Fetch(Message):
 
 @dataclass
 class FetchReply(Reply):
-    bundles: list[BundleData]
+    bundles: list[BundleData | dict]
 
     def __post_init__(self) -> None:
         self.bundles = [
@@ -93,7 +93,7 @@ class FetchReply(Reply):
 
 @dataclass
 class BundleCreate(Message):
-    bundle: BundleData
+    bundle: BundleData | dict
 
     def __post_init__(self) -> None:
         if isinstance(self.bundle, dict):
@@ -115,6 +115,7 @@ CLIENT_MULTICAST_ADDRESS = EID.dtn("rec.client", "~")
 class BundleType(IntEnum):
     JOBS_QUERY = 1
     JOBS_REPLY = 2
+    DATA_SUBMIT = 3
 
 
 @dataclass
@@ -124,13 +125,40 @@ class BundleData:
     destination: EID
     payload: bytes
     submitter: EID | None = None
+    named_data: NamedData | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source, EID):
+            self.source = EID(self.source)
+        if not isinstance(self.destination, EID):
+            self.destination = EID(self.destination)
+
+        if self.submitter is not None:
+            self.submitter = EID(self.submitter)
+
+        if isinstance(self.named_data, dict):
+            self.named_data = NamedData(**self.named_data)
 
     def dictify(self) -> dict:
         own_dict = self.__dict__
         if self.submitter is None:
             del own_dict["submitter"]
+        if self.named_data is None:
+            del own_dict["named_data"]
 
         return own_dict
+
+
+class NamedDataAction(IntEnum):
+    PUT = 1
+    GET = 2
+    DELETE = 3
+
+
+@dataclass
+class NamedData:
+    action: NamedDataAction
+    name: str
 
 
 def serialize(message: Message) -> bytes:

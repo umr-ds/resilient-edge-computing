@@ -33,6 +33,7 @@ dependencies = [
     # REC DTN
     ## Message serialization
     "msgpack",
+    "async-tinydb",
 ]
 authors = [
     { name = "Philipp Jahn", email = "jahnp@students.uni-marburg.de" },
