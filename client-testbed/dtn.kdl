@@ -1,0 +1,12 @@
+layout {
+  cwd "/root/resilient-edge-computing"
+  pane split_direction="vertical" {
+    pane {
+        command "fish"
+    }
+    pane {
+      command "bash"
+      args "-lc" "sleep 0.2; exec fish"
+    }
+  }
+}

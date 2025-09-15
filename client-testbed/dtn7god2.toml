@@ -1,0 +1,19 @@
+node_id = "dtn://go2/"
+log_level = "Debug"
+
+[Store]
+path = "/tmp/dtn_go2_store"
+
+[Routing]
+algorithm = "epidemic"
+
+[Agents]
+[Agents.REC]
+socket = "/tmp/dtnd_go2.socket"
+
+[[Listener]]
+type = "mtcp"
+address = ":35037"
+
+[Cron]
+dispatch = "10s"

@@ -1,22 +1,31 @@
 #! /usr/bin/env python3
 
+import argparse
 import asyncio
+from dataclasses import dataclass
 import time
+from typing import override
 
 import msgpack
 
-from rec.dtn.messages import *
+from rec.dtn.messages import (
+    MessageType,
+    NodeType,
+    Register,
+    BundleCreate,
+    BundleData,
+    BundleType,
+)
 from rec.dtn.node import Node
 from rec.util.log import LOG
 
 
-DTN_ID = "dtn://client_1/"
-DTN_SOCKET = "/tmp/rec_test_1.sock"
+DEFAULT_DTN_ID = "dtn://client_1/"
+DEFAULT_DTN_SOCKET = "/tmp/rec_test_1.sock"
 
 
 @dataclass
 class Client(Node):
-
     @override
     async def run(self) -> None:
         message = Register(type=MessageType.REGISTER, endpoint_id=self.node_id)
@@ -35,7 +44,7 @@ class Client(Node):
             source=self.node_id,
             destination="dtn://broker_1/",
             payload=b"test",
-            submitter="dtn://client_1/",
+            submitter=self.node_id,
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=test_bundle)
         reply = await self._send_message(message=message)
@@ -49,7 +58,21 @@ class Client(Node):
 
 
 def main() -> None:
-    client = Client(node_id=DTN_ID, dtn_agent_socket=DTN_SOCKET)
+    parser = argparse.ArgumentParser(description="REC Client Node")
+    parser.add_argument(
+        "--dtn-id",
+        default=DEFAULT_DTN_ID,
+        help=f"DTN endpoint ID (default: {DEFAULT_DTN_ID})",
+    )
+    parser.add_argument(
+        "--dtn-socket",
+        default=DEFAULT_DTN_SOCKET,
+        help=f"Path to DTN daemon socket (default: {DEFAULT_DTN_SOCKET})",
+    )
+
+    args = parser.parse_args()
+
+    client = Client(node_id=args.dtn_id, dtn_agent_socket=args.dtn_socket)
     asyncio.run(client.run())
 
 
