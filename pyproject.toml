@@ -53,7 +53,15 @@ classifiers = [
 ]
 
 [dependency-groups]
-dev = ["ruff", "black", "pre-commit", "hatchling"]
+dev = [
+    "ruff",
+    "black",
+    "pre-commit",
+    "hatchling",
+    "pytest",
+    "pytest-cov",
+    "pytest-asyncio",
+]
 
 [project.scripts]
 rec_rest = "rec.run_rest:main"
@@ -62,3 +70,6 @@ rec_dtn_client = "rec.dtn.client:main"
 
 [project.urls]
 Repository = "https://github.com/umr-ds/resilient-edge-computing"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
