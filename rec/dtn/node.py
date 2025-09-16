@@ -4,12 +4,13 @@ from abc import ABC, abstractmethod
 from socket import socket, AF_UNIX, SOCK_STREAM
 
 from rec.dtn.messages import *
+from rec.dtn.model.eid import EID
 from rec.util.log import LOG
 
 
 @dataclass
 class Node(ABC):
-    node_id: str
+    node_id: EID
     dtn_agent_socket: str
 
     @abstractmethod

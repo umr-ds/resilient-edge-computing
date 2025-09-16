@@ -6,6 +6,8 @@ from typing import override
 
 from msgpack import packb, unpackb
 
+from rec.dtn.model.eid import EID
+
 
 @dataclass
 class InvalidMessageError(Exception):
@@ -52,7 +54,7 @@ class Reply(Message):
 
 @dataclass
 class Register(Message):
-    endpoint_id: str
+    endpoint_id: EID
 
     @override
     def dictify(self) -> dict:
@@ -63,7 +65,7 @@ class Register(Message):
 
 @dataclass
 class Fetch(Message):
-    endpoint_id: str
+    endpoint_id: EID
     node_type: NodeType
 
     @override
@@ -106,10 +108,10 @@ class BundleCreate(Message):
         return parent_dict | own_dict
 
 
-BROKER_MULTICAST_ADDRESS = "dtn://rec.broker/~"
-DATASTORE_MULTICAST_ADDRESS = "dtn://rec.store/~"
-EXECUTOR_MULTICAST_ADDRESS = "dtn://rec.executor/~"
-CLIENT_MULTICAST_ADDRESS = "dtn://rec.client/~"
+BROKER_MULTICAST_ADDRESS = EID.dtn("rec.broker", "~")
+DATASTORE_MULTICAST_ADDRESS = EID.dtn("rec.store", "~")
+EXECUTOR_MULTICAST_ADDRESS = EID.dtn("rec.executor", "~")
+CLIENT_MULTICAST_ADDRESS = EID.dtn("rec.client", "~")
 
 
 class BundleType(IntEnum):
@@ -120,14 +122,14 @@ class BundleType(IntEnum):
 @dataclass
 class BundleData:
     type: BundleType
-    source: str
-    destination: str
+    source: EID
+    destination: EID
     payload: bytes
-    submitter: str = ""
+    submitter: EID = EID.none()
 
     def dictify(self) -> dict:
         own_dict = self.__dict__
-        if self.submitter == "":
+        if self.submitter == EID.none():
             del own_dict["submitter"]
 
         return own_dict

@@ -6,17 +6,17 @@ import time
 import msgpack
 
 from rec.dtn.messages import *
+from rec.dtn.model.eid import EID
 from rec.dtn.node import Node
 from rec.util.log import LOG
 
 
-DTN_ID = "dtn://client_1/"
+DTN_ID = EID.dtn("client_1")
 DTN_SOCKET = "/tmp/rec_test_1.sock"
 
 
 @dataclass
 class Client(Node):
-
     @override
     async def run(self) -> None:
         message = Register(type=MessageType.REGISTER, endpoint_id=self.node_id)
@@ -33,9 +33,9 @@ class Client(Node):
         test_bundle = BundleData(
             type=BundleType.JOBS_QUERY,
             source=self.node_id,
-            destination="dtn://broker_1/",
+            destination=EID.dtn("broker_1"),
             payload=b"test",
-            submitter="dtn://client_1/",
+            submitter=EID.dtn("client_1"),
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=test_bundle)
         reply = await self._send_message(message=message)
