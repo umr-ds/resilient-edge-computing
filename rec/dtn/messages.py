@@ -6,7 +6,7 @@ from typing import override
 
 from msgpack import packb, unpackb
 
-from rec.dtn.model.eid import EID
+from rec.dtn.eid import EID
 
 
 @dataclass
@@ -75,13 +75,14 @@ class Fetch(Message):
         return parent_dict | own_dict
 
 
-@dataclass(init=False)
+@dataclass
 class FetchReply(Reply):
     bundles: list[BundleData]
 
-    def __init__(self, *args, bundles: list[dict], **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.bundles = [BundleData(**bundle) for bundle in bundles]
+    def __post_init__(self) -> None:
+        self.bundles = [
+            BundleData(**bundle) for bundle in self.bundles if isinstance(bundle, dict)
+        ] + [bundle for bundle in self.bundles if isinstance(bundle, BundleData)]
 
     @override
     def dictify(self) -> dict:
@@ -90,16 +91,13 @@ class FetchReply(Reply):
         return parent_dict | own_dict
 
 
-@dataclass(init=False)
+@dataclass
 class BundleCreate(Message):
     bundle: BundleData
 
-    def __init__(self, *args, bundle: dict | BundleData, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        if isinstance(bundle, BundleData):
-            self.bundle = bundle
-        else:
-            self.bundle = BundleData(**bundle)
+    def __post_init__(self) -> None:
+        if isinstance(self.bundle, dict):
+            self.bundle = BundleData(**self.bundle)
 
     @override
     def dictify(self) -> dict:
@@ -125,11 +123,11 @@ class BundleData:
     source: EID
     destination: EID
     payload: bytes
-    submitter: EID = EID.none()
+    submitter: EID | None = None
 
     def dictify(self) -> dict:
         own_dict = self.__dict__
-        if self.submitter == EID.none():
+        if self.submitter is None:
             del own_dict["submitter"]
 
         return own_dict

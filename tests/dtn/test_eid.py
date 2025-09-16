@@ -1,5 +1,10 @@
 import pytest
-from rec.dtn.model.eid import EID, EIDError
+
+from hypothesis import given
+
+from rec.dtn.eid import EIDError
+
+from .test_helpers import *
 
 
 class TestEIDBasics:
@@ -86,6 +91,10 @@ class TestDTNEIDs:
         eid = EID.none()
         assert str(eid) == "dtn:none"
         assert eid.node() is None
+
+    @given(eid=dtn_eid())
+    def test_dtn_valid_all(self, eid: EID) -> None:
+        assert eid
 
 
 class TestIPNEIDs:

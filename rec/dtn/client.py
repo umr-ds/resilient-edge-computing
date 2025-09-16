@@ -6,7 +6,7 @@ import time
 import msgpack
 
 from rec.dtn.messages import *
-from rec.dtn.model.eid import EID
+from rec.dtn.eid import EID
 from rec.dtn.node import Node
 from rec.util.log import LOG
 
