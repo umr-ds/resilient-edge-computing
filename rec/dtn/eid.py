@@ -18,19 +18,18 @@ class EID(str):
     _DTN_NONE = "dtn:none"
     _DTN_PREFIX = "dtn://"
     _IPN_PREFIX = "ipn:"
-    # Loosely based on:
+    # Based on:
     #  - RFC 3986
     #     - Section 3.2.2 and Appendix A (see `reg-name` and `unreserved`)
-    #     - https://www.rfc-editor.org/rfc/rfc3986
+    #     - https://www.rfc-editor.org/rfc/rfc3986#appendix-A
     #  - RFC 9171
     #    - Section 4.2.5.1.1
-    #    - https://www.rfc-editor.org/rfc/rfc9171
-    _NODE_RE = re.compile(r"^[A-Za-z0-9-._~]+$")
-    _SERVICE_RE = re.compile(r"^[A-Za-z0-9-._~]+(?:/[A-Za-z0-9-._~]+)*$")
+    #    - https://www.rfc-editor.org/rfc/rfc9171.html#name-the-dtn-uri-scheme
+    _NODE_RE = re.compile(r"(^$)|(^[A-Za-z0-9-._~!$&'()*+,;=]+$)")
 
-    def __new__(cls, value: str):
+    def __new__(cls, value: str) -> EID:
         norm = cls._normalize(value)
-        return str.__new__(cls, norm)
+        return super().__new__(cls, norm)
 
     @classmethod
     def dtn(cls, node: str, service: Optional[str] = None) -> EID:
@@ -45,20 +44,14 @@ class EID(str):
         Returns:
             EID: The constructed DTN EndpointID.
         """
-        node = node.strip()
-        service = service.strip() if service is not None else None
         if service == "":
             service = None
 
-        if not node:
-            raise EIDError("DTN node is required")
-        if node == "none":
-            raise EIDError("invalid DTN host: use 'dtn:none', not 'dtn://none'")
         if not cls._NODE_RE.match(node):
             raise EIDError(f"invalid DTN node '{node}'")
         if service is None:
             return cls(f"{cls._DTN_PREFIX}{node}/")
-        if not cls._SERVICE_RE.match(service):
+        if not service.isascii():
             raise EIDError(f"invalid DTN service '{service}'")
         return cls(f"{cls._DTN_PREFIX}{node}/{service}")
 
@@ -100,12 +93,24 @@ class EID(str):
         if self == self._DTN_NONE:
             return None
         if self.startswith(self._DTN_PREFIX):
-            return self[len(self._DTN_PREFIX) :].split("/", 1)[0]
-        return self[len(self._IPN_PREFIX) :].split(".", 1)[0]
+            return self[len(self._DTN_PREFIX) :].split(sep="/", maxsplit=1)[0]
+        return self[len(self._IPN_PREFIX) :].split(sep=".", maxsplit=1)[0]
+
+    def service(self) -> Optional[str]:
+        """
+        Get the service part of the EndpointID, or `None` for `dtn:none`.
+
+        Returns:
+            Optional[str]: The service part of the EndpointID, or `None`.
+        """
+        if self == self._DTN_NONE:
+            return None
+        if self.startswith(self._DTN_PREFIX):
+            return self[len(self._DTN_PREFIX) :].split(sep="/", maxsplit=1)[1]
+        return self[len(self._IPN_PREFIX) :].split(sep=".", maxsplit=1)[1]
 
     @classmethod
     def _normalize(cls, eid: str) -> str:
-        eid = eid.strip()
         if eid == cls._DTN_NONE:
             return eid
 
@@ -122,14 +127,12 @@ class EID(str):
             else:
                 node, service = ssp, ""
 
-            if not node:
-                raise EIDError("invalid DTN EID: empty node")
             if not cls._NODE_RE.match(node):
                 raise EIDError(f"invalid DTN node '{node}'")
             if not service:
                 return f"{cls._DTN_PREFIX}{node}/"
 
-            if not cls._SERVICE_RE.match(service):
+            if not service.isascii():
                 raise EIDError(f"invalid DTN service '{service}'")
             return f"{cls._DTN_PREFIX}{node}/{service}"
 

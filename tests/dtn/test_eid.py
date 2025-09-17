@@ -71,21 +71,7 @@ class TestDTNEIDs:
 
     def test_dtn_node_error(self):
         with pytest.raises(EIDError):
-            EID.dtn("")
-        with pytest.raises(EIDError):
-            EID.dtn("   ")
-        with pytest.raises(EIDError):
             EID.dtn("node with spaces")
-
-    def test_dtn_service_error(self):
-        with pytest.raises(EIDError):
-            EID.dtn("node", "service with spaces")
-
-    def test_dtn_empty_service_cleanup(self):
-        eid = EID.dtn("node", "")
-        assert str(eid) == "dtn://node/"
-        eid = EID.dtn("node", "   ")
-        assert str(eid) == "dtn://node/"
 
     def test_dtn_none_endpoint(self):
         eid = EID.none()
@@ -119,20 +105,6 @@ class TestIPNEIDs:
 
 
 class TestEIDNormalization:
-    def test_stripping(self):
-        eid = EID("dtn://node/service  ")
-        assert str(eid) == "dtn://node/service"
-        eid = EID("  dtn://node/service")
-        assert str(eid) == "dtn://node/service"
-        eid = EID("  dtn://node/service  ")
-        assert str(eid) == "dtn://node/service"
-        eid = EID("ipn:1.2  ")
-        assert str(eid) == "ipn:1.2"
-        eid = EID("  ipn:1.2")
-        assert str(eid) == "ipn:1.2"
-        eid = EID("  ipn:1.2  ")
-        assert str(eid) == "ipn:1.2"
-
     def test_dtn_node_normalization(self):
         eid = EID("dtn://node")
         assert str(eid) == "dtn://node/"

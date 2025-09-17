@@ -32,8 +32,7 @@ def dtn_eid(draw: st.DrawFn, singleton=True) -> EID:
                     ";",
                     "=",
                 ],
-            ),
-            min_size=1,
+            )
         )
     )
     service: str = draw(st.text(alphabet=st.characters(codec="ascii")))
