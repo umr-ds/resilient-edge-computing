@@ -54,10 +54,14 @@ classifiers = [
 
 [dependency-groups]
 dev = [
-    "ruff",
-    "black",
     "pre-commit",
     "hatchling",
+]
+lint = [
+    "ruff",
+    "black",
+]
+test = [
     "pytest",
     "pytest-cov",
     "pytest-asyncio",
