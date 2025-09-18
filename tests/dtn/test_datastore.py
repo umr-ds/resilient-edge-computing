@@ -7,6 +7,24 @@ from rec.dtn.datastore import *
 from .test_helpers import *
 
 
+@st.composite
+def hierarchical_data(draw: st.DrawFn) -> tuple[str, list[tuple[str, bytes]]]:
+    depth = draw(st.integers())
+    prefix = ""
+    for _ in range(depth):
+        prefix = f"{prefix}/{draw(st.text())}"
+    n_data = draw(st.integers(min_value=1))
+    data = []
+    names: set[str] = set()
+    for _ in range(n_data):
+        name = draw(st.text())
+        assume(name not in names)
+        names.add(name)
+        data.append((f"{prefix}/{name}", draw(st.binary())))
+
+    return prefix, data
+
+
 @pytest.mark.asyncio
 @given(dtn_id=dtn_eid(), data_name=st.text(), data=st.binary())
 async def test_store(dtn_id: str, data_name: str, data: bytes) -> None:
@@ -37,4 +55,25 @@ async def test_store_retrieve(dtn_id: str, data_name: str, data: bytes) -> None:
         store = Datastore(node_id=dtn_id, dtn_agent_socket="", root_directory=tmp_path)
         await store._store_data(name=data_name, data=data)
         retrieved = await store._load_data(name=data_name)
-        assert retrieved == data
+        assert len(retrieved) == 1
+        assert retrieved[0][0] == data_name
+        assert retrieved[0][1] == data
+
+
+@pytest.mark.asyncio
+@given(dtn_id=dtn_eid(), data=hierarchical_data())
+async def test_prefixing(
+    dtn_id: str, data: tuple[str, list[tuple[str, bytes]]]
+) -> None:
+    with TmpDirectory(prefix="/tmp") as tmp_path:
+        store = Datastore(node_id=dtn_id, dtn_agent_socket="", root_directory=tmp_path)
+
+        for name, datum in data[1]:
+            await store._store_data(name=name, data=datum)
+
+        retrieved = await store._load_data(data[0])
+        assert len(retrieved) == len(data[1])
+
+        for i in range(len(retrieved)):
+            assert retrieved[i][0] == data[1][i][0]
+            assert retrieved[i][1] == data[1][i][1]

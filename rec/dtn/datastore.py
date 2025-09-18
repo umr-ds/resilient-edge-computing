@@ -79,6 +79,7 @@ class Datastore(Node):
         Stores data on disk
 
         Actual data is stored in 'blobs' directory. SHA1 of data will be used as filename.
+        This provides dedup capabilities, as multiple names can refer to the same hash.
         Mapping of name -> filename will be stored in tinydb.
 
         Args:
@@ -106,7 +107,7 @@ class Datastore(Node):
         async with open(self.blob_directory / filename, "wb") as f:
             await f.write(data)
 
-    async def _load_data(self, name: str) -> bytes:
+    async def _load_data(self, name: str) -> list[tuple[str, bytes]]:
         """
         Loads data from disk
 
@@ -114,17 +115,26 @@ class Datastore(Node):
 
         Args:
             name (str): "human-readable" name of data. May be split in hierarchical parts with '/' separator.
+                        If `name` is a common prefix for multiple datas, then we return all of them.
 
         Returns:
-            bytes: Binary data which was stored on disk.
+            list(tuple(str, bytes)): List of (name, data) of all data with names that started with `name`
 
         Raises:
-            NoSuchNameError:   If database holds no mapping for name
             FileNotFoundError: If for some reason, there is a mapping in database but the associated filename does not exist.
         """
         db_data = Query()
-        entry = await self.db.search(db_data.name == name)
-        if not entry:
-            raise NoSuchNameError(name=name)
+        # TODO: this has linear complexity with the number of stored data. Might be more efficient to build a tree-structure.
+        #       but I'm not sure if the performance warrants the increased complexity...
+        prefix_finder = lambda s: s.startswith(name)
+        entries: list[dict] = await self.db.search(db_data.name.test(prefix_finder))
 
-        return b""
+        all_data: list[tuple[str, bytes]] = []
+
+        for entry in entries:
+            filepath = self.blob_directory / entry["filename"]
+            async with open(filepath, "rb") as f:
+                data = await f.read()
+                all_data.append((entry["name"], data))
+
+        return all_data
