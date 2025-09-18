@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from socket import socket, AF_UNIX, SOCK_STREAM
 
 from rec.dtn.messages import *
-from dtn.eid import EID
 from rec.util.log import LOG
 
 
@@ -12,6 +11,10 @@ from rec.util.log import LOG
 class Node(ABC):
     node_id: EID
     dtn_agent_socket: str
+
+    def __post_init__(self) -> None:
+        if isinstance(self.node_id, str):
+            self.node_id = EID(self.node_id)
 
     @abstractmethod
     async def run(self) -> None:

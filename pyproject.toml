@@ -34,6 +34,7 @@ dependencies = [
     ## Message serialization
     "msgpack",
     "async-tinydb",
+    "aiofiles",
 ]
 authors = [
     { name = "Philipp Jahn", email = "jahnp@students.uni-marburg.de" },
