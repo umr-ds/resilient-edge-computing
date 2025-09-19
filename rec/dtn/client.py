@@ -1,9 +1,8 @@
 #! /usr/bin/env python3
 
 import asyncio
-import time
 
-import msgpack
+from argparse import Namespace
 
 from rec.dtn.messages import *
 from rec.dtn.eid import EID
@@ -11,46 +10,127 @@ from rec.dtn.node import Node
 from rec.util.log import LOG
 
 
-DTN_ID = EID.dtn("client_1")
-DTN_SOCKET = "/tmp/rec_test_1.sock"
+TMP_BROKER = EID("dtn://broker_1/")
 
 
 @dataclass
 class Client(Node):
     @override
     async def run(self) -> None:
-        message = Register(type=MessageType.REGISTER, endpoint_id=self.node_id)
+        pass
 
-        try:
-            reply = await self._send_message(message=message)
-        except FileNotFoundError as err:
-            LOG.critical("Error connecting to dtnd: %s", err, exc_info=True)
-            return
+    async def wait_reply(self, wait_for: BundleType) -> BundleData:
+        LOG.info("Waiting for reply")
+        while True:
+            await asyncio.sleep(10)
+            bundles = await self._get_new_bundles(NodeType.CLIENT)
+            for bundle in bundles:
+                if bundle.type == wait_for:
+                    return bundle
 
-        if not reply.success:
-            LOG.info("Error registering with dtnd: %s", reply.error)
+    async def job_query(self, submitter: str) -> None:
+        LOG.info("Performing job query")
+        await self._register()
 
-        test_bundle = BundleData(
+        query_bundle = BundleData(
             type=BundleType.JOBS_QUERY,
             source=self.node_id,
-            destination=EID.dtn("broker_1"),
-            payload=b"test",
-            submitter=EID.dtn("client_1"),
+            destination=TMP_BROKER,
+            payload=b"",
+            submitter=EID(submitter),
         )
-        message = BundleCreate(type=MessageType.CREATE, bundle=test_bundle)
+        message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
         reply = await self._send_message(message=message)
         print(reply)
+        broker_response = await self.wait_reply(BundleType.JOBS_QUERY)
+        if not broker_response.success:
+            LOG.error(
+                "Broker responded with error %s", broker_response.error, exc_info=False
+            )
+        else:
+            jobs = unpackb(broker_response.payload)
+            print(jobs)
 
-        time.sleep(30)
+    async def data_get(self, datastore: EID, name: str) -> None:
+        LOG.info(f"Performing data GET: Name: {name}")
+        await self._register()
 
-        bundles = await self._get_new_bundles(NodeType.CLIENT)
-        jobs = msgpack.unpackb(bundles[0].payload)
-        print(jobs)
+        query_bundle = BundleData(
+            type=BundleType.NAMED_DATA,
+            source=self.node_id,
+            destination=datastore,
+            payload=b"",
+            named_data=NamedData(
+                action=NamedDataAction.GET,
+                name=name,
+            ),
+        )
+        message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
+        reply = await self._send_message(message=message)
+        print(reply)
+        store_rply = await self.wait_reply(BundleType.NAMED_DATA)
+        if not store_rply.success:
+            LOG.error(
+                "DataStore responded with error %s", store_rply.error, exc_info=False
+            )
+        else:
+            jobs = unpackb(store_rply.payload)
+            print(jobs)
+
+    async def data_put(self, datastore: EID, name: str, data_file: str) -> None:
+        LOG.info(f"Performing data PUT: Name: {name}")
+        await self._register()
+
+        with open(data_file, "rb") as f:
+            data = f.read()
+
+        query_bundle = BundleData(
+            type=BundleType.NAMED_DATA,
+            source=self.node_id,
+            destination=datastore,
+            payload=data,
+            named_data=NamedData(
+                action=NamedDataAction.PUT,
+                name=name,
+            ),
+        )
+        message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
+        reply = await self._send_message(message=message)
+        print(reply)
+        store_rply = await self.wait_reply(BundleType.NAMED_DATA)
+        if not store_rply.success:
+            LOG.error(
+                "DataStore responded with error %s", store_rply.error, exc_info=False
+            )
+        else:
+            jobs = unpackb(store_rply.payload)
+            print(jobs)
 
 
-def main() -> None:
-    client = Client(node_id=DTN_ID, dtn_agent_socket=DTN_SOCKET)
-    asyncio.run(client.run())
+def main(args: Namespace) -> None:
+    client = Client(node_id=args.id, dtn_agent_socket=args.socket)
+
+    match args.command:
+        case "query":
+            asyncio.run(client.job_query(submitter=args.submitter))
+        case "data":
+            match args.data_command:
+                case "get":
+                    asyncio.run(
+                        client.data_get(
+                            datastore=args.datastore_id, name=args.data_name
+                        )
+                    )
+                case "put":
+                    asyncio.run(
+                        client.data_put(
+                            datastore=args.datastore_id,
+                            name=args.data_name,
+                            data_file=args.data_file,
+                        )
+                    )
+        case _:
+            LOG.critical(f"Unknown command: {args.command}")
 
 
 if __name__ == "__main__":

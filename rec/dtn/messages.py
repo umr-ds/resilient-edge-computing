@@ -114,8 +114,7 @@ CLIENT_MULTICAST_ADDRESS = EID.dtn("rec.client", "~")
 
 class BundleType(IntEnum):
     JOBS_QUERY = 1
-    JOBS_REPLY = 2
-    DATA_SUBMIT = 3
+    NAMED_DATA = 2
 
 
 @dataclass
@@ -124,6 +123,8 @@ class BundleData:
     source: EID
     destination: EID
     payload: bytes
+    success: bool = True
+    error: str = ""
     submitter: EID | None = None
     named_data: NamedData | None = None
 
@@ -145,6 +146,8 @@ class BundleData:
             del own_dict["submitter"]
         if self.named_data is None:
             del own_dict["named_data"]
+        else:
+            own_dict["named_data"] = self.named_data.dictify()
 
         return own_dict
 
@@ -159,6 +162,9 @@ class NamedDataAction(IntEnum):
 class NamedData:
     action: NamedDataAction
     name: str
+
+    def dictify(self) -> dict:
+        return self.__dict__
 
 
 def serialize(message: Message) -> bytes:

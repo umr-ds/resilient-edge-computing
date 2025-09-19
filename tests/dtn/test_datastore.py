@@ -9,17 +9,12 @@ from .test_helpers import *
 
 @st.composite
 def hierarchical_data(draw: st.DrawFn) -> tuple[str, list[tuple[str, bytes]]]:
-    depth = draw(st.integers())
-    prefix = ""
-    for _ in range(depth):
-        prefix = f"{prefix}/{draw(st.text())}"
-    n_data = draw(st.integers(min_value=1))
+    levels: list[str] = draw(st.lists(elements=st.text()))
+    prefix = "/".join(levels)
+
+    names: list[str] = draw(st.lists(st.text(), unique=True))
     data = []
-    names: set[str] = set()
-    for _ in range(n_data):
-        name = draw(st.text())
-        assume(name not in names)
-        names.add(name)
+    for name in names:
         data.append((f"{prefix}/{name}", draw(st.binary())))
 
     return prefix, data
@@ -30,7 +25,7 @@ def hierarchical_data(draw: st.DrawFn) -> tuple[str, list[tuple[str, bytes]]]:
 async def test_store(dtn_id: str, data_name: str, data: bytes) -> None:
     with TmpDirectory(prefix="/tmp") as tmp_path:
         store = Datastore(node_id=dtn_id, dtn_agent_socket="", root_directory=tmp_path)
-        await store._store_data(name=data_name, data=data)
+        await store.store_data(name=data_name, data=data)
 
 
 @pytest.mark.asyncio
@@ -42,8 +37,8 @@ async def test_store_dedup(
     with TmpDirectory(prefix="/tmp") as tmp_path:
         blobs_path = tmp_path / "blobs"
         store = Datastore(node_id=dtn_id, dtn_agent_socket="", root_directory=tmp_path)
-        await store._store_data(name=data_name, data=data)
-        await store._store_data(name=other_name, data=data)
+        await store.store_data(name=data_name, data=data)
+        await store.store_data(name=other_name, data=data)
         files = [filename for filename in blobs_path.iterdir()]
         assert len(files) == 1, "there should only be 1 file due to dedup"
 
@@ -53,8 +48,8 @@ async def test_store_dedup(
 async def test_store_retrieve(dtn_id: str, data_name: str, data: bytes) -> None:
     with TmpDirectory(prefix="/tmp") as tmp_path:
         store = Datastore(node_id=dtn_id, dtn_agent_socket="", root_directory=tmp_path)
-        await store._store_data(name=data_name, data=data)
-        retrieved = await store._load_data(name=data_name)
+        await store.store_data(name=data_name, data=data)
+        retrieved = await store.load_data(name=data_name)
         assert len(retrieved) == 1
         assert retrieved[0][0] == data_name
         assert retrieved[0][1] == data
@@ -69,9 +64,9 @@ async def test_prefixing(
         store = Datastore(node_id=dtn_id, dtn_agent_socket="", root_directory=tmp_path)
 
         for name, datum in data[1]:
-            await store._store_data(name=name, data=datum)
+            await store.store_data(name=name, data=datum)
 
-        retrieved = await store._load_data(data[0])
+        retrieved = await store.load_data(data[0])
         assert len(retrieved) == len(data[1])
 
         for i in range(len(retrieved)):

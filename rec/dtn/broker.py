@@ -16,7 +16,7 @@ class Broker(Node):
     queued_jobs: Queue
     bundle_handlers: dict[BundleType, Callable[[BundleData], Coroutine]]
 
-    def __init__(self, node_id: str, dtn_agent_socket: str):
+    def __init__(self, node_id: str | EID, dtn_agent_socket: str):
         super().__init__(node_id=node_id, dtn_agent_socket=dtn_agent_socket)
         self.state_mutex = asyncio.Lock()
         self.completed_jobs = set()
@@ -69,12 +69,13 @@ class Broker(Node):
             }
             jobs_bytes = msgpack.packb(jobs)
             bundle_response = BundleData(
-                type=BundleType.JOBS_REPLY,
+                type=BundleType.JOBS_QUERY,
                 source=self.node_id,
                 destination=bundle.source,
                 submitter=bundle.submitter,
                 payload=jobs_bytes,
             )
+            LOG.debug(f"Response bundle: {bundle_response}")
 
         message = BundleCreate(type=MessageType.CREATE, bundle=bundle_response)
         try:

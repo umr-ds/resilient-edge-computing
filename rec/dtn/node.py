@@ -1,4 +1,5 @@
 import asyncio
+import sys
 
 from abc import ABC, abstractmethod
 from socket import socket, AF_UNIX, SOCK_STREAM
@@ -19,6 +20,14 @@ class Node(ABC):
     @abstractmethod
     async def run(self) -> None:
         pass
+
+    async def _send_messages(self, messages: list[Message]) -> list[Reply]:
+        replies: list[Reply] = []
+
+        for message in messages:
+            replies.append(await self._send_message(message=message))
+
+        return replies
 
     async def _send_message(self, message: Message) -> Reply:
         loop = asyncio.get_running_loop()
@@ -53,16 +62,18 @@ class Node(ABC):
             return reply
 
     async def _register(self) -> None:
+        LOG.info("Performing registration")
         message = Register(type=MessageType.REGISTER, endpoint_id=self.node_id)
+        LOG.debug(f"Sending registration message: {message}")
 
         try:
             reply = await self._send_message(message=message)
         except FileNotFoundError as err:
             LOG.critical("Error connecting to dtnd: %s", err, exc_info=True)
-            return
+            sys.exit(1)
 
         if not reply.success:
-            LOG.critical("Error registering with dtnd: %s", reply.error)
+            LOG.debug("Error registering with dtnd: %s", reply.error)
             return
 
     async def _get_new_bundles(self, node_type: NodeType) -> list[BundleData]:
@@ -72,6 +83,7 @@ class Node(ABC):
         message = Fetch(
             type=MessageType.FETCH, endpoint_id=self.node_id, node_type=node_type
         )
+        LOG.debug(f"Sending fetch: {message}")
         reply = await self._send_message(message=message)
 
         assert isinstance(reply, FetchReply)

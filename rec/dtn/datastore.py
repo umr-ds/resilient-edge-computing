@@ -4,6 +4,7 @@ from pathlib import Path
 from hashlib import sha1
 
 from aiofiles import open
+from aiorwlock import RWLock
 from asynctinydb import TinyDB, Query
 
 from rec.dtn.messages import *
@@ -33,10 +34,12 @@ class Datastore(Node):
     root_directory: Path
     blob_directory: Path
     db: TinyDB
-    state_mutex: asyncio.Lock
+    state_mutex: RWLock
 
-    def __init__(self, *args, root_directory: str | Path, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self, node_id: str | EID, dtn_agent_socket: str, root_directory: str | Path
+    ) -> None:
+        super().__init__(node_id=node_id, dtn_agent_socket=dtn_agent_socket)
         if isinstance(root_directory, str):
             self.root_directory = Path(root_directory)
         else:
@@ -47,7 +50,7 @@ class Datastore(Node):
         self.blob_directory.mkdir(exist_ok=True)
 
         self.db = TinyDB(f"{root_directory}/database.db")
-        self.state_mutex = asyncio.Lock()
+        self.state_mutex = RWLock()
 
     @override
     async def run(self) -> None:
@@ -64,7 +67,7 @@ class Datastore(Node):
             LOG.debug("Running bundle handler")
             try:
                 LOG.debug("Retrieving bundles")
-                bundles = await self._get_new_bundles(NodeType.BROKER)
+                bundles = await self._get_new_bundles(NodeType.DATASTORE)
                 if bundles:
                     LOG.debug(f"Bundles: {bundles}")
                     for bundle in bundles:
@@ -74,7 +77,60 @@ class Datastore(Node):
             except Exception as err:
                 LOG.exception("Error fetching bundles: %s", err)
 
-    async def _store_data(self, name: str, data: bytes) -> None:
+    async def _handle_bundle(self, bundle: BundleData) -> None:
+        match bundle.type:
+            case BundleType.NAMED_DATA:
+                await self._handle_data(bundle=bundle)
+            case _:
+                LOG.error(f"Received bundle of type {bundle.type}, ignoring")
+
+    async def _handle_data(self, bundle: BundleData) -> None:
+        LOG.debug(f"Received NamedDataBundle: {bundle}")
+        messages: list[Message] = []
+
+        match bundle.named_data.action:
+            case NamedDataAction.PUT:
+                LOG.debug("Data action is PUT")
+                response = BundleData(
+                    type=BundleType.NAMED_DATA,
+                    source=self.node_id,
+                    destination=bundle.source,
+                    payload=b"",
+                    named_data=bundle.named_data,
+                )
+                message = BundleCreate(type=MessageType.CREATE, bundle=response)
+                try:
+                    await self.store_data(
+                        name=bundle.named_data.name, data=bundle.payload
+                    )
+                except NameTakenError as err:
+                    response.success = False
+                    response.error = str(err)
+                messages.append(message)
+            case NamedDataAction.GET:
+                LOG.debug("Data action is GET")
+                loaded = await self.load_data(name=bundle.named_data.name)
+                LOG.debug(f"Loaded data: {loaded}")
+                for name, data in loaded:
+                    response = BundleData(
+                        type=BundleType.NAMED_DATA,
+                        source=self.node_id,
+                        destination=bundle.source,
+                        payload=data,
+                        named_data=NamedData(action=NamedDataAction.GET, name=name),
+                    )
+                    message = BundleCreate(type=MessageType.CREATE, bundle=response)
+                    messages.append(message)
+
+        try:
+            dtnd_responses = await self._send_messages(messages=messages)
+            for dtnd_response in dtnd_responses:
+                if not dtnd_response.success:
+                    LOG.exception("dtnd sent error: %s", dtnd_response.error)
+        except Exception as err:
+            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+
+    async def store_data(self, name: str, data: bytes) -> None:
         """
         Stores data on disk
 
@@ -90,24 +146,26 @@ class Datastore(Node):
         Raises:
             NameTakenError: If there already exists stored data with the exact same name.
         """
-        db_data = Query()
-        test = await self.db.search(db_data.name == name)
-        if test:
-            raise NameTakenError(name=name)
+        async with self.state_mutex.writer_lock:
+            db_data = Query()
+            test = await self.db.search(db_data.name == name)
+            if test:
+                raise NameTakenError(name=name)
 
-        filename = sha1(data, usedforsecurity=False).hexdigest()
-        await self.db.insert({"name": name, "filename": filename})
+            filename = sha1(data, usedforsecurity=False).hexdigest()
 
-        filepath = self.blob_directory / filename
+            filepath = self.blob_directory / filename
 
-        # dedup - if the file already exists, we don't need to create it
-        if filepath.exists():
-            return
+            # dedup - if the file already exists, we don't need to create it
+            if filepath.exists():
+                await self.db.insert({"name": name, "filename": filename})
+                return
 
-        async with open(self.blob_directory / filename, "wb") as f:
-            await f.write(data)
+            async with open(self.blob_directory / filename, "wb") as f:
+                await f.write(data)
+            await self.db.insert({"name": name, "filename": filename})
 
-    async def _load_data(self, name: str) -> list[tuple[str, bytes]]:
+    async def load_data(self, name: str) -> list[tuple[str, bytes]]:
         """
         Loads data from disk
 
@@ -119,22 +177,34 @@ class Datastore(Node):
 
         Returns:
             list(tuple(str, bytes)): List of (name, data) of all data with names that started with `name`
-
-        Raises:
-            FileNotFoundError: If for some reason, there is a mapping in database but the associated filename does not exist.
         """
-        db_data = Query()
-        # TODO: this has linear complexity with the number of stored data. Might be more efficient to build a tree-structure.
-        #       but I'm not sure if the performance warrants the increased complexity...
-        prefix_finder = lambda s: s.startswith(name)
-        entries: list[dict] = await self.db.search(db_data.name.test(prefix_finder))
+        async with self.state_mutex.reader_lock:
+            db_data = Query()
+            # TODO: this has linear complexity with the number of stored data. Might be more efficient to build a tree-structure.
+            #       but I'm not sure if the performance warrants the increased complexity...
+            prefix_finder = lambda s: s.startswith(name)
+            entries: list[dict] = await self.db.search(db_data.name.test(prefix_finder))
 
-        all_data: list[tuple[str, bytes]] = []
+            all_data: list[tuple[str, bytes]] = []
+            disappeared: list[str] = []
 
-        for entry in entries:
-            filepath = self.blob_directory / entry["filename"]
-            async with open(filepath, "rb") as f:
-                data = await f.read()
-                all_data.append((entry["name"], data))
+            for entry in entries:
+                try:
+                    filepath = self.blob_directory / entry["filename"]
+                    async with open(filepath, "rb") as f:
+                        data = await f.read()
+                        all_data.append((entry["name"], data))
+                except FileNotFoundError as err:
+                    LOG.exception("Error loading blob: %s", err, exc_info=True)
+                    disappeared.append(entry["filename"])
+
+        if disappeared:
+            await self._cleanup(disappeared)
 
         return all_data
+
+    async def _cleanup(self, names: list[str]) -> None:
+        async with self.state_mutex.writer_lock:
+            for name in names:
+                db_data = Query()
+                await self.db.remove(db_data.name == name)

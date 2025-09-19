@@ -33,8 +33,10 @@ dependencies = [
     # REC DTN
     ## Message serialization
     "msgpack",
+    ## Datastore
     "async-tinydb",
     "aiofiles",
+    "aiorwlock",
 ]
 authors = [
     { name = "Philipp Jahn", email = "jahnp@students.uni-marburg.de" },
@@ -73,7 +75,6 @@ test = [
 [project.scripts]
 rec_rest = "rec.run_rest:main"
 rec_dtn = "rec.run_dtn:main"
-rec_dtn_client = "rec.dtn.client:main"
 
 [project.urls]
 Repository = "https://github.com/umr-ds/resilient-edge-computing"
