@@ -1,10 +1,26 @@
 import asyncio
+import io
 import os
+import shutil
+import zipfile
+from collections import deque
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Deque, Dict, List, Optional, Tuple, override
 
+import msgpack
 from wasmtime import ExitTrap, Linker, Module, Store, Trap, WasiConfig, WasmtimeError
 
+from rec.dtn.eid import EID
+from rec.dtn.job import Capabilities, DataType, JobInfo
+from rec.dtn.messages import (
+    BundleCreate,
+    BundleData,
+    BundleType,
+    Message,
+    MessageType,
+    NodeType,
+)
+from rec.dtn.node import Node
 from rec.util.log import LOG
 
 
@@ -16,7 +32,377 @@ class WasmTrapError(RuntimeError):
     """Raised when the module traps during execution (excluding proc_exit)."""
 
 
-async def run_wasi_module(
+class Executor(Node):
+    root_dir: Path
+    _named_data_cache: Dict[str, bytes]  # TODO: store in filesystem like datastore?
+    _pending_jobs: Deque[JobInfo]
+    _job_ready_cv: asyncio.Condition
+
+    def __init__(self, node_id: EID, dtn_agent_socket: str, root_dir: Path) -> None:
+        super().__init__(node_id=node_id, dtn_agent_socket=dtn_agent_socket)
+
+        self.root_dir = root_dir
+        self.root_dir.mkdir(parents=True, exist_ok=True)
+
+        self._named_data_cache = {}
+        self._pending_jobs: Deque[JobInfo] = deque()
+        self._job_ready_cv = asyncio.Condition()
+
+    @override
+    async def run(self) -> None:
+        LOG.info("Starting executor")
+        await self._register()
+        # Run bundle handler & scheduler concurrently
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(self._handle_bundles())
+            tg.create_task(self._scheduler())
+
+    async def _handle_bundles(self) -> None:
+        LOG.info("Starting bundle handler")
+        while True:
+            LOG.debug("Bundle handler going to sleep")
+            await asyncio.sleep(10)
+
+            LOG.debug("Running bundle handler")
+            try:
+                LOG.debug("Retrieving bundles")
+                bundles = await self._get_new_bundles(NodeType.DATASTORE)
+                if bundles:
+                    LOG.debug(f"Bundles: {bundles}")
+                    for bundle in bundles:
+                        await self._handle_bundle(bundle=bundle)
+                else:
+                    LOG.debug("No new bundles")
+            except Exception as err:
+                LOG.exception("Error fetching bundles: %s", err)
+
+    async def _handle_bundle(self, bundle: BundleData) -> None:
+        match bundle.type:
+            case BundleType.JOB_SUBMIT:
+                await self._handle_job(bundle=bundle)
+            case BundleType.NDATA_PUT:
+                await self._handle_data(bundle=bundle)
+            case _:
+                LOG.error(f"Received bundle of type {bundle.type}, ignoring")
+
+    async def _handle_job(self, bundle: BundleData) -> None:
+        LOG.debug(f"Received JobBundle: {bundle}")
+        messages: list[Message] = []
+
+        job: JobInfo = msgpack.unpackb(bundle.payload)
+
+        async with self._state_mutex.writer_lock:
+            self._pending_jobs.append(job)
+        async with self._job_ready_cv:
+            self._job_ready_cv.notify_all()
+
+        response = BundleData(
+            type=BundleType.JOB,
+            source=self.node_id,
+            destination=bundle.source,
+            payload=b"",
+        )
+        message = BundleCreate(type=MessageType.CREATE, bundle=response)
+        messages.append(message)
+
+        try:
+            dtnd_responses = await self._send_messages(messages=messages)
+            for dtnd_response in dtnd_responses:
+                if not dtnd_response.success:
+                    LOG.exception("dtnd sent error: %s", dtnd_response.error)
+        except Exception as err:
+            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+
+    async def _handle_data(self, bundle: BundleData) -> None:
+        LOG.debug(f"Received NamedDataBundle: {bundle}")
+        messages: list[Message] = []
+
+        LOG.debug("Data action is PUT")
+        async with self._state_mutex.writer_lock:
+            self._named_data_cache[bundle.named_data.name] = bundle.payload
+        async with self._job_ready_cv:
+            self._job_ready_cv.notify_all()
+
+        response = BundleData(
+            type=BundleType.NAMED_DATA,
+            source=self.node_id,
+            destination=bundle.source,
+            payload=b"",
+            named_data=bundle.named_data,
+        )
+        message = BundleCreate(type=MessageType.CREATE, bundle=response)
+        messages.append(message)
+
+        try:
+            dtnd_responses = await self._send_messages(messages=messages)
+            for dtnd_response in dtnd_responses:
+                if not dtnd_response.success:
+                    LOG.exception("dtnd sent error: %s", dtnd_response.error)
+        except Exception as err:
+            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+
+    def _job_has_all_inputs(self, job: JobInfo) -> bool:
+        required = job.required_named_data()
+        return required.issubset(self._named_data_cache.keys())
+
+    def _system_can_run(self, job: JobInfo) -> bool:
+        current = Capabilities.from_system()
+        return current.is_capable_of(job.capabilities)
+
+    async def _has_runnable_job(self) -> bool:
+        async with self._state_mutex.reader_lock:
+            return any(
+                self._job_has_all_inputs(j) and self._system_can_run(j)
+                for j in self._pending_jobs
+            )
+
+    async def _pop_next_runnable_job(self) -> Optional[JobInfo]:
+        async with self._state_mutex.writer_lock:
+            for _ in range(len(self._pending_jobs)):
+                job = self._pending_jobs.popleft()
+                if self._job_has_all_inputs(job) and self._system_can_run(job):
+                    return job
+                # Not runnable yet
+                self._pending_jobs.append(job)
+            return None
+
+    async def _scheduler(self) -> None:
+        LOG.info("Starting scheduler")
+        while True:
+            # Wait until at least one job is runnable
+            async with self._job_ready_cv:
+                while not await self._has_runnable_job():
+                    await self._job_ready_cv.wait()
+
+            job = await self._pop_next_runnable_job()
+            if job is None:
+                # State changed between predicate and pop
+                continue
+
+            try:
+                results = await self._run_job(job)
+                await self._send_results(job, results)
+            except Exception:
+                LOG.exception("Job failed: %s", job)
+            finally:
+                # Allow new jobs to be scheduled
+                async with self._job_ready_cv:
+                    self._job_ready_cv.notify_all()
+
+    async def _send_results(self, job: JobInfo, results: Dict[str, bytes]) -> None:
+        # TODO: store in datastore if no result_receiver
+        if not job.result_receiver:
+            LOG.info("No result receiver specified, skipping sending results")
+            return
+
+        messages: list[Message] = []
+        for name, data in results.items():
+            bundle = BundleData(
+                type=BundleType.NDATA_PUT,
+                source=self.node_id,
+                destination=job.result_receiver,
+                payload=data,
+                named_data=name,
+            )
+            message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
+            messages.append(message)
+
+        try:
+            dtnd_responses = await self._send_messages(messages=messages)
+            for dtnd_response in dtnd_responses:
+                if not dtnd_response.success:
+                    LOG.error("dtnd sent error: %s", dtnd_response.error)
+        except Exception as err:
+            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+
+    async def _run_job(self, job: JobInfo) -> Dict[str, bytes]:
+        LOG.info("Starting job: %s", job)
+        async with self._state_mutex.writer_lock:
+            job_dir = (self.root_dir / f"job-{id(job)}").resolve()
+            job_dir.mkdir(parents=True, exist_ok=True)
+            wasm_file, stdin_path, data_dir = await self._prepare_wasi_environment(
+                job, job_dir
+            )
+
+        try:
+            exit_code = await _run_wasi_module(
+                exec_file=wasm_file,
+                argv=job.argv,
+                env=job.env,
+                stdin_file=stdin_path,
+                data_dir=data_dir,
+                stdout_file=(
+                    (data_dir / job.stdout_file.lstrip("/"))
+                    if job.stdout_file
+                    else None
+                ),
+                stderr_file=(
+                    (data_dir / job.stderr_file.lstrip("/"))
+                    if job.stderr_file
+                    else None
+                ),
+            )
+            LOG.info("Job exit code: %s", exit_code)
+
+            results = await self._collect_results(job, job_dir)
+            return results
+        except Exception as e:
+            LOG.exception("Job failed: %s", e)
+            return {}
+        finally:
+            if job_dir and job_dir.exists():
+                shutil.rmtree(job_dir, ignore_errors=True)
+
+    async def _prepare_wasi_environment(
+        self, job: JobInfo, base_dir: Path
+    ) -> Tuple[Path, Optional[Path], Path]:
+        """
+        Prepare the filesystem and environment for a WASI job execution.
+
+        Args:
+            job (JobInfo): The job specification.
+            base_dir (Path): The base directory where the job's filesystem will be set up.
+
+        Returns:
+            Tuple[Path, Optional[Path], Path]: Paths to the WASM module, stdin file (if any), and the directory to preopen as "/".
+
+        Raises:
+            FileNotFoundError: If any named data is missing.
+            OSError: If directories or files cannot be created.
+            ValueError: If any paths are invalid.
+        """
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write WASM module to file
+        match job.wasm_module.type:
+            case DataType.BINARY:
+                wasm_path = (base_dir / "module.wasm").resolve()
+                with open(wasm_path, "wb") as f:
+                    f.write(job.wasm_module.value)
+            case DataType.NAMED:
+                if job.wasm_module.value not in self._named_data_cache:
+                    raise FileNotFoundError(
+                        f"Named data not found: {job.wasm_module.value}"
+                    )
+                wasm_path = (base_dir / "module.wasm").resolve()
+                with open(wasm_path, "wb") as f:
+                    f.write(self._named_data_cache[job.wasm_module.value])
+            case _:
+                raise ValueError("WASM module must be binary or named data")
+
+        # Prepare stdin file if provided
+        stdin_path: Optional[Path] = None
+        if job.stdin_file:
+            match job.stdin_file.type:
+                case DataType.BINARY:
+                    stdin_path = (base_dir / "stdin.bin").resolve()
+                    with open(stdin_path, "wb") as f:
+                        f.write(job.stdin_file.value)
+                case DataType.STRING:
+                    stdin_path = (base_dir / "stdin.txt").resolve()
+                    with open(stdin_path, "w", encoding="utf-8") as f:
+                        f.write(job.stdin_file.value)
+                case DataType.NAMED:
+                    if job.stdin_file.value not in self._named_data_cache:
+                        raise FileNotFoundError(
+                            f"Named data not found: {job.stdin_file.value}"
+                        )
+                    stdin_path = (base_dir / "stdin.bin").resolve()
+                    with open(stdin_path, "wb") as f:
+                        f.write(self._named_data_cache[job.stdin_file.value])
+                case _:
+                    raise ValueError(f"Unknown stdin data type: {job.stdin_file.type}")
+
+        # Create data directory
+        data_dir = (base_dir / "data").resolve()
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create specified directories
+        for dir_path in job.dirs:
+            abs_dir_path = (data_dir / dir_path.lstrip("/")).resolve()
+            if not abs_dir_path.is_relative_to(data_dir):
+                raise ValueError(f"Directory path escapes data directory: {dir_path}")
+            abs_dir_path.mkdir(parents=True, exist_ok=True)
+
+        # Write data files
+        for file_path, data in job.data.items():
+            abs_file_path = (data_dir / file_path.lstrip("/")).resolve()
+            if not abs_file_path.is_relative_to(data_dir):
+                raise ValueError(f"Data file path escapes data directory: {file_path}")
+            abs_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            match data.type:
+                case DataType.BINARY:
+                    with open(abs_file_path, "wb") as f:
+                        f.write(data.value)
+                case DataType.STRING:
+                    with open(abs_file_path, "w", encoding="utf-8") as f:
+                        f.write(data.value)
+                case DataType.NAMED:
+                    if data.value not in self._named_data_cache:
+                        raise FileNotFoundError(f"Named data not found: {data.value}")
+                    with open(abs_file_path, "wb") as f:
+                        f.write(self._named_data_cache[data.value])
+                case _:
+                    raise ValueError(f"Unknown data type: {data.type}")
+
+        # Prepare stdout parent directory if specified
+        if job.stdout_file:
+            stdout_path = (data_dir / job.stdout_file.lstrip("/")).resolve()
+            if not stdout_path.is_relative_to(data_dir):
+                raise ValueError(
+                    f"stdout_file path escapes data directory: {job.stdout_file}"
+                )
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Prepare stderr parent directory if specified
+        if job.stderr_file:
+            stderr_path = (data_dir / job.stderr_file.lstrip("/")).resolve()
+            if not stderr_path.is_relative_to(data_dir):
+                raise ValueError(
+                    f"stderr_file path escapes data directory: {job.stderr_file}"
+                )
+            stderr_path.parent.mkdir(parents=True, exist_ok=True)
+
+        return wasm_path, stdin_path, data_dir
+
+    async def _collect_results(self, job: JobInfo, base_dir: Path) -> Dict[str, bytes]:
+        results: Dict[str, bytes] = {}
+        data_dir = (base_dir / "data").resolve()
+
+        for path, name in job.named_results.items():
+            abs_path = (data_dir / path.lstrip("/")).resolve()
+            if not abs_path.is_relative_to(data_dir):
+                LOG.error(f"Result path escapes data directory: {path}, skipping")
+                continue
+            if not abs_path.exists():
+                LOG.error(f"Result path does not exist: {abs_path}, skipping")
+                continue
+
+            if abs_path.is_file():
+                with open(abs_path, "rb") as f:
+                    results[name] = f.read()
+            elif abs_path.is_dir():
+                # Zip the directory
+                with io.BytesIO() as buf:
+                    with zipfile.ZipFile(
+                        buf, "w", compression=zipfile.ZIP_DEFLATED
+                    ) as zf:
+                        for p in abs_path.rglob("*"):
+                            arcname = p.relative_to(abs_path.parent)
+                            if p.is_file():
+                                zf.write(p, arcname)
+                    buf.seek(0)
+                    results[name] = buf.read()
+            else:
+                LOG.error(
+                    f"Result path is neither file nor directory: {abs_path}, skipping"
+                )
+
+        return results
+
+
+async def _run_wasi_module(
     exec_file: Path,
     argv: List[str],
     env: Dict[str, str],
