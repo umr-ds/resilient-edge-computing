@@ -3,7 +3,6 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, List, Optional, Set, Union
 
 import psutil
 
@@ -27,11 +26,11 @@ class Data:
 
     Attributes:
         type (DataType): The type of data.
-        value (Union[str, bytes]): The actual data payload.
+        value (str | bytes): The actual data payload.
     """
 
     type: DataType
-    value: Union[str, bytes]
+    value: str | bytes
 
 
 @dataclass
@@ -103,38 +102,38 @@ class JobInfo:
 
     Attributes:
         wasm_module (Data): The WebAssembly module to execute.
-        argv (List[str]): Program arguments.
-        env (Dict[str, str]): Environment variables for the execution environment.
-        stdin_file (Optional[Data]): Optional stdin data for the module.
-        dirs (List[str]): Directory paths that will be created in the execution environment before the WASM module is executed.
-        data (Dict[str, Data]): Mapping of execution environment paths to data that should be placed at those locations before execution.
-        stdout_file (Optional[str]): Path in the execution environment where stdout should be written.
-        stderr_file (Optional[str]): Path in the execution environment where stderr should be written.
-        named_results (Dict[str, str]): Mapping of execution environment paths to result names.
+        argv (list[str]): Program arguments.
+        env (dict[str, str]): Environment variables for the execution environment.
+        stdin_file (Data | None): Optional stdin data for the module.
+        dirs (list[str]): Directory paths that will be created in the execution environment before the WASM module is executed.
+        data (dict[str, Data]): Mapping of execution environment paths to data that should be placed at those locations before execution.
+        stdout_file (str | None): Path in the execution environment where stdout should be written.
+        stderr_file (str | None): Path in the execution environment where stderr should be written.
+        named_results (dict[str, str]): Mapping of execution environment paths to result names.
             Files at these paths will be collected after execution.
             If a path is a directory, it will be zipped before storage.
         capabilities (Capabilities): Required system resource capabilities to run this job.
-        result_receiver (Optional[EID]): Optional endpoint to send results to.
+        result_receiver (EID | None): Optional endpoint to send results to.
     """
 
     wasm_module: Data
-    argv: List[str]
-    env: Dict[str, str]
-    stdin_file: Optional[Data]
-    dirs: List[str]
-    data: Dict[str, Data]
-    stdout_file: Optional[str]
-    stderr_file: Optional[str]
-    named_results: Dict[str, str]
+    argv: list[str]
+    env: dict[str, str]
+    stdin_file: Data | None
+    dirs: list[str]
+    data: dict[str, Data]
+    stdout_file: str | None
+    stderr_file: str | None
+    named_results: dict[str, str]
     capabilities: Capabilities
-    result_receiver: Optional[EID]
+    result_receiver: EID | None
 
-    def required_named_data(self) -> Set[str]:
+    def required_named_data(self) -> set[str]:
         """
         Get a set of all named data inputs required by this job.
 
         Returns:
-            Set[str]: Set of required named data identifiers.
+            set[str]: Set of required named data identifiers.
         """
         required_names = []
         if self.wasm_module.type == DataType.NAMED:

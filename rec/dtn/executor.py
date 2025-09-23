@@ -5,7 +5,7 @@ import shutil
 import zipfile
 from collections import deque
 from pathlib import Path
-from typing import Deque, Dict, List, Optional, Tuple, override
+from typing import override
 
 import msgpack
 from wasmtime import ExitTrap, Linker, Module, Store, Trap, WasiConfig, WasmtimeError
@@ -34,8 +34,8 @@ class WasmTrapError(RuntimeError):
 
 class Executor(Node):
     root_dir: Path
-    _named_data_cache: Dict[str, bytes]  # TODO: store in filesystem like datastore?
-    _pending_jobs: Deque[JobInfo]
+    _named_data_cache: dict[str, bytes]  # TODO: store in filesystem like datastore?
+    _pending_jobs: deque[JobInfo]
     _job_ready_cv: asyncio.Condition
 
     def __init__(self, node_id: EID, dtn_agent_socket: str, root_dir: Path) -> None:
@@ -45,7 +45,7 @@ class Executor(Node):
         self.root_dir.mkdir(parents=True, exist_ok=True)
 
         self._named_data_cache = {}
-        self._pending_jobs: Deque[JobInfo] = deque()
+        self._pending_jobs: deque[JobInfo] = deque()
         self._job_ready_cv = asyncio.Condition()
 
     @override
@@ -156,7 +156,7 @@ class Executor(Node):
                 for j in self._pending_jobs
             )
 
-    async def _pop_next_runnable_job(self) -> Optional[JobInfo]:
+    async def _pop_next_runnable_job(self) -> JobInfo | None:
         async with self._state_mutex.writer_lock:
             for _ in range(len(self._pending_jobs)):
                 job = self._pending_jobs.popleft()
@@ -189,7 +189,7 @@ class Executor(Node):
                 async with self._job_ready_cv:
                     self._job_ready_cv.notify_all()
 
-    async def _send_results(self, job: JobInfo, results: Dict[str, bytes]) -> None:
+    async def _send_results(self, job: JobInfo, results: dict[str, bytes]) -> None:
         # TODO: store in datastore if no result_receiver
         if not job.result_receiver:
             LOG.info("No result receiver specified, skipping sending results")
@@ -215,7 +215,7 @@ class Executor(Node):
         except Exception as err:
             LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
-    async def _run_job(self, job: JobInfo) -> Dict[str, bytes]:
+    async def _run_job(self, job: JobInfo) -> dict[str, bytes]:
         LOG.info("Starting job: %s", job)
         async with self._state_mutex.writer_lock:
             job_dir = (self.root_dir / f"job-{id(job)}").resolve()
@@ -255,7 +255,7 @@ class Executor(Node):
 
     async def _prepare_wasi_environment(
         self, job: JobInfo, base_dir: Path
-    ) -> Tuple[Path, Optional[Path], Path]:
+    ) -> tuple[Path, Path | None, Path]:
         """
         Prepare the filesystem and environment for a WASI job execution.
 
@@ -264,7 +264,7 @@ class Executor(Node):
             base_dir (Path): The base directory where the job's filesystem will be set up.
 
         Returns:
-            Tuple[Path, Optional[Path], Path]: Paths to the WASM module, stdin file (if any), and the directory to preopen as "/".
+            tuple[Path, Path | None, Path]: Paths to the WASM module, stdin file (if any), and the directory to preopen as "/".
 
         Raises:
             FileNotFoundError: If any named data is missing.
@@ -291,7 +291,7 @@ class Executor(Node):
                 raise ValueError("WASM module must be binary or named data")
 
         # Prepare stdin file if provided
-        stdin_path: Optional[Path] = None
+        stdin_path: Path | None = None
         if job.stdin_file:
             match job.stdin_file.type:
                 case DataType.BINARY:
@@ -366,8 +366,8 @@ class Executor(Node):
 
         return wasm_path, stdin_path, data_dir
 
-    async def _collect_results(self, job: JobInfo, base_dir: Path) -> Dict[str, bytes]:
-        results: Dict[str, bytes] = {}
+    async def _collect_results(self, job: JobInfo, base_dir: Path) -> dict[str, bytes]:
+        results: dict[str, bytes] = {}
         data_dir = (base_dir / "data").resolve()
 
         for path, name in job.named_results.items():
@@ -404,12 +404,12 @@ class Executor(Node):
 
 async def _run_wasi_module(
     exec_file: Path,
-    argv: List[str],
-    env: Dict[str, str],
-    stdin_file: Optional[Path] = None,
-    data_dir: Optional[Path] = None,
-    stdout_file: Optional[Path] = None,
-    stderr_file: Optional[Path] = None,
+    argv: list[str],
+    env: dict[str, str],
+    stdin_file: Path | None = None,
+    data_dir: Path | None = None,
+    stdout_file: Path | None = None,
+    stderr_file: Path | None = None,
 ) -> int:
     """
     Execute a WASI WebAssembly module asynchronously and return its exit code.
@@ -418,12 +418,12 @@ async def _run_wasi_module(
 
     Args:
         exec_file (Path): Path to the `.wasm` binary.
-        argv (List[str]): Program arguments (include argv[0] if your guest expects it).
-        env (Dict[str, str]): Environment variables for the guest.
-        stdin_file (Optional[Path]): Optional file to wire to WASI stdin.
-        data_dir (Optional[Path]): Optional host directory to preopen as "/" in WASI.
-        stdout_file (Optional[Path]): Optional file path to capture stdout.
-        stderr_file (Optional[Path]): Optional file path to capture stderr.
+        argv (list[str]): Program arguments (include argv[0] if your guest expects it).
+        env (dict[str, str]): Environment variables for the guest.
+        stdin_file (Path | None): Optional file to wire to WASI stdin.
+        data_dir (Path | None): Optional host directory to preopen as "/" in WASI.
+        stdout_file (Path | None): Optional file path to capture stdout.
+        stderr_file (Path | None): Optional file path to capture stderr.
 
     Returns:
         int: The exit code of the program.
@@ -499,24 +499,24 @@ async def _run_wasi_module(
 
 def _run_wasi_module_sync(
     wasm_bytes: bytes,
-    argv: List[str],
-    env: Dict[str, str],
-    stdin_file: Optional[Path],
-    data_dir: Optional[Path],
-    stdout_file: Optional[Path],
-    stderr_file: Optional[Path],
+    argv: list[str],
+    env: dict[str, str],
+    stdin_file: Path | None,
+    data_dir: Path | None,
+    stdout_file: Path | None,
+    stderr_file: Path | None,
 ) -> int:
     """
     Run the module synchronously once and return its exit code.
 
     Args:
         wasm_bytes (bytes): The WebAssembly binary data.
-        argv (List[str]): Program arguments (include argv[0] if your guest expects it).
-        env (Dict[str, str]): Environment variables for the guest.
-        stdin_file (Optional[Path]): Optional file to wire to WASI stdin.
-        data_dir (Optional[Path]): Optional host directory to preopen as "/" in WASI.
-        stdout_file (Optional[Path]): Optional file path to capture stdout.
-        stderr_file (Optional[Path]): Optional file path to capture stderr.
+        argv (list[str]): Program arguments (include argv[0] if your guest expects it).
+        env (dict[str, str]): Environment variables for the guest.
+        stdin_file (Path | None): Optional file to wire to WASI stdin.
+        data_dir (Path | None): Optional host directory to preopen as "/" in WASI.
+        stdout_file (Path | None): Optional file path to capture stdout.
+        stderr_file (Path | None): Optional file path to capture stderr.
 
     Returns:
         int: The exit code of the program.
