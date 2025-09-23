@@ -22,7 +22,7 @@ class Broker(Node):
         self.queued_jobs = Queue()
 
         self.bundle_handlers = {
-            BundleType.JOBS_QUERY: self._handle_jobs_query,
+            BundleType.JOB_QUERY: self._handle_job_query,
         }
 
     @override
@@ -54,12 +54,12 @@ class Broker(Node):
 
     async def _handle_bundle(self, bundle: BundleData) -> None:
         if bundle.type not in self.bundle_handlers:
-            LOG.error("Don't know how to handle bundle")
+            LOG.error(f"Don't know how to handle bundle of type: {bundle.type}")
             return
 
         await self.bundle_handlers[bundle.type](bundle)
 
-    async def _handle_jobs_query(self, bundle: BundleData) -> None:
+    async def _handle_job_query(self, bundle: BundleData) -> None:
         LOG.debug("Handling jobs query")
         async with self.state_mutex:
             jobs = {
@@ -68,7 +68,7 @@ class Broker(Node):
             }
             jobs_bytes = msgpack.packb(jobs)
             bundle_response = BundleData(
-                type=BundleType.JOBS_QUERY,
+                type=BundleType.JOB_LIST,
                 source=self.node_id,
                 destination=bundle.source,
                 submitter=bundle.submitter,

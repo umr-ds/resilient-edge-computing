@@ -3,7 +3,6 @@
 import asyncio
 from argparse import Namespace
 
-from rec.dtn.eid import EID
 from rec.dtn.messages import *
 from rec.dtn.node import Node
 from rec.util.log import LOG
@@ -31,7 +30,7 @@ class Client(Node):
         await self._register()
 
         query_bundle = BundleData(
-            type=BundleType.JOBS_QUERY,
+            type=BundleType.JOB_QUERY,
             source=self.node_id,
             destination=TMP_BROKER,
             payload=b"",
@@ -40,7 +39,7 @@ class Client(Node):
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
         reply = await self._send_message(message=message)
         print(reply)
-        broker_response = await self.wait_reply(BundleType.JOBS_QUERY)
+        broker_response = await self.wait_reply(BundleType.JOB_LIST)
         if not broker_response.success:
             LOG.error(
                 "Broker responded with error %s", broker_response.error, exc_info=False
@@ -54,19 +53,16 @@ class Client(Node):
         await self._register()
 
         query_bundle = BundleData(
-            type=BundleType.NAMED_DATA,
+            type=BundleType.NDATA_GET,
             source=self.node_id,
             destination=datastore,
             payload=b"",
-            named_data=NamedData(
-                action=NamedDataAction.GET,
-                name=name,
-            ),
+            named_data=name,
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
         reply = await self._send_message(message=message)
         print(reply)
-        store_rply = await self.wait_reply(BundleType.NAMED_DATA)
+        store_rply = await self.wait_reply(BundleType.NDATA_GET)
         if not store_rply.success:
             LOG.error(
                 "DataStore responded with error %s", store_rply.error, exc_info=False
@@ -83,19 +79,16 @@ class Client(Node):
             data = f.read()
 
         query_bundle = BundleData(
-            type=BundleType.NAMED_DATA,
+            type=BundleType.NDATA_PUT,
             source=self.node_id,
             destination=datastore,
             payload=data,
-            named_data=NamedData(
-                action=NamedDataAction.PUT,
-                name=name,
-            ),
+            named_data=name,
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
         reply = await self._send_message(message=message)
         print(reply)
-        store_rply = await self.wait_reply(BundleType.NAMED_DATA)
+        store_rply = await self.wait_reply(BundleType.NDATA_PUT)
         if not store_rply.success:
             LOG.error(
                 "DataStore responded with error %s", store_rply.error, exc_info=False
@@ -129,7 +122,3 @@ def main(args: Namespace) -> None:
                     )
         case _:
             LOG.critical(f"Unknown command: {args.command}")
-
-
-if __name__ == "__main__":
-    main()

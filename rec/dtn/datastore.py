@@ -77,57 +77,62 @@ class Datastore(Node):
                 LOG.exception("Error fetching bundles: %s", err)
 
     async def _handle_bundle(self, bundle: BundleData) -> None:
+        messages: list[Message] = []
+
         match bundle.type:
-            case BundleType.NAMED_DATA:
-                await self._handle_data(bundle=bundle)
+            case BundleType.NDATA_PUT:
+                LOG.debug("Data action is PUT")
+                if bundle.named_data is None:
+                    LOG.error("Name was none, this should never happen")
+                    return
+                if isinstance(bundle.named_data, str):
+                    bundle.named_data = [bundle.named_data]
+                for name in bundle.named_data:
+                    response = BundleData(
+                        type=BundleType.NDATA_PUT,
+                        source=self.node_id,
+                        destination=bundle.source,
+                        payload=b"",
+                        named_data=name,
+                    )
+                    message = BundleCreate(type=MessageType.CREATE, bundle=response)
+                    try:
+                        await self.store_data(name=name, data=bundle.payload)
+                    except NameTakenError as err:
+                        response.success = False
+                        response.error = str(err)
+                    messages.append(message)
+            case BundleType.NDATA_GET:
+                LOG.debug("Data action is GET")
+                if bundle.named_data is None:
+                    LOG.error("Name was none, this should never happen")
+                    return
+                if isinstance(bundle.named_data, str):
+                    bundle.named_data = [bundle.named_data]
+                for name in bundle.named_data:
+                    loaded = await self.load_data(name=name)
+                    LOG.debug(f"Loaded data: {loaded}")
+                    for l_name, l_data in loaded:
+                        response = BundleData(
+                            type=BundleType.NDATA_GET,
+                            source=self.node_id,
+                            destination=bundle.source,
+                            payload=l_data,
+                            named_data=l_name,
+                        )
+                        message = BundleCreate(type=MessageType.CREATE, bundle=response)
+                        messages.append(message)
             case _:
                 LOG.error(f"Received bundle of type {bundle.type}, ignoring")
 
-    async def _handle_data(self, bundle: BundleData) -> None:
-        LOG.debug(f"Received NamedDataBundle: {bundle}")
-        messages: list[Message] = []
-
-        match bundle.named_data.action:
-            case NamedDataAction.PUT:
-                LOG.debug("Data action is PUT")
-                response = BundleData(
-                    type=BundleType.NAMED_DATA,
-                    source=self.node_id,
-                    destination=bundle.source,
-                    payload=b"",
-                    named_data=bundle.named_data,
-                )
-                message = BundleCreate(type=MessageType.CREATE, bundle=response)
-                try:
-                    await self.store_data(
-                        name=bundle.named_data.name, data=bundle.payload
-                    )
-                except NameTakenError as err:
-                    response.success = False
-                    response.error = str(err)
-                messages.append(message)
-            case NamedDataAction.GET:
-                LOG.debug("Data action is GET")
-                loaded = await self.load_data(name=bundle.named_data.name)
-                LOG.debug(f"Loaded data: {loaded}")
-                for name, data in loaded:
-                    response = BundleData(
-                        type=BundleType.NAMED_DATA,
-                        source=self.node_id,
-                        destination=bundle.source,
-                        payload=data,
-                        named_data=NamedData(action=NamedDataAction.GET, name=name),
-                    )
-                    message = BundleCreate(type=MessageType.CREATE, bundle=response)
-                    messages.append(message)
-
-        try:
-            dtnd_responses = await self._send_messages(messages=messages)
-            for dtnd_response in dtnd_responses:
-                if not dtnd_response.success:
-                    LOG.exception("dtnd sent error: %s", dtnd_response.error)
-        except Exception as err:
-            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+        if messages:
+            try:
+                dtnd_responses = await self._send_messages(messages=messages)
+                for dtnd_response in dtnd_responses:
+                    if not dtnd_response.success:
+                        LOG.exception("dtnd sent error: %s", dtnd_response.error)
+            except Exception as err:
+                LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
     async def store_data(self, name: str, data: bytes) -> None:
         """

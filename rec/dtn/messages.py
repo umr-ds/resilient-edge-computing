@@ -113,8 +113,22 @@ CLIENT_MULTICAST_ADDRESS = EID.dtn("rec.client", "~")
 
 
 class BundleType(IntEnum):
-    JOBS_QUERY = 1
-    NAMED_DATA = 2
+    # 1-10: Broker discovery
+    BROKER_DISCOVER = 1
+    BROKER_OFFER = 2
+    BROKER_REQUEST = 3
+    BROKER_ACK = 4
+
+    # 11-20: Jobs
+    JOB_SUBMIT = 11
+    JOB_RESULT = 12
+    JOB_QUERY = 13
+    JOB_LIST = 14
+
+    # 21-30: Named Data
+    NDATA_PUT = 21
+    NDATA_GET = 22
+    NDATA_DEL = 23
 
 
 @dataclass
@@ -125,8 +139,12 @@ class BundleData:
     payload: bytes
     success: bool = True
     error: str = ""
+    # used by broker discovery
+    node_type: NodeType = 0
+    # used by job query/list
     submitter: EID | None = None
-    named_data: NamedData | None = None
+    # used by named data
+    named_data: str | list[str] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, EID):
@@ -137,34 +155,18 @@ class BundleData:
         if self.submitter is not None:
             self.submitter = EID(self.submitter)
 
-        if isinstance(self.named_data, dict):
-            self.named_data = NamedData(**self.named_data)
-
     def dictify(self) -> dict:
         own_dict = self.__dict__
+        if self.node_type == 0:
+            del own_dict["node_type"]
+
         if self.submitter is None:
             del own_dict["submitter"]
+
         if self.named_data is None:
             del own_dict["named_data"]
-        else:
-            own_dict["named_data"] = self.named_data.dictify()
 
         return own_dict
-
-
-class NamedDataAction(IntEnum):
-    PUT = 1
-    GET = 2
-    DELETE = 3
-
-
-@dataclass
-class NamedData:
-    action: NamedDataAction
-    name: str
-
-    def dictify(self) -> dict:
-        return self.__dict__
 
 
 def serialize(message: Message) -> bytes:
