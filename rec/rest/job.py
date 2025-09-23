@@ -1,12 +1,12 @@
 import glob
 import os
-from typing import Callable, IO, Optional
+from typing import IO, Callable, Optional
 from uuid import UUID
 from zipfile import ZipFile
 
-from rec.util.exceptions import WasmRestException
 from rec.rest.model import JobInfo
 from rec.rest.nodetypes.broker import Broker
+from rec.util.exceptions import WasmRestException
 from rec.util.execute_wasm import run_webassembly
 from rec.util.fs import (
     prevent_breakout,

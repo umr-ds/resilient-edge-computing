@@ -1,11 +1,10 @@
 import asyncio
-
-from pathlib import Path
 from hashlib import sha1
+from pathlib import Path
 
 from aiofiles import open
 from aiorwlock import RWLock
-from asynctinydb import TinyDB, Query
+from asynctinydb import Query, TinyDB
 
 from rec.dtn.messages import *
 from rec.dtn.node import Node

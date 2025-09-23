@@ -1,8 +1,7 @@
 #! /usr/bin/env python3
 
-import logging
 import asyncio
-
+import logging
 from argparse import ArgumentParser, Namespace
 
 from rec.dtn.broker import Broker

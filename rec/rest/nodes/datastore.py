@@ -1,13 +1,13 @@
 import os
 import threading
 from enum import Enum
-from typing import Any, IO, Optional
+from typing import IO, Any, Optional
 from uuid import UUID
 
 import psutil
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from fastapi_pagination import add_pagination, Page, paginate
+from fastapi_pagination import Page, add_pagination, paginate
 from readerwriterlock.rwlock import RWLockWrite
 
 from rec.rest.model import NodeRole

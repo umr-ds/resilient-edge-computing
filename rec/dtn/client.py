@@ -1,14 +1,12 @@
 #! /usr/bin/env python3
 
 import asyncio
-
 from argparse import Namespace
 
-from rec.dtn.messages import *
 from rec.dtn.eid import EID
+from rec.dtn.messages import *
 from rec.dtn.node import Node
 from rec.util.log import LOG
-
 
 TMP_BROKER = EID("dtn://broker_1/")
 

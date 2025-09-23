@@ -1,6 +1,5 @@
 import pytest
-
-from hypothesis import given, assume
+from hypothesis import assume, given
 
 from rec.dtn.datastore import *
 

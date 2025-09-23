@@ -5,7 +5,8 @@ from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI
-from uvicorn import Config as UVConfig, Server as UVServer
+from uvicorn import Config as UVConfig
+from uvicorn import Server as UVServer
 from zeroconf import ServiceInfo, ServiceListener, Zeroconf
 
 from rec.util.log import LOG
