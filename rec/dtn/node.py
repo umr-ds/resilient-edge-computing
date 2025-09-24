@@ -14,8 +14,12 @@ from rec.util.log import LOG
 class Node(ABC):
     node_id: EID
     dtn_agent_socket: str
+    node_type: NodeType
 
     _state_mutex: RWLock = field(default_factory=RWLock)
+
+    _broker_pending: EID | None = None
+    _broker: EID | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.node_id, str):
@@ -80,12 +84,24 @@ class Node(ABC):
             LOG.debug("Error registering with dtnd: %s", reply.error)
             return
 
-    async def _get_new_bundles(self, node_type: NodeType) -> list[BundleData]:
+    async def _send_bundle(self, bundle: BundleData) -> Reply:
+        message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
+        return await self._send_message(message=message)
+
+    async def _send_bundles(self, bundles: list[BundleData]) -> list[Reply]:
+        replies: list[Reply] = []
+
+        for bundle in bundles:
+            replies.append(await self._send_bundle(bundle=bundle))
+
+        return replies
+
+    async def _get_new_bundles(self) -> list[BundleData]:
         LOG.debug("Retrieving new bundles")
         bundles: list[BundleData] = []
 
         message = Fetch(
-            type=MessageType.FETCH, endpoint_id=self.node_id, node_type=node_type
+            type=MessageType.FETCH, endpoint_id=self.node_id, node_type=self.node_type
         )
         LOG.debug(f"Sending fetch: {message}")
         reply = await self._send_message(message=message)
@@ -98,3 +114,41 @@ class Node(ABC):
             LOG.error("dtnd replied with error: %s", reply.error)
 
         return bundles
+
+    async def _handle_discovery(self, bundle: BundleData) -> list[BundleData]:
+        """
+        To be called when a broker-discovery bundle is received
+        """
+        responses: list[BundleData] = []
+
+        match bundle.type:
+            case BundleType.BROKER_ANNOUNCE:
+                LOG.debug("Broker announcement")
+                async with self._state_mutex.writer_lock:
+                    if self._broker_pending is None and self._broker is None:
+                        self._broker_pending = bundle.source
+                        LOG.info(
+                            f"Pending association with broker {self._broker_pending}"
+                        )
+                        response = BundleData(
+                            type=BundleType.BROKER_REQUEST,
+                            source=self.node_id,
+                            destination=bundle.source,
+                            node_type=self.node_type,
+                        )
+                        responses.append(response)
+
+            case BundleType.BROKER_ACK:
+                LOG.debug("Broker ACK")
+                with self._state_mutex.writer_lock:
+                    if self._broker_pending == bundle.source:
+                        self._broker = bundle.source
+                        self._broker_pending = None
+                        LOG.debug(f"Now associated with broker {bundle.source}")
+                    else:
+                        LOG.debug(f"Received ACK from unknown broker: {bundle.source}")
+
+            case _:
+                LOG.warning(f"Can't handle bundle of type {bundle.type}")
+
+        return responses

@@ -10,8 +10,14 @@ from rec.util.log import LOG
 TMP_BROKER = EID("dtn://broker_1/")
 
 
-@dataclass
 class Client(Node):
+    def __init__(self, node_id: str | EID, dtn_agent_socket: str):
+        super().__init__(
+            node_id=node_id,
+            dtn_agent_socket=dtn_agent_socket,
+            node_type=NodeType.CLIENT,
+        )
+
     @override
     async def run(self) -> None:
         pass
@@ -20,7 +26,7 @@ class Client(Node):
         LOG.info("Waiting for reply")
         while True:
             await asyncio.sleep(10)
-            bundles = await self._get_new_bundles(NodeType.CLIENT)
+            bundles = await self._get_new_bundles()
             for bundle in bundles:
                 if bundle.type == wait_for:
                     return bundle
@@ -68,8 +74,7 @@ class Client(Node):
                 "DataStore responded with error %s", store_rply.error, exc_info=False
             )
         else:
-            jobs = unpackb(store_rply.payload)
-            print(jobs)
+            print(store_rply.payload)
 
     async def data_put(self, datastore: EID, name: str, data_file: str) -> None:
         LOG.info(f"Performing data PUT: Name: {name}")
@@ -94,8 +99,7 @@ class Client(Node):
                 "DataStore responded with error %s", store_rply.error, exc_info=False
             )
         else:
-            jobs = unpackb(store_rply.payload)
-            print(jobs)
+            print("Success")
 
 
 def main(args: Namespace) -> None:

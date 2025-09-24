@@ -106,6 +106,7 @@ class BundleCreate(Message):
         return parent_dict | own_dict
 
 
+BROADCAST_ADDRESS = EID.dtn("rec.all", "~")
 BROKER_MULTICAST_ADDRESS = EID.dtn("rec.broker", "~")
 DATASTORE_MULTICAST_ADDRESS = EID.dtn("rec.store", "~")
 EXECUTOR_MULTICAST_ADDRESS = EID.dtn("rec.executor", "~")
@@ -114,10 +115,9 @@ CLIENT_MULTICAST_ADDRESS = EID.dtn("rec.client", "~")
 
 class BundleType(IntEnum):
     # 1-10: Broker discovery
-    BROKER_DISCOVER = 1
-    BROKER_OFFER = 2
-    BROKER_REQUEST = 3
-    BROKER_ACK = 4
+    BROKER_ANNOUNCE = 1
+    BROKER_REQUEST = 2
+    BROKER_ACK = 3
 
     # 11-20: Jobs
     JOB_SUBMIT = 11
@@ -136,7 +136,7 @@ class BundleData:
     type: BundleType
     source: EID
     destination: EID
-    payload: bytes
+    payload: bytes = b""
     success: bool = True
     error: str = ""
     # used by broker discovery
@@ -157,6 +157,10 @@ class BundleData:
 
     def dictify(self) -> dict:
         own_dict = self.__dict__
+
+        if self.payload == b"":
+            del own_dict["payload"]
+
         if self.node_type == 0:
             del own_dict["node_type"]
 

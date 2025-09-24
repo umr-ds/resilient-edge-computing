@@ -40,7 +40,11 @@ class Executor(Node):
     _job_ready_cv: asyncio.Condition
 
     def __init__(self, node_id: EID, dtn_agent_socket: str, root_dir: Path) -> None:
-        super().__init__(node_id=node_id, dtn_agent_socket=dtn_agent_socket)
+        super().__init__(
+            node_id=node_id,
+            dtn_agent_socket=dtn_agent_socket,
+            node_type=NodeType.EXECUTOR,
+        )
 
         self._root_dir = root_dir
         self._root_dir.mkdir(parents=True, exist_ok=True)
@@ -70,7 +74,7 @@ class Executor(Node):
             LOG.debug("Running bundle handler")
             try:
                 LOG.debug("Retrieving bundles")
-                bundles = await self._get_new_bundles(NodeType.EXECUTOR)
+                bundles = await self._get_new_bundles()
                 if bundles:
                     LOG.debug(f"Bundles: {bundles}")
                     for bundle in bundles:
@@ -81,16 +85,28 @@ class Executor(Node):
                 LOG.exception("Error fetching bundles: %s", err)
 
     async def _handle_bundle(self, bundle: BundleData) -> None:
-        match bundle.type:
-            case BundleType.JOB_SUBMIT:
-                await self._handle_job(bundle=bundle)
-            case BundleType.NDATA_GET:
-                await self._handle_data(bundle=bundle)
-            case _:
-                LOG.error(f"Received bundle of type {bundle.type}, ignoring")
+        to_send: list[BundleData] = []
 
-    async def _handle_job(self, bundle: BundleData) -> None:
+        if BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
+            to_send = await self._handle_discovery(bundle=bundle)
+        if bundle.type == BundleType.JOB_SUBMIT:
+            to_send = await self._handle_job(bundle=bundle)
+        if bundle.type == BundleType.NDATA_GET:
+            await self._handle_data(bundle=bundle)
+
+        if to_send:
+            try:
+                LOG.debug("Sending bundles")
+                dtnd_responses = await self._send_bundles(bundles=to_send)
+                for dtnd_response in dtnd_responses:
+                    if not dtnd_response.success:
+                        LOG.exception("dtnd sent error: %s", dtnd_response.error)
+            except Exception as err:
+                LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+
+    async def _handle_job(self, bundle: BundleData) -> list[BundleData]:
         LOG.debug(f"Received JobBundle: {bundle}")
+        to_send: list[BundleData] = []
 
         job: Job = msgpack.unpackb(bundle.payload)
 
@@ -116,14 +132,9 @@ class Executor(Node):
                 payload=b"",
                 named_data=list(missing),
             )
-            message = BundleCreate(type=MessageType.CREATE, bundle=request)
+            to_send.append(request)
 
-            try:
-                dtnd_response = await self._send_message(message)
-                if not dtnd_response.success:
-                    LOG.error("dtnd sent error: %s", dtnd_response.error)
-            except Exception as err:
-                LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+        return to_send
 
     async def _handle_data(self, bundle: BundleData) -> None:
         LOG.debug(f"Received NamedData: {bundle}")
@@ -282,10 +293,10 @@ class Executor(Node):
 
             results = await self._collect_results(job, job_dir)
             named_results = await self._collect_named_results(job, job_dir)
-            return (results, named_results)
+            return results, named_results
         except Exception as e:
             LOG.exception("Job failed: %s", e)
-            return (None, {})
+            return None, {}
         finally:
             if job_dir and job_dir.exists():
                 shutil.rmtree(job_dir, ignore_errors=True)
