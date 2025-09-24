@@ -2,35 +2,10 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass
-from enum import IntEnum
 
 import psutil
 
 from rec.dtn.eid import EID
-
-
-class DataType(IntEnum):
-    """
-    Enumeration of supported data types for job inputs.
-    """
-
-    NAMED = 1
-    STRING = 2
-    BINARY = 3
-
-
-@dataclass
-class Data:
-    """
-    Container for typed data.
-
-    Attributes:
-        type (DataType): The type of data.
-        value (str | bytes): The actual data payload.
-    """
-
-    type: DataType
-    value: str | bytes
 
 
 @dataclass
@@ -101,12 +76,12 @@ class JobInfo:
     Complete specification for a WebAssembly job execution request.
 
     Attributes:
-        wasm_module (Data): The WebAssembly module to execute.
+        wasm_module (str): Named reference to the WebAssembly module to execute.
         argv (list[str]): Program arguments.
         env (dict[str, str]): Environment variables for the execution environment.
-        stdin_file (Data | None): Optional stdin data for the module.
+        stdin_file (str | None): Optional named reference to stdin data for the module.
         dirs (list[str]): Directory paths that will be created in the execution environment before the WASM module is executed.
-        data (dict[str, Data]): Mapping of execution environment paths to data that should be placed at those locations before execution.
+        data (dict[str, str]): Mapping of execution environment paths to named data references that should be placed at those locations before execution.
         stdout_file (str | None): Path in the execution environment where stdout should be written.
         stderr_file (str | None): Path in the execution environment where stderr should be written.
         named_results (dict[str, str]): Mapping of execution environment paths to result names.
@@ -116,12 +91,12 @@ class JobInfo:
         result_receiver (EID | None): Optional endpoint to send results to.
     """
 
-    wasm_module: Data
+    wasm_module: str
     argv: list[str]
     env: dict[str, str]
-    stdin_file: Data | None
+    stdin_file: str | None
     dirs: list[str]
-    data: dict[str, Data]
+    data: dict[str, str]
     stdout_file: str | None
     stderr_file: str | None
     named_results: dict[str, str]
@@ -135,12 +110,48 @@ class JobInfo:
         Returns:
             set[str]: Set of required named data identifiers.
         """
-        required_names = []
-        if self.wasm_module.type == DataType.NAMED:
-            required_names.append(self.wasm_module.value)
-        if self.stdin_file and self.stdin_file.type == DataType.NAMED:
-            required_names.append(self.stdin_file.value)
-        for _, data in self.data.items():
-            if data.type == DataType.NAMED:
-                required_names.append(data.value)
+        required_names = [self.wasm_module]
+        if self.stdin_file:
+            required_names.append(self.stdin_file)
+        required_names.extend(self.data.values())
         return set(required_names)
+
+
+@dataclass
+class Job:
+    """
+    Container for a job's metadata and associated binary data.
+
+    The Job class combines job specification with optional binary data.
+    When submitted to an Executor, the provided data will be stored in the Executor's cache,
+    the JobInfo will be queued for execution, and any missing data will be requested from datastores.
+
+    Attributes:
+        metadata (JobInfo): Complete job specification with named data references.
+        data (dict[str, bytes]): Mapping of named data identifiers to their binary content.
+            Keys should match the named references in JobInfo fields.
+            Any data provided here will be cached by the Executor and won't need to be fetched from datastores.
+    """
+
+    metadata: JobInfo
+    data: dict[str, bytes]
+
+    def has_all_data(self) -> bool:
+        """
+        Check if all required data has been provided with the job.
+
+        Returns:
+            bool: True if all named references in JobInfo have corresponding binary data.
+        """
+        required = self.metadata.required_named_data()
+        return required.issubset(self.data.keys())
+
+    def missing_data(self) -> set[str]:
+        """
+        Get the set of named data references that are not included with this job.
+
+        Returns:
+            set[str]: Named data identifiers that the Executor will need to fetch from datastores.
+        """
+        required = self.metadata.required_named_data()
+        return required - self.data.keys()

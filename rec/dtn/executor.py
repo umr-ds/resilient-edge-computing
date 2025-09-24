@@ -11,8 +11,9 @@ import msgpack
 from wasmtime import ExitTrap, Linker, Module, Store, Trap, WasiConfig, WasmtimeError
 
 from rec.dtn.eid import EID
-from rec.dtn.job import Capabilities, DataType, JobInfo
+from rec.dtn.job import Capabilities, Job, JobInfo
 from rec.dtn.messages import (
+    DATASTORE_MULTICAST_ADDRESS,
     BundleCreate,
     BundleData,
     BundleType,
@@ -66,7 +67,7 @@ class Executor(Node):
             LOG.debug("Running bundle handler")
             try:
                 LOG.debug("Retrieving bundles")
-                bundles = await self._get_new_bundles(NodeType.DATASTORE)
+                bundles = await self._get_new_bundles(NodeType.EXECUTOR)
                 if bundles:
                     LOG.debug(f"Bundles: {bundles}")
                     for bundle in bundles:
@@ -87,61 +88,66 @@ class Executor(Node):
 
     async def _handle_job(self, bundle: BundleData) -> None:
         LOG.debug(f"Received JobBundle: {bundle}")
-        messages: list[Message] = []
 
-        job: JobInfo = msgpack.unpackb(bundle.payload)
+        job: Job = msgpack.unpackb(bundle.payload)
 
         async with self._state_mutex.writer_lock:
-            self._pending_jobs.append(job)
+            self._pending_jobs.append(job.metadata)
+            self._named_data_cache.update(job.data)
+            missing = job.metadata.required_named_data() - self._named_data_cache.keys()
         async with self._job_ready_cv:
             self._job_ready_cv.notify_all()
 
-        response = BundleData(
-            type=BundleType.JOB,
-            source=self.node_id,
-            destination=bundle.source,
-            payload=b"",
-        )
-        message = BundleCreate(type=MessageType.CREATE, bundle=response)
-        messages.append(message)
+        # TODO: send ACK?
 
-        try:
-            dtnd_responses = await self._send_messages(messages=messages)
-            for dtnd_response in dtnd_responses:
+        if missing:
+            LOG.info(f"Job is missing named data: {missing}")
+
+            # Request missing named data from datastores
+            request = BundleData(
+                type=BundleType.NDATA_GET,
+                source=self.node_id,
+                destination=DATASTORE_MULTICAST_ADDRESS,
+                payload=b"",
+                named_data=missing,
+            )
+            message = BundleCreate(type=MessageType.CREATE, bundle=request)
+
+            try:
+                dtnd_response = await self._send_message(message)
                 if not dtnd_response.success:
-                    LOG.exception("dtnd sent error: %s", dtnd_response.error)
-        except Exception as err:
-            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+                    LOG.error("dtnd sent error: %s", dtnd_response.error)
+            except Exception as err:
+                LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
     async def _handle_data(self, bundle: BundleData) -> None:
-        LOG.debug(f"Received NamedDataBundle: {bundle}")
-        messages: list[Message] = []
+        LOG.debug(f"Received NamedData: {bundle}")
 
-        LOG.debug("Data action is PUT")
+        if isinstance(bundle.named_data, str):
+            bundle.named_data = [bundle.named_data]
+
         async with self._state_mutex.writer_lock:
-            self._named_data_cache[bundle.named_data.name] = bundle.payload
+            for name in bundle.named_data:
+                self._named_data_cache[name] = bundle.payload
         async with self._job_ready_cv:
             self._job_ready_cv.notify_all()
 
-        response = BundleData(
-            type=BundleType.NAMED_DATA,
-            source=self.node_id,
-            destination=bundle.source,
-            payload=b"",
-            named_data=bundle.named_data,
-        )
-        message = BundleCreate(type=MessageType.CREATE, bundle=response)
-        messages.append(message)
-
-        try:
-            dtnd_responses = await self._send_messages(messages=messages)
-            for dtnd_response in dtnd_responses:
-                if not dtnd_response.success:
-                    LOG.exception("dtnd sent error: %s", dtnd_response.error)
-        except Exception as err:
-            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+        # TODO: send ACK?
 
     def _job_has_all_inputs(self, job: JobInfo) -> bool:
+        """
+        Check if all required named data for a job is available in the cache.
+
+        Args:
+            job (JobInfo): The job to check.
+
+        Returns:
+            bool: True if all required data is cached, False otherwise.
+
+        Note:
+            Caller must hold `_state_mutex` (reader or writer lock) when calling this method
+            to ensure thread-safe access to `_named_data_cache`.
+        """
         required = job.required_named_data()
         return required.issubset(self._named_data_cache.keys())
 
@@ -270,48 +276,28 @@ class Executor(Node):
             FileNotFoundError: If any named data is missing.
             OSError: If directories or files cannot be created.
             ValueError: If any paths are invalid.
+
+        Note:
+            Caller must hold `_state_mutex` (reader or writer lock) when calling this method
+            to ensure thread-safe access to `_named_data_cache`.
         """
         base_dir.mkdir(parents=True, exist_ok=True)
 
         # Write WASM module to file
-        match job.wasm_module.type:
-            case DataType.BINARY:
-                wasm_path = (base_dir / "module.wasm").resolve()
-                with open(wasm_path, "wb") as f:
-                    f.write(job.wasm_module.value)
-            case DataType.NAMED:
-                if job.wasm_module.value not in self._named_data_cache:
-                    raise FileNotFoundError(
-                        f"Named data not found: {job.wasm_module.value}"
-                    )
-                wasm_path = (base_dir / "module.wasm").resolve()
-                with open(wasm_path, "wb") as f:
-                    f.write(self._named_data_cache[job.wasm_module.value])
-            case _:
-                raise ValueError("WASM module must be binary or named data")
+        if job.wasm_module not in self._named_data_cache:
+            raise FileNotFoundError(f"Named data not found: {job.wasm_module}")
+        wasm_path = (base_dir / "module.wasm").resolve()
+        with open(wasm_path, "wb") as f:
+            f.write(self._named_data_cache[job.wasm_module])
 
         # Prepare stdin file if provided
         stdin_path: Path | None = None
         if job.stdin_file:
-            match job.stdin_file.type:
-                case DataType.BINARY:
-                    stdin_path = (base_dir / "stdin.bin").resolve()
-                    with open(stdin_path, "wb") as f:
-                        f.write(job.stdin_file.value)
-                case DataType.STRING:
-                    stdin_path = (base_dir / "stdin.txt").resolve()
-                    with open(stdin_path, "w", encoding="utf-8") as f:
-                        f.write(job.stdin_file.value)
-                case DataType.NAMED:
-                    if job.stdin_file.value not in self._named_data_cache:
-                        raise FileNotFoundError(
-                            f"Named data not found: {job.stdin_file.value}"
-                        )
-                    stdin_path = (base_dir / "stdin.bin").resolve()
-                    with open(stdin_path, "wb") as f:
-                        f.write(self._named_data_cache[job.stdin_file.value])
-                case _:
-                    raise ValueError(f"Unknown stdin data type: {job.stdin_file.type}")
+            if job.stdin_file not in self._named_data_cache:
+                raise FileNotFoundError(f"Named data not found: {job.stdin_file}")
+            stdin_path = (base_dir / "stdin.bin").resolve()
+            with open(stdin_path, "wb") as f:
+                f.write(self._named_data_cache[job.stdin_file])
 
         # Create data directory
         data_dir = (base_dir / "data").resolve()
@@ -331,20 +317,10 @@ class Executor(Node):
                 raise ValueError(f"Data file path escapes data directory: {file_path}")
             abs_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-            match data.type:
-                case DataType.BINARY:
-                    with open(abs_file_path, "wb") as f:
-                        f.write(data.value)
-                case DataType.STRING:
-                    with open(abs_file_path, "w", encoding="utf-8") as f:
-                        f.write(data.value)
-                case DataType.NAMED:
-                    if data.value not in self._named_data_cache:
-                        raise FileNotFoundError(f"Named data not found: {data.value}")
-                    with open(abs_file_path, "wb") as f:
-                        f.write(self._named_data_cache[data.value])
-                case _:
-                    raise ValueError(f"Unknown data type: {data.type}")
+            if data not in self._named_data_cache:
+                raise FileNotFoundError(f"Named data not found: {data}")
+            with open(abs_file_path, "wb") as f:
+                f.write(self._named_data_cache[data])
 
         # Prepare stdout parent directory if specified
         if job.stdout_file:

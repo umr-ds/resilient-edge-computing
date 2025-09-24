@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -9,7 +10,7 @@ import pytest
 
 from rec.dtn.eid import EID
 from rec.dtn.executor import Executor, WasmTrapError, _run_wasi_module
-from rec.dtn.job import Capabilities, Data, DataType, JobInfo
+from rec.dtn.job import Capabilities, Job, JobInfo
 
 HERE = Path(__file__).resolve().parent
 WASM = HERE / "artifacts" / "wasi-smoke.wasm"
@@ -37,48 +38,69 @@ def executor(test_eid: EID, tmp_path: Path) -> Executor:
         return executor
 
 
-@pytest.fixture
-def sample_job_binary_wasm(wasm_path: Path) -> JobInfo:
-    with open(wasm_path, "rb") as f:
-        wasm_data = f.read()
-
-    return JobInfo(
-        wasm_module=Data(type=DataType.BINARY, value=wasm_data),
-        argv=["a", "b", "c"],
-        env={"FOO": "bar"},
-        stdin_file=Data(type=DataType.STRING, value="line1\nline2"),
-        dirs=["/output", "/temp"],
-        data={
-            "/infile.txt": Data(type=DataType.STRING, value="hello-from-host"),
-            "/data.bin": Data(type=DataType.BINARY, value=b"\x00\x01\x02\x03"),
-        },
-        stdout_file="/output/stdout.log",
-        stderr_file="/output/stderr.log",
-        named_results={
-            "/output/result.txt": "result_data",
-            "/output": "output_archive",
-        },
-        capabilities=Capabilities(cpu_cores=1, free_memory=1024 * 1024),
-        result_receiver=EID.dtn("client", "results"),
-    )
+async def populate_cache(executor: Executor, data: dict[str, bytes]) -> None:
+    async with executor._state_mutex.writer_lock:
+        executor._named_data_cache.update(data)
 
 
 @pytest.fixture
-def sample_job_named_wasm() -> JobInfo:
+def job_dirs(tmp_path: Path) -> tuple[Path, Path]:
+    job_dir = tmp_path / "job"
+    data_dir = job_dir / "data"
+    data_dir.mkdir(parents=True)
+    return job_dir, data_dir
+
+
+@pytest.fixture
+def minimal_job_info() -> JobInfo:
     return JobInfo(
-        wasm_module=Data(type=DataType.NAMED, value="test_module"),
-        argv=["a", "b", "c"],
-        env={"FOO": "bar"},
-        stdin_file=Data(type=DataType.NAMED, value="test_stdin"),
+        wasm_module="wasm-module",
+        argv=[],
+        env={},
+        stdin_file=None,
         dirs=[],
-        data={
-            "/infile.txt": Data(type=DataType.NAMED, value="test_config"),
-        },
+        data={},
         stdout_file=None,
         stderr_file=None,
         named_results={},
         capabilities=Capabilities(),
         result_receiver=None,
+    )
+
+
+@pytest.fixture
+def sample_job(wasm_path: Path) -> Job:
+    with open(wasm_path, "rb") as f:
+        wasm_data = f.read()
+
+    job_info = JobInfo(
+        wasm_module="wasm-module",
+        argv=["a", "b", "c"],
+        env={"FOO": "bar"},
+        stdin_file="stdin",
+        dirs=["/output", "/temp"],
+        data={
+            "/infile.txt": "infile",
+            "/data.bin": "databin",
+        },
+        stdout_file="/output/stdout.log",
+        stderr_file="/output/stderr.log",
+        named_results={
+            "/output/result.txt": "result",
+            "/output": "output_archive",
+        },
+        capabilities=Capabilities(),
+        result_receiver=EID.dtn("client", "results"),
+    )
+
+    return Job(
+        metadata=job_info,
+        data={
+            "wasm-module": wasm_data,
+            "stdin": b"line1\nline2",
+            "infile": b"hello-from-host",
+            "databin": b"\x00\x01\x02\x03",
+        },
     )
 
 
@@ -157,13 +179,15 @@ class TestExecutorWasmModule:
 
 class TestExecutorPrepareWasiEnvironment:
     @pytest.mark.asyncio
-    async def test_prepare_binary_wasm_module(
-        self, executor: Executor, sample_job_binary_wasm: JobInfo, tmp_path: Path
+    async def test_prepare_wasm_environment(
+        self, executor: Executor, sample_job: Job, tmp_path: Path
     ):
         job_dir = tmp_path / "job"
 
+        await populate_cache(executor, sample_job.data)
+
         wasm_path, stdin_path, data_dir = await executor._prepare_wasi_environment(
-            sample_job_binary_wasm, job_dir
+            sample_job.metadata, job_dir
         )
 
         # Check WASM module was written
@@ -185,62 +209,25 @@ class TestExecutorPrepareWasiEnvironment:
         assert (data_dir / "temp").is_dir()
 
     @pytest.mark.asyncio
-    async def test_prepare_named_wasm_module(
-        self, executor: Executor, sample_job_named_wasm: JobInfo, tmp_path: Path
-    ):
-        # Setup named data cache
-        with open(WASM, "rb") as f:
-            wasm_data = f.read()
-
-        executor._named_data_cache = {
-            "test_module": wasm_data,
-            "test_stdin": b"line1\nline2",
-            "test_config": b"hello-from-host",
-        }
-
-        job_dir = tmp_path / "job"
-
-        wasm_path, stdin_path, data_dir = await executor._prepare_wasi_environment(
-            sample_job_named_wasm, job_dir
-        )
-
-        # Check WASM module was written from cache
-        assert wasm_path.exists()
-        assert wasm_path.read_bytes() == wasm_data
-
-        # Check stdin from named data
-        assert stdin_path is not None
-        assert stdin_path.read_bytes() == b"line1\nline2"
-
-        # Check named data file
-        assert (data_dir / "infile.txt").read_bytes() == b"hello-from-host"
-
-    @pytest.mark.asyncio
     async def test_prepare_missing_named_data_raises_error(
-        self, executor: Executor, sample_job_named_wasm: JobInfo, tmp_path: Path
+        self, executor: Executor, sample_job: Job, tmp_path: Path
     ):
         job_dir = tmp_path / "job"
 
+        # Don't populate the cache
         with pytest.raises(FileNotFoundError):
-            await executor._prepare_wasi_environment(sample_job_named_wasm, job_dir)
+            await executor._prepare_wasi_environment(sample_job.metadata, job_dir)
 
     @pytest.mark.asyncio
     async def test_prepare_path_escape_security(
-        self, executor: Executor, tmp_path: Path
+        self, executor: Executor, tmp_path: Path, sample_job: Job
     ):
-        malicious_job = JobInfo(
-            wasm_module=Data(type=DataType.BINARY, value=b"fake wasm"),
-            argv=[],
-            env={},
-            stdin_file=None,
+        malicious_job = replace(
+            sample_job.metadata,
             dirs=["../../../etc"],
-            data={},
-            stdout_file=None,
-            stderr_file=None,
-            named_results={},
-            capabilities=Capabilities(),
-            result_receiver=None,
         )
+
+        await populate_cache(executor, sample_job.data)
 
         job_dir = tmp_path / "job"
 
@@ -249,21 +236,15 @@ class TestExecutorPrepareWasiEnvironment:
 
     @pytest.mark.asyncio
     async def test_prepare_stdout_stderr_directories(
-        self, executor: Executor, tmp_path: Path
+        self, executor: Executor, tmp_path: Path, sample_job: Job
     ):
-        job = JobInfo(
-            wasm_module=Data(type=DataType.BINARY, value=b"fake wasm"),
-            argv=[],
-            env={},
-            stdin_file=None,
-            dirs=[],
-            data={},
+        job = replace(
+            sample_job.metadata,
             stdout_file="/logs/output.log",
             stderr_file="/logs/error.log",
-            named_results={},
-            capabilities=Capabilities(),
-            result_receiver=None,
         )
+
+        await populate_cache(executor, sample_job.data)
 
         job_dir = tmp_path / "job"
 
@@ -275,30 +256,21 @@ class TestExecutorPrepareWasiEnvironment:
 
 class TestExecutorCollectResults:
     @pytest.mark.asyncio
-    async def test_collect_file_results(self, executor: Executor, tmp_path: Path):
-        job_dir = tmp_path / "job"
-        data_dir = job_dir / "data"
-        data_dir.mkdir(parents=True)
+    async def test_collect_file_results(
+        self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
+    ):
+        job_dir, data_dir = job_dirs
 
         # Create test output files
         (data_dir / "result.txt").write_text("hello-from-wasi")
         (data_dir / "output.bin").write_bytes(b"\x01\x02\x03")
 
-        job = JobInfo(
-            wasm_module=Data(type=DataType.BINARY, value=b"fake"),
-            argv=[],
-            env={},
-            stdin_file=None,
-            dirs=[],
-            data={},
-            stdout_file=None,
-            stderr_file=None,
+        job = replace(
+            minimal_job_info,
             named_results={
                 "/result.txt": "text_result",
                 "/output.bin": "binary_result",
             },
-            capabilities=Capabilities(),
-            result_receiver=None,
         )
 
         results = await executor._collect_results(job, job_dir)
@@ -307,9 +279,10 @@ class TestExecutorCollectResults:
         assert results["binary_result"] == b"\x01\x02\x03"
 
     @pytest.mark.asyncio
-    async def test_collect_directory_results(self, executor: Executor, tmp_path: Path):
-        job_dir = tmp_path / "job"
-        data_dir = job_dir / "data"
+    async def test_collect_directory_results(
+        self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
+    ):
+        job_dir, data_dir = job_dirs
         output_dir = data_dir / "output"
         output_dir.mkdir(parents=True)
 
@@ -318,24 +291,15 @@ class TestExecutorCollectResults:
         (output_dir / "subdir").mkdir()
         (output_dir / "subdir" / "file2.txt").write_text("line1\nline2")
 
-        job = JobInfo(
-            wasm_module=Data(type=DataType.BINARY, value=b"fake"),
-            argv=[],
-            env={},
-            stdin_file=None,
-            dirs=[],
-            data={},
-            stdout_file=None,
-            stderr_file=None,
-            named_results={"/output": "dir_archive"},
-            capabilities=Capabilities(),
-            result_receiver=None,
+        job = replace(
+            minimal_job_info,
+            named_results={"/output": "archive"},
         )
 
         results = await executor._collect_results(job, job_dir)
 
         # Verify the result is a valid zip
-        zip_data = results["dir_archive"]
+        zip_data = results["archive"]
         with zipfile.ZipFile(io.BytesIO(zip_data), "r") as zf:
             files = zf.namelist()
             assert "output/file1.txt" in files
@@ -345,24 +309,15 @@ class TestExecutorCollectResults:
 
     @pytest.mark.asyncio
     async def test_collect_missing_results_skipped(
-        self, executor: Executor, tmp_path: Path
+        self, executor: Executor, tmp_path: Path, minimal_job_info: JobInfo
     ):
         job_dir = tmp_path / "job"
         data_dir = job_dir / "data"
         data_dir.mkdir(parents=True)
 
-        job = JobInfo(
-            wasm_module=Data(type=DataType.BINARY, value=b"fake"),
-            argv=[],
-            env={},
-            stdin_file=None,
-            dirs=[],
-            data={},
-            stdout_file=None,
-            stderr_file=None,
+        job = replace(
+            minimal_job_info,
             named_results={"/nonexistent.txt": "missing_result"},
-            capabilities=Capabilities(),
-            result_receiver=None,
         )
 
         results = await executor._collect_results(job, job_dir)
@@ -372,7 +327,7 @@ class TestExecutorCollectResults:
 
     @pytest.mark.asyncio
     async def test_collect_path_escape_security(
-        self, executor: Executor, tmp_path: Path
+        self, executor: Executor, tmp_path: Path, minimal_job_info: JobInfo
     ):
         job_dir = tmp_path / "job"
         data_dir = job_dir / "data"
@@ -381,18 +336,9 @@ class TestExecutorCollectResults:
         # Create a file outside data directory
         (tmp_path / "secret.txt").write_text("hello-from-host")
 
-        job = JobInfo(
-            wasm_module=Data(type=DataType.BINARY, value=b"fake"),
-            argv=[],
-            env={},
-            stdin_file=None,
-            dirs=[],
-            data={},
-            stdout_file=None,
-            stderr_file=None,
+        job = replace(
+            minimal_job_info,
             named_results={"../secret.txt": "escaped_file"},
-            capabilities=Capabilities(),
-            result_receiver=None,
         )
 
         results = await executor._collect_results(job, job_dir)
@@ -402,33 +348,21 @@ class TestExecutorCollectResults:
 
 class TestExecutorRunJob:
     @pytest.mark.asyncio
-    async def test_run_job(self, executor: Executor, wasm_path: Path):
-        with open(wasm_path, "rb") as f:
-            wasm_data = f.read()
-
-        job = JobInfo(
-            wasm_module=Data(type=DataType.BINARY, value=wasm_data),
-            argv=["a", "b", "c"],
-            env={
-                "FOO": "bar",
-            },
-            stdin_file=Data(type=DataType.STRING, value="line1\nline2"),
+    async def test_run_job(self, executor: Executor, sample_job: Job):
+        job_info = replace(
+            sample_job.metadata,
             dirs=["/output"],
-            data={
-                "/infile.txt": Data(type=DataType.STRING, value="hello-from-host"),
-            },
-            stdout_file="/output/stdout.log",
-            stderr_file="/output/stderr.log",
+            data={"/infile.txt": "infile"},
             named_results={
                 "/output/stdout.log": "stdout_result",
                 "/output/stderr.log": "stderr_result",
                 "/out.txt": "wasm_output_file",
             },
-            capabilities=Capabilities(cpu_cores=1, free_memory=1024 * 1024),
-            result_receiver=EID.dtn("client", "results"),
         )
 
-        results = await executor._run_job(job)
+        await populate_cache(executor, sample_job.data)
+
+        results = await executor._run_job(job_info)
 
         # Verify results were collected
         assert "stdout_result" in results
@@ -455,83 +389,22 @@ class TestExecutorRunJob:
         assert len(job_dirs) == 0
 
     @pytest.mark.asyncio
-    async def test_run_job_with_named_data(self, executor: Executor, wasm_path: Path):
-        with open(wasm_path, "rb") as f:
-            wasm_data = f.read()
-
-        executor._named_data_cache = {
-            "smoke_wasm": wasm_data,
-            "input_data": b"line1\nline2",
-            "config_data": b"hello-from-host",
-        }
-
-        job = JobInfo(
-            wasm_module=Data(type=DataType.NAMED, value="smoke_wasm"),
-            argv=["a", "b", "c"],
-            env={
-                "FOO": "bar",
-            },
-            stdin_file=Data(type=DataType.NAMED, value="input_data"),
-            dirs=["/output"],
-            data={
-                "/infile.txt": Data(type=DataType.NAMED, value="config_data"),
-            },
-            stdout_file="/output/stdout.log",
-            stderr_file="/output/stderr.log",
-            named_results={
-                "/output/stdout.log": "stdout_result",
-                "/output/stderr.log": "stderr_result",
-                "/out.txt": "wasm_output_file",
-            },
-            capabilities=Capabilities(cpu_cores=1, free_memory=1024 * 1024),
-            result_receiver=EID.dtn("client", "results"),
-        )
-
-        results = await executor._run_job(job)
-
-        # Verify all results were collected
-        assert "stdout_result" in results
-        assert "stderr_result" in results
-        assert "wasm_output_file" in results
-
-        # Verify WASM executed with named data correctly
-        stdout_content = results["stdout_result"].decode()
-        assert "ARGS=a,b,c" in stdout_content
-        assert "ENV_FOO=bar" in stdout_content
-        assert "STDIN=line1\\nline2" in stdout_content
-        assert "DATA_READ=hello-from-host" in stdout_content
-
-        # Verify WASM output file was created
-        assert results["wasm_output_file"].decode() == "hello-from-wasi"
-
-    @pytest.mark.asyncio
-    async def test_run_job_directory_result(self, executor: Executor, wasm_path: Path):
-        with open(wasm_path, "rb") as f:
-            wasm_data = f.read()
-
-        job = JobInfo(
-            wasm_module=Data(type=DataType.BINARY, value=wasm_data),
-            argv=["a", "b", "c"],
-            env={
-                "FOO": "bar",
-            },
-            stdin_file=Data(type=DataType.STRING, value="line1\nline2"),
+    async def test_run_job_directory_result(self, executor: Executor, sample_job: Job):
+        job_info = replace(
+            sample_job.metadata,
             dirs=["/output", "/logs"],
-            data={
-                "/infile.txt": Data(type=DataType.STRING, value="hello-from-host"),
-            },
-            stdout_file="/output/stdout.log",
+            data={"/infile.txt": "infile"},
             stderr_file="/logs/stderr.log",
             named_results={
                 "/output": "output_directory",
                 "/logs": "logs_directory",
                 "/out.txt": "wasm_output_file",
             },
-            capabilities=Capabilities(cpu_cores=1, free_memory=1024 * 1024),
-            result_receiver=EID.dtn("client", "results"),
         )
 
-        results = await executor._run_job(job)
+        await populate_cache(executor, sample_job.data)
+
+        results = await executor._run_job(job_info)
 
         # Verify we got all results
         assert "output_directory" in results
