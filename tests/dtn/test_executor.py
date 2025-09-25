@@ -62,9 +62,10 @@ def minimal_job_info() -> JobInfo:
         data={},
         stdout_file=None,
         stderr_file=None,
+        results=[],
         named_results={},
         capabilities=Capabilities(),
-        result_receiver=None,
+        results_receiver=None,
     )
 
 
@@ -85,12 +86,13 @@ def sample_job(wasm_path: Path) -> Job:
         },
         stdout_file="/output/stdout.log",
         stderr_file="/output/stderr.log",
+        results=["/out.txt", "/output"],
         named_results={
-            "/output/result.txt": "result",
+            "/out.txt": "wasm_output_file",
             "/output": "output_archive",
         },
         capabilities=Capabilities(),
-        result_receiver=EID.dtn("client", "results"),
+        results_receiver=EID.dtn("client", "results"),
     )
 
     return Job(
@@ -180,9 +182,9 @@ class TestExecutorWasmModule:
 class TestExecutorPrepareWasiEnvironment:
     @pytest.mark.asyncio
     async def test_prepare_wasm_environment(
-        self, executor: Executor, sample_job: Job, tmp_path: Path
+        self, executor: Executor, job_dirs: tuple[Path, Path], sample_job: Job
     ):
-        job_dir = tmp_path / "job"
+        job_dir, _data_dir = job_dirs
 
         await populate_cache(executor, sample_job.data)
 
@@ -210,9 +212,9 @@ class TestExecutorPrepareWasiEnvironment:
 
     @pytest.mark.asyncio
     async def test_prepare_missing_named_data_raises_error(
-        self, executor: Executor, sample_job: Job, tmp_path: Path
+        self, executor: Executor, job_dirs: tuple[Path, Path], sample_job: Job
     ):
-        job_dir = tmp_path / "job"
+        job_dir, _data_dir = job_dirs
 
         # Don't populate the cache
         with pytest.raises(FileNotFoundError):
@@ -220,8 +222,10 @@ class TestExecutorPrepareWasiEnvironment:
 
     @pytest.mark.asyncio
     async def test_prepare_path_escape_security(
-        self, executor: Executor, tmp_path: Path, sample_job: Job
+        self, executor: Executor, job_dirs: tuple[Path, Path], sample_job: Job
     ):
+        job_dir, _data_dir = job_dirs
+
         malicious_job = replace(
             sample_job.metadata,
             dirs=["../../../etc"],
@@ -229,15 +233,15 @@ class TestExecutorPrepareWasiEnvironment:
 
         await populate_cache(executor, sample_job.data)
 
-        job_dir = tmp_path / "job"
-
         with pytest.raises(ValueError):
             await executor._prepare_wasi_environment(malicious_job, job_dir)
 
     @pytest.mark.asyncio
     async def test_prepare_stdout_stderr_directories(
-        self, executor: Executor, tmp_path: Path, sample_job: Job
+        self, executor: Executor, job_dirs: tuple[Path, Path], sample_job: Job
     ):
+        job_dir, _data_dir = job_dirs
+
         job = replace(
             sample_job.metadata,
             stdout_file="/logs/output.log",
@@ -245,8 +249,6 @@ class TestExecutorPrepareWasiEnvironment:
         )
 
         await populate_cache(executor, sample_job.data)
-
-        job_dir = tmp_path / "job"
 
         _, _, data_dir = await executor._prepare_wasi_environment(job, job_dir)
 
@@ -256,177 +258,261 @@ class TestExecutorPrepareWasiEnvironment:
 
 class TestExecutorCollectResults:
     @pytest.mark.asyncio
-    async def test_collect_file_results(
+    async def test_collect_empty(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
     ):
-        job_dir, data_dir = job_dirs
-
-        # Create test output files
-        (data_dir / "result.txt").write_text("hello-from-wasi")
-        (data_dir / "output.bin").write_bytes(b"\x01\x02\x03")
+        job_dir, _data_dir = job_dirs
 
         job = replace(
             minimal_job_info,
-            named_results={
-                "/result.txt": "text_result",
-                "/output.bin": "binary_result",
-            },
+            results=[],
+            results_receiver=EID.dtn("client", "results"),
         )
 
         results = await executor._collect_results(job, job_dir)
 
-        assert results["text_result"] == b"hello-from-wasi"
-        assert results["binary_result"] == b"\x01\x02\x03"
+        # Should return empty zip when results=[] but receiver exists
+        assert results is not None
+        with zipfile.ZipFile(io.BytesIO(results), "r") as zf:
+            assert len(zf.namelist()) == 0
 
     @pytest.mark.asyncio
-    async def test_collect_directory_results(
+    async def test_collect_no_receiver(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
     ):
-        job_dir, data_dir = job_dirs
-        output_dir = data_dir / "output"
-        output_dir.mkdir(parents=True)
-
-        # Create test directory structure
-        (output_dir / "file1.txt").write_text("hello-from-wasi")
-        (output_dir / "subdir").mkdir()
-        (output_dir / "subdir" / "file2.txt").write_text("line1\nline2")
+        job_dir, _data_dir = job_dirs
 
         job = replace(
             minimal_job_info,
-            named_results={"/output": "archive"},
+            results_receiver=None,
         )
 
         results = await executor._collect_results(job, job_dir)
 
-        # Verify the result is a valid zip
-        zip_data = results["archive"]
-        with zipfile.ZipFile(io.BytesIO(zip_data), "r") as zf:
-            files = zf.namelist()
-            assert "output/file1.txt" in files
-            assert "output/subdir/file2.txt" in files
-            assert zf.read("output/file1.txt") == b"hello-from-wasi"
-            assert zf.read("output/subdir/file2.txt") == b"line1\nline2"
+        assert results is None
 
     @pytest.mark.asyncio
     async def test_collect_missing_results_skipped(
-        self, executor: Executor, tmp_path: Path, minimal_job_info: JobInfo
+        self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
     ):
-        job_dir = tmp_path / "job"
-        data_dir = job_dir / "data"
-        data_dir.mkdir(parents=True)
+        job_dir, _data_dir = job_dirs
+
+        job = replace(
+            minimal_job_info,
+            results=["/nonexistent.txt"],
+            results_receiver=EID.dtn("client", "results"),
+        )
+
+        results = await executor._collect_results(job, job_dir)
+
+        # Should return empty zip when files are missing but receiver exists
+        assert results is not None
+        with zipfile.ZipFile(io.BytesIO(results), "r") as zf:
+            assert len(zf.namelist()) == 0
+
+    @pytest.mark.asyncio
+    async def test_collect_path_escape_security(
+        self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
+    ):
+        job_dir, data_dir = job_dirs
+
+        # Create a file outside data directory
+        (data_dir.parent / "secret.txt").write_text("hello-from-host")
+
+        job = replace(
+            minimal_job_info,
+            results=["../secret.txt"],
+            results_receiver=EID.dtn("client", "results"),
+        )
+
+        results = await executor._collect_results(job, job_dir)
+
+        # Should return empty zip when files are skipped for security but receiver exists
+        assert results is not None
+        with zipfile.ZipFile(io.BytesIO(results), "r") as zf:
+            assert len(zf.namelist()) == 0
+
+    @pytest.mark.asyncio
+    async def test_collect(
+        self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
+    ):
+        job_dir, data_dir = job_dirs
+
+        # Create test output files and directories
+        (data_dir / "result.txt").write_text("hello-from-wasi")
+        (data_dir / "output.bin").write_bytes(b"\x01\x02\x03")
+        (data_dir / "uninteresting.txt").write_text("ignore me")
+        (data_dir / "subdir").mkdir()
+        (data_dir / "subdir" / "file1.txt").write_text("line1\nline2")
+        (data_dir / "subdir" / "file2.txt").write_bytes(b"\x03\x04\x05")
+        (data_dir / "unrelated").mkdir()
+        (data_dir / "unrelated" / "data.txt").write_text("not included")
+
+        job = replace(
+            minimal_job_info,
+            results=["/result.txt", "/output.bin", "/subdir"],
+            results_receiver=EID.dtn("client", "results"),
+        )
+
+        results = await executor._collect_results(job, job_dir)
+
+        with zipfile.ZipFile(io.BytesIO(results), "r") as zf:
+            files = zf.namelist()
+            assert len(files) == 4
+            assert "result.txt" in files
+            assert "output.bin" in files
+            assert "subdir/file1.txt" in files
+            assert "subdir/file2.txt" in files
+            assert zf.read("result.txt") == b"hello-from-wasi"
+            assert zf.read("output.bin") == b"\x01\x02\x03"
+            assert zf.read("subdir/file1.txt") == b"line1\nline2"
+            assert zf.read("subdir/file2.txt") == b"\x03\x04\x05"
+
+
+class TestExecutorCollectNamedResults:
+    @pytest.mark.asyncio
+    async def test_collect_empty(
+        self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
+    ):
+        job_dir, _data_dir = job_dirs
+
+        job = replace(
+            minimal_job_info,
+            named_results={},
+        )
+
+        results = await executor._collect_named_results(job, job_dir)
+
+        assert results == {}
+
+    @pytest.mark.asyncio
+    async def test_collect_missing_results_skipped(
+        self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
+    ):
+        job_dir, _data_dir = job_dirs
 
         job = replace(
             minimal_job_info,
             named_results={"/nonexistent.txt": "missing_result"},
         )
 
-        results = await executor._collect_results(job, job_dir)
+        results = await executor._collect_named_results(job, job_dir)
 
-        # Should return empty dict when no files found
         assert results == {}
 
     @pytest.mark.asyncio
     async def test_collect_path_escape_security(
-        self, executor: Executor, tmp_path: Path, minimal_job_info: JobInfo
+        self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
     ):
-        job_dir = tmp_path / "job"
-        data_dir = job_dir / "data"
-        data_dir.mkdir(parents=True)
+        job_dir, data_dir = job_dirs
 
         # Create a file outside data directory
-        (tmp_path / "secret.txt").write_text("hello-from-host")
+        (data_dir.parent / "secret.txt").write_text("hello-from-host")
 
         job = replace(
             minimal_job_info,
             named_results={"../secret.txt": "escaped_file"},
         )
 
-        results = await executor._collect_results(job, job_dir)
+        results = await executor._collect_named_results(job, job_dir)
 
         assert results == {}
+
+    @pytest.mark.asyncio
+    async def test_collect(
+        self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
+    ):
+        job_dir, data_dir = job_dirs
+
+        # Create test output files and directories
+        (data_dir / "result.txt").write_text("hello-from-wasi")
+        (data_dir / "output.bin").write_bytes(b"\x01\x02\x03")
+        (data_dir / "uninteresting.txt").write_text("ignore me")
+        (data_dir / "subdir").mkdir()
+        (data_dir / "subdir" / "file1.txt").write_text("line1\nline2")
+        (data_dir / "subdir" / "file2.txt").write_bytes(b"\x03\x04\x05")
+        (data_dir / "unrelated").mkdir()
+        (data_dir / "unrelated" / "data.txt").write_text("not included")
+
+        job = replace(
+            minimal_job_info,
+            named_results={
+                "/result.txt": "text_result",
+                "/output.bin": "binary_result",
+                "/subdir": "archive",
+            },
+        )
+
+        results = await executor._collect_named_results(job, job_dir)
+
+        assert len(results) == 3
+        assert results["text_result"] == b"hello-from-wasi"
+        assert results["binary_result"] == b"\x01\x02\x03"
+
+        zip_data = results["archive"]
+        with zipfile.ZipFile(io.BytesIO(zip_data), "r") as zf:
+            files = zf.namelist()
+            assert len(files) == 2
+            assert "subdir/file1.txt" in files
+            assert "subdir/file2.txt" in files
+            assert zf.read("subdir/file1.txt") == b"line1\nline2"
+            assert zf.read("subdir/file2.txt") == b"\x03\x04\x05"
 
 
 class TestExecutorRunJob:
     @pytest.mark.asyncio
     async def test_run_job(self, executor: Executor, sample_job: Job):
-        job_info = replace(
-            sample_job.metadata,
-            dirs=["/output"],
-            data={"/infile.txt": "infile"},
-            named_results={
-                "/output/stdout.log": "stdout_result",
-                "/output/stderr.log": "stderr_result",
-                "/out.txt": "wasm_output_file",
-            },
-        )
-
         await populate_cache(executor, sample_job.data)
 
-        results = await executor._run_job(job_info)
+        results_zip, named_results = await executor._run_job(sample_job.metadata)
 
         # Verify results were collected
-        assert "stdout_result" in results
-        assert "stderr_result" in results
-        assert "wasm_output_file" in results
+        assert results_zip is not None
+        with zipfile.ZipFile(io.BytesIO(results_zip), "r") as zf:
+            files = zf.namelist()
+            assert len(files) == 3
 
-        # Check stdout contains expected content from WASM smoke test
-        stdout_content = results["stdout_result"].decode()
-        assert "ARGS=a,b,c" in stdout_content
-        assert "ENV_FOO=bar" in stdout_content
-        assert "STDIN=line1\\nline2" in stdout_content
-        assert "DATA_READ=hello-from-host" in stdout_content
+            # Check the WASM output file
+            assert "out.txt" in files
+            assert zf.read("out.txt") == b"hello-from-wasi"
 
-        # Check stderr contains expected content
-        stderr_content = results["stderr_result"].decode()
-        assert "TO_STDERR" in stderr_content
+            # Check output directory contents
+            assert "output/stdout.log" in files
+            stdout_content = zf.read("output/stdout.log").decode()
+            assert "ARGS=a,b,c" in stdout_content
+            assert "ENV_FOO=bar" in stdout_content
+            assert "STDIN=line1\\nline2" in stdout_content
+            assert "DATA_READ=hello-from-host" in stdout_content
+
+            assert "output/stderr.log" in files
+            stderr_content = zf.read("output/stderr.log").decode()
+            assert "TO_STDERR" in stderr_content
+
+        # Verify named results were collected
+        assert len(named_results) == 2
+        assert "wasm_output_file" in named_results
+        assert "output_archive" in named_results
 
         # Check the WASM output file
-        wasm_output = results["wasm_output_file"].decode()
-        assert wasm_output == "hello-from-wasi"
+        assert named_results["wasm_output_file"].decode() == "hello-from-wasi"
+
+        # Check output directory contents
+        output_zip_data = named_results["output_archive"]
+        with zipfile.ZipFile(io.BytesIO(output_zip_data), "r") as zf:
+            files = zf.namelist()
+            assert len(files) == 2
+
+            assert "output/stdout.log" in files
+            stdout_content = zf.read("output/stdout.log").decode()
+            assert "ARGS=a,b,c" in stdout_content
+            assert "ENV_FOO=bar" in stdout_content
+            assert "STDIN=line1\\nline2" in stdout_content
+            assert "DATA_READ=hello-from-host" in stdout_content
+
+            assert "output/stderr.log" in files
+            stderr_content = zf.read("output/stderr.log").decode()
+            assert "TO_STDERR" in stderr_content
 
         # Check that the job directory was cleaned up
         job_dirs = list(executor.root_dir.glob("job-*"))
         assert len(job_dirs) == 0
-
-    @pytest.mark.asyncio
-    async def test_run_job_directory_result(self, executor: Executor, sample_job: Job):
-        job_info = replace(
-            sample_job.metadata,
-            dirs=["/output", "/logs"],
-            data={"/infile.txt": "infile"},
-            stderr_file="/logs/stderr.log",
-            named_results={
-                "/output": "output_directory",
-                "/logs": "logs_directory",
-                "/out.txt": "wasm_output_file",
-            },
-        )
-
-        await populate_cache(executor, sample_job.data)
-
-        results = await executor._run_job(job_info)
-
-        # Verify we got all results
-        assert "output_directory" in results
-        assert "logs_directory" in results
-        assert "wasm_output_file" in results
-
-        # Verify single file result
-        assert results["wasm_output_file"].decode() == "hello-from-wasi"
-
-        # Verify directory results are valid zip files
-        output_zip_data = results["output_directory"]
-        with zipfile.ZipFile(io.BytesIO(output_zip_data), "r") as zf:
-            files = zf.namelist()
-            assert "output/stdout.log" in files
-            # Verify stdout content is in the zip
-            stdout_content = zf.read("output/stdout.log").decode()
-            assert "ARGS=a,b,c" in stdout_content
-
-        logs_zip_data = results["logs_directory"]
-        with zipfile.ZipFile(io.BytesIO(logs_zip_data), "r") as zf:
-            files = zf.namelist()
-            assert "logs/stderr.log" in files
-            # Verify stderr content is in the zip
-            stderr_content = zf.read("logs/stderr.log").decode()
-            assert "TO_STDERR" in stderr_content

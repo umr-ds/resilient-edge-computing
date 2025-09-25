@@ -40,9 +40,10 @@ def full_job_info() -> JobInfo:
         data={"/input.txt": "input", "/config.txt": "config"},
         stdout_file="/output/stdout.txt",
         stderr_file="/output/stderr.txt",
+        results=[],
         named_results={"/output/result.txt": "result"},
         capabilities=Capabilities(),
-        result_receiver=EID.dtn("node"),
+        results_receiver=EID.dtn("node"),
     )
 
 

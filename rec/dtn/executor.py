@@ -186,8 +186,9 @@ class Executor(Node):
                 continue
 
             try:
-                results = await self._run_job(job)
+                results, named_results = await self._run_job(job)
                 await self._send_results(job, results)
+                await self._send_named_results(named_results)
             except Exception:
                 LOG.exception("Job failed: %s", job)
             finally:
@@ -195,33 +196,54 @@ class Executor(Node):
                 async with self._job_ready_cv:
                     self._job_ready_cv.notify_all()
 
-    async def _send_results(self, job: JobInfo, results: dict[str, bytes]) -> None:
-        # TODO: store in datastore if no result_receiver
-        if not job.result_receiver:
+    async def _send_results(self, job: JobInfo, results: bytes | None) -> None:
+        if not results:
+            LOG.info("No results to send")
+            return
+        if not job.results_receiver:
             LOG.info("No result receiver specified, skipping sending results")
             return
 
-        messages: list[Message] = []
-        for name, data in results.items():
-            bundle = BundleData(
-                type=BundleType.NDATA_PUT,
-                source=self.node_id,
-                destination=job.result_receiver,
-                payload=data,
-                named_data=name,
-            )
-            message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
-            messages.append(message)
+        bundle = BundleData(
+            type=BundleType.JOB_RESULT,
+            source=self.node_id,
+            destination=job.results_receiver,
+            payload=results,
+        )
+        message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
 
         try:
-            dtnd_responses = await self._send_messages(messages=messages)
-            for dtnd_response in dtnd_responses:
-                if not dtnd_response.success:
-                    LOG.error("dtnd sent error: %s", dtnd_response.error)
+            dtnd_response = await self._send_message(message)
+            if not dtnd_response.success:
+                LOG.error("dtnd sent error: %s", dtnd_response.error)
         except Exception as err:
             LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
-    async def _run_job(self, job: JobInfo) -> dict[str, bytes]:
+    async def _send_named_results(self, results: dict[str, bytes]) -> None:
+        if not results:
+            LOG.info("No named results to send")
+            return
+
+        names = list(results.keys())
+        data = msgpack.packb(list(results.values()))
+
+        bundle = BundleData(
+            type=BundleType.NDATA_PUT,
+            source=self.node_id,
+            destination=DATASTORE_MULTICAST_ADDRESS,
+            payload=data,
+            named_data=names,
+        )
+        message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
+
+        try:
+            dtnd_response = await self._send_message(message)
+            if not dtnd_response.success:
+                LOG.error("dtnd sent error: %s", dtnd_response.error)
+        except Exception as err:
+            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+
+    async def _run_job(self, job: JobInfo) -> tuple[bytes | None, dict[str, bytes]]:
         LOG.info("Starting job: %s", job)
         async with self._state_mutex.writer_lock:
             job_dir = (self.root_dir / f"job-{id(job)}").resolve()
@@ -251,10 +273,11 @@ class Executor(Node):
             LOG.info("Job exit code: %s", exit_code)
 
             results = await self._collect_results(job, job_dir)
-            return results
+            named_results = await self._collect_named_results(job, job_dir)
+            return (results, named_results)
         except Exception as e:
             LOG.exception("Job failed: %s", e)
-            return {}
+            return (None, {})
         finally:
             if job_dir and job_dir.exists():
                 shutil.rmtree(job_dir, ignore_errors=True)
@@ -342,7 +365,42 @@ class Executor(Node):
 
         return wasm_path, stdin_path, data_dir
 
-    async def _collect_results(self, job: JobInfo, base_dir: Path) -> dict[str, bytes]:
+    async def _collect_results(self, job: JobInfo, base_dir: Path) -> bytes | None:
+        if not job.results_receiver:
+            return None
+
+        data_dir = (base_dir / "data").resolve()
+        zip_path = (base_dir / "results.zip").resolve()
+
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for path in job.results:
+                abs_path = (data_dir / path.lstrip("/")).resolve()
+                if not abs_path.is_relative_to(data_dir):
+                    LOG.error(f"Result path escapes data directory: {path}, skipping")
+                    continue
+                if not abs_path.exists():
+                    LOG.error(f"Result path does not exist: {abs_path}, skipping")
+                    continue
+
+                if abs_path.is_file():
+                    arcname = abs_path.relative_to(data_dir)
+                    zf.write(abs_path, arcname)
+                elif abs_path.is_dir():
+                    for p in abs_path.rglob("*"):
+                        arcname = p.relative_to(data_dir)
+                        if p.is_file():
+                            zf.write(p, arcname)
+                else:
+                    LOG.error(
+                        f"Result path is neither file nor directory: {abs_path}, skipping"
+                    )
+
+        with open(zip_path, "rb") as f:
+            return f.read()
+
+    async def _collect_named_results(
+        self, job: JobInfo, base_dir: Path
+    ) -> dict[str, bytes]:
         results: dict[str, bytes] = {}
         data_dir = (base_dir / "data").resolve()
 

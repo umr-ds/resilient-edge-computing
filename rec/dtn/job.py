@@ -84,11 +84,14 @@ class JobInfo:
         data (dict[str, str]): Mapping of execution environment paths to named data references that should be placed at those locations before execution.
         stdout_file (str | None): Path in the execution environment where stdout should be written.
         stderr_file (str | None): Path in the execution environment where stderr should be written.
-        named_results (dict[str, str]): Mapping of execution environment paths to result names.
-            Files at these paths will be collected after execution.
-            If a path is a directory, it will be zipped before storage.
+        results (list[str]): Execution environment paths to collect and send directly to the `results_receiver`.
+            Files and directories at these paths will be packaged into a single zip file.
+        named_results (dict[str, str]): Maps paths to named data identifiers.
+            Files at these paths will be collected after execution and stored in Datastores.
+            Directories are automatically zipped.
+            This is for persistent results that can be referenced by other jobs or retrieved later.
         capabilities (Capabilities): Required system resource capabilities to run this job.
-        result_receiver (EID | None): Optional endpoint to send results to.
+        results_receiver (EID | None): Optional endpoint to send the results zip to.
     """
 
     wasm_module: str
@@ -99,9 +102,10 @@ class JobInfo:
     data: dict[str, str]
     stdout_file: str | None
     stderr_file: str | None
+    results: list[str]
     named_results: dict[str, str]
     capabilities: Capabilities
-    result_receiver: EID | None
+    results_receiver: EID | None
 
     def required_named_data(self) -> set[str]:
         """
