@@ -1,3 +1,4 @@
+import shutil
 from dataclasses import dataclass
 from hashlib import sha1
 from pathlib import Path
@@ -135,6 +136,60 @@ class Storage:
             await self._cleanup(disappeared)
 
         return all_data
+
+    async def find_missing(self, names: set[str]) -> set[str]:
+        """
+        Find which of the names in the given set are missing from storage.
+
+        Args:
+            names: Set of names to check for.
+
+        Returns:
+            set[str]: Set of names that are missing from storage.
+        """
+        if not names:
+            return set()
+
+        async with self._state_mutex.reader_lock:
+            missing = set()
+            db_data = Query()
+            for name in names:
+                entries = await self._db.search(db_data.name == name)
+                if not entries:
+                    missing.add(name)
+
+        return missing
+
+    async def copy_to_file(self, name: str, destination: Path) -> None:
+        """
+        Copy stored data directly to a file.
+
+        Args:
+            name: The name of the stored data.
+            destination: Path where to copy the data.
+
+        Raises:
+            NoSuchNameError: If the named data doesn't exist.
+        """
+        async with self._state_mutex.reader_lock:
+            db_data = Query()
+            entries = await self._db.search(db_data.name == name)
+
+            if not entries:
+                raise NoSuchNameError(name=name)
+
+            filename = entries[0]["filename"]
+            source_path = self._blob_directory / filename
+
+            if source_path.exists():
+                missing_filename = None
+                shutil.copyfile(source_path, destination)
+            else:
+                missing_filename = filename
+
+        if missing_filename:
+            await self._cleanup([missing_filename])
+            raise NoSuchNameError(name=name)
 
     async def _cleanup(self, names: list[str]) -> None:
         """

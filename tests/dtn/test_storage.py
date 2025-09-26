@@ -70,3 +70,32 @@ async def test_prefixing(data: tuple[str, list[tuple[str, bytes]]]) -> None:
         for i in range(len(retrieved)):
             assert retrieved[i][0] == data[1][i][0]
             assert retrieved[i][1] == data[1][i][1]
+
+
+@pytest.mark.asyncio
+@given(names=st.sets(st.text()), required=st.sets(st.text()))
+async def test_find_missing(names: set[str], required: set[str]) -> None:
+    with TmpDirectory(prefix="/tmp") as tmp_path:
+        storage = Storage(tmp_path / "database.db", tmp_path / "blobs")
+
+        for name in names:
+            await storage.store_data(name=name, data=b"test")
+
+        missing = await storage.find_missing(required)
+        expected_missing = required - names
+        assert missing == expected_missing
+
+
+@pytest.mark.asyncio
+@given(data_name=st.text(), data=st.binary())
+async def test_copy_to_file(data_name: str, data: bytes) -> None:
+    with TmpDirectory(prefix="/tmp") as tmp_path:
+        storage = Storage(tmp_path / "database.db", tmp_path / "blobs")
+
+        await storage.store_data(name=data_name, data=data)
+
+        dest_file = tmp_path / "copied_data.bin"
+        await storage.copy_to_file(data_name, dest_file)
+
+        assert dest_file.exists()
+        assert dest_file.read_bytes() == data
