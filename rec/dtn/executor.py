@@ -17,11 +17,11 @@ from rec.dtn.messages import (
     BundleCreate,
     BundleData,
     BundleType,
-    Message,
     MessageType,
     NodeType,
 )
 from rec.dtn.node import Node
+from rec.dtn.storage import Storage
 from rec.util.log import LOG
 
 
@@ -34,18 +34,21 @@ class WasmTrapError(RuntimeError):
 
 
 class Executor(Node):
-    root_dir: Path
-    _named_data_cache: dict[str, bytes]  # TODO: store in filesystem like datastore?
+    _root_dir: Path
+    _storage: Storage
     _pending_jobs: deque[JobInfo]
     _job_ready_cv: asyncio.Condition
 
     def __init__(self, node_id: EID, dtn_agent_socket: str, root_dir: Path) -> None:
         super().__init__(node_id=node_id, dtn_agent_socket=dtn_agent_socket)
 
-        self.root_dir = root_dir
-        self.root_dir.mkdir(parents=True, exist_ok=True)
+        self._root_dir = root_dir
+        self._root_dir.mkdir(parents=True, exist_ok=True)
 
-        self._named_data_cache = {}
+        db_path = self._root_dir / "database.db"
+        blob_directory = self._root_dir / "blobs"
+        self._storage = Storage(db_path, blob_directory)
+
         self._pending_jobs: deque[JobInfo] = deque()
         self._job_ready_cv = asyncio.Condition()
 
@@ -91,10 +94,12 @@ class Executor(Node):
 
         job: Job = msgpack.unpackb(bundle.payload)
 
+        for name, data in job.data.items():
+            await self._storage.store_data(name=name, data=data)
+        missing = await self._storage.find_missing(job.metadata.required_named_data())
+
         async with self._state_mutex.writer_lock:
             self._pending_jobs.append(job.metadata)
-            self._named_data_cache.update(job.data)
-            missing = job.metadata.required_named_data() - self._named_data_cache.keys()
         async with self._job_ready_cv:
             self._job_ready_cv.notify_all()
 
@@ -126,15 +131,15 @@ class Executor(Node):
         if isinstance(bundle.named_data, str):
             bundle.named_data = [bundle.named_data]
 
-        async with self._state_mutex.writer_lock:
-            for name in bundle.named_data:
-                self._named_data_cache[name] = bundle.payload
+        for name in bundle.named_data:
+            await self._storage.store_data(name=name, data=bundle.payload)
+
         async with self._job_ready_cv:
             self._job_ready_cv.notify_all()
 
         # TODO: send ACK?
 
-    def _job_has_all_inputs(self, job: JobInfo) -> bool:
+    async def _job_has_all_inputs(self, job: JobInfo) -> bool:
         """
         Check if all required named data for a job is available in the cache.
 
@@ -143,13 +148,9 @@ class Executor(Node):
 
         Returns:
             bool: True if all required data is cached, False otherwise.
-
-        Note:
-            Caller must hold `_state_mutex` (reader or writer lock) when calling this method
-            to ensure thread-safe access to `_named_data_cache`.
         """
-        required = job.required_named_data()
-        return required.issubset(self._named_data_cache.keys())
+        missing = await self._storage.find_missing(job.required_named_data())
+        return len(missing) == 0
 
     def _system_can_run(self, job: JobInfo) -> bool:
         current = Capabilities.from_system()
@@ -157,16 +158,16 @@ class Executor(Node):
 
     async def _has_runnable_job(self) -> bool:
         async with self._state_mutex.reader_lock:
-            return any(
-                self._job_has_all_inputs(j) and self._system_can_run(j)
-                for j in self._pending_jobs
-            )
+            for j in self._pending_jobs:
+                if await self._job_has_all_inputs(j) and self._system_can_run(j):
+                    return True
+            return False
 
     async def _pop_next_runnable_job(self) -> JobInfo | None:
         async with self._state_mutex.writer_lock:
             for _ in range(len(self._pending_jobs)):
                 job = self._pending_jobs.popleft()
-                if self._job_has_all_inputs(job) and self._system_can_run(job):
+                if await self._job_has_all_inputs(job) and self._system_can_run(job):
                     return job
                 # Not runnable yet
                 self._pending_jobs.append(job)
@@ -246,7 +247,7 @@ class Executor(Node):
     async def _run_job(self, job: JobInfo) -> tuple[bytes | None, dict[str, bytes]]:
         LOG.info("Starting job: %s", job)
         async with self._state_mutex.writer_lock:
-            job_dir = (self.root_dir / f"job-{id(job)}").resolve()
+            job_dir = (self._root_dir / f"job-{id(job)}").resolve()
             job_dir.mkdir(parents=True, exist_ok=True)
             wasm_file, stdin_path, data_dir = await self._prepare_wasi_environment(
                 job, job_dir
@@ -296,31 +297,21 @@ class Executor(Node):
             tuple[Path, Path | None, Path]: Paths to the WASM module, stdin file (if any), and the directory to preopen as "/".
 
         Raises:
-            FileNotFoundError: If any named data is missing.
+            NoSuchNameError: If any named data is missing.
             OSError: If directories or files cannot be created.
             ValueError: If any paths are invalid.
-
-        Note:
-            Caller must hold `_state_mutex` (reader or writer lock) when calling this method
-            to ensure thread-safe access to `_named_data_cache`.
         """
         base_dir.mkdir(parents=True, exist_ok=True)
 
         # Write WASM module to file
-        if job.wasm_module not in self._named_data_cache:
-            raise FileNotFoundError(f"Named data not found: {job.wasm_module}")
         wasm_path = (base_dir / "module.wasm").resolve()
-        with open(wasm_path, "wb") as f:
-            f.write(self._named_data_cache[job.wasm_module])
+        await self._storage.copy_to_file(job.wasm_module, wasm_path)
 
         # Prepare stdin file if provided
         stdin_path: Path | None = None
         if job.stdin_file:
-            if job.stdin_file not in self._named_data_cache:
-                raise FileNotFoundError(f"Named data not found: {job.stdin_file}")
             stdin_path = (base_dir / "stdin.bin").resolve()
-            with open(stdin_path, "wb") as f:
-                f.write(self._named_data_cache[job.stdin_file])
+            await self._storage.copy_to_file(job.stdin_file, stdin_path)
 
         # Create data directory
         data_dir = (base_dir / "data").resolve()
@@ -340,10 +331,7 @@ class Executor(Node):
                 raise ValueError(f"Data file path escapes data directory: {file_path}")
             abs_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-            if data not in self._named_data_cache:
-                raise FileNotFoundError(f"Named data not found: {data}")
-            with open(abs_file_path, "wb") as f:
-                f.write(self._named_data_cache[data])
+            await self._storage.copy_to_file(data, abs_file_path)
 
         # Prepare stdout parent directory if specified
         if job.stdout_file:

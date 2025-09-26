@@ -11,6 +11,7 @@ import pytest
 from rec.dtn.eid import EID
 from rec.dtn.executor import Executor, WasmTrapError, _run_wasi_module
 from rec.dtn.job import Capabilities, Job, JobInfo
+from rec.dtn.storage import NoSuchNameError
 
 HERE = Path(__file__).resolve().parent
 WASM = HERE / "artifacts" / "wasi-smoke.wasm"
@@ -39,8 +40,8 @@ def executor(test_eid: EID, tmp_path: Path) -> Executor:
 
 
 async def populate_cache(executor: Executor, data: dict[str, bytes]) -> None:
-    async with executor._state_mutex.writer_lock:
-        executor._named_data_cache.update(data)
+    for name, content in data.items():
+        await executor._storage.store_data(name=name, data=content)
 
 
 @pytest.fixture
@@ -217,7 +218,7 @@ class TestExecutorPrepareWasiEnvironment:
         job_dir, _data_dir = job_dirs
 
         # Don't populate the cache
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(NoSuchNameError):
             await executor._prepare_wasi_environment(sample_job.metadata, job_dir)
 
     @pytest.mark.asyncio
@@ -514,5 +515,5 @@ class TestExecutorRunJob:
             assert "TO_STDERR" in stderr_content
 
         # Check that the job directory was cleaned up
-        job_dirs = list(executor.root_dir.glob("job-*"))
+        job_dirs = list(executor._root_dir.glob("job-*"))
         assert len(job_dirs) == 0
