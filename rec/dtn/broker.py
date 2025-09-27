@@ -10,14 +10,12 @@ from rec.util.log import LOG
 
 
 class Broker(Node):
-    state_mutex: asyncio.Lock
     completed_jobs: set
     queued_jobs: Queue
     bundle_handlers: dict[BundleType, Callable[[BundleData], Coroutine]]
 
     def __init__(self, node_id: str | EID, dtn_agent_socket: str):
         super().__init__(node_id=node_id, dtn_agent_socket=dtn_agent_socket)
-        self.state_mutex = asyncio.Lock()
         self.completed_jobs = set()
         self.queued_jobs = Queue()
 
@@ -61,7 +59,7 @@ class Broker(Node):
 
     async def _handle_job_query(self, bundle: BundleData) -> None:
         LOG.debug("Handling jobs query")
-        async with self.state_mutex:
+        async with self._state_mutex.reader_lock:
             jobs = {
                 "completed": list(self.completed_jobs),
                 "queued": list(self.queued_jobs.queue),
@@ -90,5 +88,5 @@ class Broker(Node):
             LOG.debug("Job scheduler going to sleep")
             await asyncio.sleep(10)
 
-            async with self.state_mutex:
+            async with self._state_mutex.writer_lock:
                 LOG.debug("Running Job scheduler")

@@ -1,7 +1,10 @@
 import asyncio
 import sys
 from abc import ABC, abstractmethod
+from dataclasses import field
 from socket import AF_UNIX, SOCK_STREAM, socket
+
+from aiorwlock import RWLock
 
 from rec.dtn.messages import *
 from rec.util.log import LOG
@@ -11,6 +14,8 @@ from rec.util.log import LOG
 class Node(ABC):
     node_id: EID
     dtn_agent_socket: str
+
+    _state_mutex: RWLock = field(default_factory=RWLock)
 
     def __post_init__(self) -> None:
         if isinstance(self.node_id, str):

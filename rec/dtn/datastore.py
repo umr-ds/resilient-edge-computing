@@ -3,7 +3,6 @@ from hashlib import sha1
 from pathlib import Path
 
 from aiofiles import open
-from aiorwlock import RWLock
 from asynctinydb import Query, TinyDB
 
 from rec.dtn.messages import *
@@ -33,7 +32,6 @@ class Datastore(Node):
     root_directory: Path
     blob_directory: Path
     db: TinyDB
-    state_mutex: RWLock
 
     def __init__(
         self, node_id: str | EID, dtn_agent_socket: str, root_directory: str | Path
@@ -49,7 +47,6 @@ class Datastore(Node):
         self.blob_directory.mkdir(exist_ok=True)
 
         self.db = TinyDB(f"{root_directory}/database.db")
-        self.state_mutex = RWLock()
 
     @override
     async def run(self) -> None:
@@ -150,7 +147,7 @@ class Datastore(Node):
         Raises:
             NameTakenError: If there already exists stored data with the exact same name.
         """
-        async with self.state_mutex.writer_lock:
+        async with self._state_mutex.writer_lock:
             db_data = Query()
             test = await self.db.search(db_data.name == name)
             if test:
@@ -182,7 +179,7 @@ class Datastore(Node):
         Returns:
             list(tuple(str, bytes)): List of (name, data) of all data with names that started with `name`
         """
-        async with self.state_mutex.reader_lock:
+        async with self._state_mutex.reader_lock:
             db_data = Query()
             # TODO: this has linear complexity with the number of stored data. Might be more efficient to build a tree-structure.
             #       but I'm not sure if the performance warrants the increased complexity...
@@ -208,7 +205,7 @@ class Datastore(Node):
         return all_data
 
     async def _cleanup(self, names: list[str]) -> None:
-        async with self.state_mutex.writer_lock:
+        async with self._state_mutex.writer_lock:
             for name in names:
                 db_data = Query()
                 await self.db.remove(db_data.name == name)
