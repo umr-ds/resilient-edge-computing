@@ -84,7 +84,7 @@ class Executor(Node):
         match bundle.type:
             case BundleType.JOB_SUBMIT:
                 await self._handle_job(bundle=bundle)
-            case BundleType.NDATA_PUT:
+            case BundleType.NDATA_GET:
                 await self._handle_data(bundle=bundle)
             case _:
                 LOG.error(f"Received bundle of type {bundle.type}, ignoring")
@@ -114,7 +114,7 @@ class Executor(Node):
                 source=self.node_id,
                 destination=DATASTORE_MULTICAST_ADDRESS,
                 payload=b"",
-                named_data=missing,
+                named_data=list(missing),
             )
             message = BundleCreate(type=MessageType.CREATE, bundle=request)
 
@@ -189,6 +189,7 @@ class Executor(Node):
             try:
                 results, named_results = await self._run_job(job)
                 await self._send_results(job, results)
+                await self._store_named_results(named_results)
                 await self._send_named_results(named_results)
             except Exception:
                 LOG.exception("Job failed: %s", job)
@@ -220,29 +221,35 @@ class Executor(Node):
         except Exception as err:
             LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
+    async def _store_named_results(self, results: dict[str, bytes]) -> None:
+        if not results:
+            LOG.info("No named results to store")
+            return
+
+        for name, data in results.items():
+            await self._storage.store_data(name=name, data=data)
+
     async def _send_named_results(self, results: dict[str, bytes]) -> None:
         if not results:
             LOG.info("No named results to send")
             return
 
-        names = list(results.keys())
-        data = msgpack.packb(list(results.values()))
+        for name, data in results.items():
+            bundle = BundleData(
+                type=BundleType.NDATA_PUT,
+                source=self.node_id,
+                destination=DATASTORE_MULTICAST_ADDRESS,
+                payload=data,
+                named_data=name,
+            )
+            message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
 
-        bundle = BundleData(
-            type=BundleType.NDATA_PUT,
-            source=self.node_id,
-            destination=DATASTORE_MULTICAST_ADDRESS,
-            payload=data,
-            named_data=names,
-        )
-        message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
-
-        try:
-            dtnd_response = await self._send_message(message)
-            if not dtnd_response.success:
-                LOG.error("dtnd sent error: %s", dtnd_response.error)
-        except Exception as err:
-            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+            try:
+                dtnd_response = await self._send_message(message)
+                if not dtnd_response.success:
+                    LOG.error("dtnd sent error: %s", dtnd_response.error)
+            except Exception as err:
+                LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
     async def _run_job(self, job: JobInfo) -> tuple[bytes | None, dict[str, bytes]]:
         LOG.info("Starting job: %s", job)
