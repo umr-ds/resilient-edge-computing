@@ -3,11 +3,13 @@
 import asyncio
 import logging
 from argparse import ArgumentParser, Namespace
+from pathlib import Path
 
 from rec.dtn.broker import Broker
 from rec.dtn.client import main as client_main
 from rec.dtn.datastore import Datastore
 from rec.dtn.eid import EID
+from rec.dtn.executor import Executor
 from rec.util.log import LOG
 
 
@@ -25,6 +27,16 @@ def _run_datastore(args: Namespace) -> None:
         root_directory=args.root_directory,
     )
     asyncio.run(datastore.run())
+
+
+def _run_executor(args: Namespace) -> None:
+    LOG.info("Running in executor-mode")
+    executor = Executor(
+        node_id=args.id,
+        dtn_agent_socket=args.socket,
+        root_dir=Path(args.root_directory),
+    )
+    asyncio.run(executor.run())
 
 
 def _run_client(args: Namespace) -> None:
@@ -58,6 +70,12 @@ def main() -> None:
     datastore_parser.set_defaults(run=_run_datastore)
     datastore_parser.add_argument(
         "root_directory", help="Root directory for database & data blobs"
+    )
+
+    executor_parser = subparsers.add_parser(name="executor")
+    executor_parser.set_defaults(run=_run_executor)
+    executor_parser.add_argument(
+        "root_directory", help="Root directory for executor storage"
     )
 
     client_parser = subparsers.add_parser(name="client")
