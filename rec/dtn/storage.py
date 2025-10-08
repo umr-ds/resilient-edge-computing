@@ -53,6 +53,7 @@ class Storage:
             db_path: Path to the TinyDB database file.
             blob_directory: Directory where actual data blobs will be stored.
         """
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db = TinyDB(db_path)
         self._blob_directory = blob_directory
         self._blob_directory.mkdir(parents=True, exist_ok=True)
