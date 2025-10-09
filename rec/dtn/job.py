@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import psutil
 
@@ -77,6 +77,7 @@ class JobInfo:
 
     Attributes:
         wasm_module (str): Named reference to the WebAssembly module to execute.
+        capabilities (Capabilities): Required system resource capabilities to run this job.
         argv (list[str]): Program arguments.
         env (dict[str, str]): Environment variables for the execution environment.
         stdin_file (str | None): Optional named reference to stdin data for the module.
@@ -90,22 +91,21 @@ class JobInfo:
             Files at these paths will be collected after execution and stored in Datastores.
             Directories are automatically zipped.
             This is for persistent results that can be referenced by other jobs or retrieved later.
-        capabilities (Capabilities): Required system resource capabilities to run this job.
         results_receiver (EID | None): Optional endpoint to send the results zip to.
     """
 
     wasm_module: str
-    argv: list[str]
-    env: dict[str, str]
-    stdin_file: str | None
-    dirs: list[str]
-    data: dict[str, str]
-    stdout_file: str | None
-    stderr_file: str | None
-    results: list[str]
-    named_results: dict[str, str]
     capabilities: Capabilities
-    results_receiver: EID | None
+    argv: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
+    stdin_file: str | None = None
+    dirs: list[str] = field(default_factory=list)
+    data: dict[str, str] = field(default_factory=dict)
+    stdout_file: str | None = None
+    stderr_file: str | None = None
+    results: list[str] = field(default_factory=list)
+    named_results: dict[str, str] = field(default_factory=dict)
+    results_receiver: EID | None = None
 
     def required_named_data(self) -> set[str]:
         """

@@ -433,8 +433,8 @@ class Executor(Node):
 
 async def _run_wasi_module(
     exec_file: Path,
-    argv: list[str] = [],
-    env: dict[str, str] = {},
+    argv: list[str],
+    env: dict[str, str],
     stdin_file: Path | None = None,
     data_dir: Path | None = None,
     stdout_file: Path | None = None,
@@ -528,8 +528,8 @@ async def _run_wasi_module(
 
 def _run_wasi_module_sync(
     wasm_bytes: bytes,
-    argv: list[str] = [],
-    env: dict[str, str] = {},
+    argv: list[str],
+    env: dict[str, str],
     stdin_file: Path | None = None,
     data_dir: Path | None = None,
     stdout_file: Path | None = None,

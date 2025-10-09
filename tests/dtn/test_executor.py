@@ -56,17 +56,7 @@ def job_dirs(tmp_path: Path) -> tuple[Path, Path]:
 def minimal_job_info() -> JobInfo:
     return JobInfo(
         wasm_module="wasm-module",
-        argv=[],
-        env={},
-        stdin_file=None,
-        dirs=[],
-        data={},
-        stdout_file=None,
-        stderr_file=None,
-        results=[],
-        named_results={},
         capabilities=Capabilities(),
-        results_receiver=None,
     )
 
 
@@ -77,6 +67,7 @@ def sample_job(wasm_path: Path) -> Job:
 
     job_info = JobInfo(
         wasm_module="wasm-module",
+        capabilities=Capabilities(),
         argv=["a", "b", "c"],
         env={"FOO": "bar"},
         stdin_file="stdin",
@@ -92,7 +83,6 @@ def sample_job(wasm_path: Path) -> Job:
             "/out.txt": "wasm_output_file",
             "/output": "output_archive",
         },
-        capabilities=Capabilities(),
         results_receiver=EID.dtn("client", "results"),
     )
 

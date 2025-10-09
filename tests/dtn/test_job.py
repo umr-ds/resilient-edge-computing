@@ -33,6 +33,7 @@ def job_caps() -> Capabilities:
 def full_job_info() -> JobInfo:
     return JobInfo(
         wasm_module="wasm-module",
+        capabilities=Capabilities(),
         argv=["arg1", "arg2"],
         env={"VAR": "value"},
         stdin_file="stdin",
@@ -42,7 +43,6 @@ def full_job_info() -> JobInfo:
         stderr_file="/output/stderr.txt",
         results=[],
         named_results={"/output/result.txt": "result"},
-        capabilities=Capabilities(),
         results_receiver=EID.dtn("node"),
     )
 
