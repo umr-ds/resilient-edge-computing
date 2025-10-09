@@ -34,7 +34,7 @@ def _run_executor(args: Namespace) -> None:
     executor = Executor(
         node_id=args.id,
         dtn_agent_socket=args.socket,
-        root_dir=Path(args.root_directory),
+        root_dir=args.root_directory,
     )
     asyncio.run(executor.run())
 
@@ -75,7 +75,7 @@ def main() -> None:
     executor_parser = subparsers.add_parser(name="executor")
     executor_parser.set_defaults(run=_run_executor)
     executor_parser.add_argument(
-        "root_directory", help="Root directory for executor storage"
+        "root_directory", help="Root directory for executor storage", type=Path
     )
 
     client_parser = subparsers.add_parser(name="client")
