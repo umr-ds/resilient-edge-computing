@@ -80,6 +80,13 @@ def main() -> None:
 
     client_parser = subparsers.add_parser(name="client")
     client_parser.set_defaults(run=_run_client)
+    client_parser.add_argument(
+        "-c",
+        "--context_file",
+        help="File to store context information",
+        default="context.toml",
+    )
+
     client_subparsers = client_parser.add_subparsers(dest="command")
 
     client_job_query = client_subparsers.add_parser(

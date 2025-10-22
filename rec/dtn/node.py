@@ -140,7 +140,7 @@ class Node(ABC):
 
             case BundleType.BROKER_ACK:
                 LOG.debug("Broker ACK")
-                with self._state_mutex.writer_lock:
+                async with self._state_mutex.writer_lock:
                     if self._broker_pending == bundle.source:
                         self._broker = bundle.source
                         self._broker_pending = None

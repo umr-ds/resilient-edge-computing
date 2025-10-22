@@ -37,6 +37,8 @@ dependencies = [
     "async-tinydb",
     "aiofiles",
     "aiorwlock",
+    ## Misc
+    "tomlkit",
 ]
 authors = [
     { name = "Philipp Jahn", email = "jahnp@students.uni-marburg.de" },
