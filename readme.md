@@ -60,7 +60,7 @@ address = ":35037"
 dispatch ="10s"
 ```
 
-where you need to rplace all instances of `<...>` with some appropriate value.
+where you need to replace all instances of `<...>` with some appropriate value.
 
 - `node_id`: name of the node, can be the same as the name of the `REC` that will be running, but does not have to be.
    Something like `dtn://rec_1/` will work fine, just make sure no two instances of `dtnd` are running with the same `node_id`.
@@ -106,7 +106,7 @@ To start you own small test-network, use the following steps:
 ### Interact with the network
 
 You can interact with the network via the `rec_dtn client` command.
-Here are some exapmles:
+Here are some examples:
 
 ```shell
 rec_dtn -v -s <path to socket> -i dtn://client_1/ client data dtn://datastore_1/ test/data put <path to file>
@@ -127,3 +127,49 @@ Replace `<path to socket>` with the same path as in the `dtnd` config.
 We use the `client` command, and its `data` subcommand.
 The datastore we are addressing is `dtn://datastore_1/`, we are using the data-name `test/data`, we are using the `get` action to retrieve data from the store.
 Effectively, we are querying the same data that we stored with the previous command.
+
+## Development
+
+If you want to participate in development, there are some additional steps:
+
+### Install development dependencies
+
+[The Project file](pyproject.toml) defines some additional dependencies which are not necessary to run the software, but are required for development.
+To install these, run:
+
+```shell
+pip install --group dev .
+pip install --group lint .
+```
+
+### Setup pre-commit
+
+[pre-commit](https://pre-commit.com/) is a utility which runs a number of tasks (in oru case linting and input sorting) before each commit.
+If you have installed the development dependencies as mentioned above, then `pre-commit` should already be installed, but you need to set it up to run:
+
+```shell
+pre-commit install
+```
+
+If you don't lint your files before pushing, then the CI pipeline will fail your commits!
+
+### Linting
+
+To make sure that `pre-commit` does not fail your commit, you can manually run the linters before committing:
+
+```shell
+black **/**/*.py
+isort --profile black .
+```
+
+### Tests
+
+Please make sure to write unit tests whenever feasible.
+Test are stores in the `tests` directory.
+To run all tests, just run pytest in the project root:
+
+```shell
+pytest
+```
+
+If tests are failing, then the CI pipeline will fail your commits!
