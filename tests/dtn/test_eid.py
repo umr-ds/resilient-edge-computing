@@ -1,8 +1,8 @@
 import pytest
 from hypothesis import given
 
-from rec.dtn.eid import EIDError
-from tests.dtn.test_helpers import *
+from rec.dtn.eid import EID, EIDError
+from tests.dtn.utils.helpers import dtn_eid
 
 
 class TestEIDBasics:

@@ -1,0 +1,33 @@
+networks:
+  test_network:
+    driver: bridge
+
+
+services:
+  broker-ns:
+    build:
+      context: ../../..
+      dockerfile: tests/dtn/artifacts/Dockerfile.integration-test
+    networks:
+      - test_network
+
+  datastore-ns:
+    build:
+      context: ../../..
+      dockerfile: tests/dtn/artifacts/Dockerfile.integration-test
+    networks:
+      - test_network
+
+  executor-ns:
+    build:
+      context: ../../..
+      dockerfile: tests/dtn/artifacts/Dockerfile.integration-test
+    networks:
+      - test_network
+
+  client-ns:
+    build:
+      context: ../../..
+      dockerfile: tests/dtn/artifacts/Dockerfile.integration-test
+    networks:
+      - test_network

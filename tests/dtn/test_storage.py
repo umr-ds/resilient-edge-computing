@@ -3,7 +3,7 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from rec.dtn.storage import Storage
-from tests.dtn.test_helpers import TmpDirectory
+from tests.dtn.utils.helpers import TmpDirectory
 
 
 @st.composite
