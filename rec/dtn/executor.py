@@ -77,14 +77,18 @@ class Executor(Node):
                 bundles = await self._get_new_bundles()
                 if bundles:
                     LOG.debug(f"Bundles: {bundles}")
+                    replies: list[BundleData] = []
                     for bundle in bundles:
-                        await self._handle_bundle(bundle=bundle)
+                        bundle_replies = await self._handle_bundle(bundle=bundle)
+                        replies = replies + bundle_replies
+                    if replies:
+                        await self._send_and_check(bundles=replies)
                 else:
                     LOG.debug("No new bundles")
             except Exception as err:
                 LOG.exception("Error fetching bundles: %s", err)
 
-    async def _handle_bundle(self, bundle: BundleData) -> None:
+    async def _handle_bundle(self, bundle: BundleData) -> list[BundleData]:
         to_send: list[BundleData] = []
 
         if BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
@@ -94,15 +98,7 @@ class Executor(Node):
         if bundle.type == BundleType.NDATA_GET:
             await self._handle_data(bundle=bundle)
 
-        if to_send:
-            try:
-                LOG.debug("Sending bundles")
-                dtnd_responses = await self._send_bundles(bundles=to_send)
-                for dtnd_response in dtnd_responses:
-                    if not dtnd_response.success:
-                        LOG.exception("dtnd sent error: %s", dtnd_response.error)
-            except Exception as err:
-                LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+        return to_send
 
     async def _handle_job(self, bundle: BundleData) -> list[BundleData]:
         LOG.debug(f"Received JobBundle: {bundle}")

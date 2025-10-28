@@ -96,6 +96,16 @@ class Node(ABC):
 
         return replies
 
+    async def _send_and_check(self, bundles: list[BundleData]) -> None:
+        try:
+            LOG.debug("Sending bundles")
+            dtnd_responses = await self._send_bundles(bundles=bundles)
+            for dtnd_response in dtnd_responses:
+                if not dtnd_response.success:
+                    LOG.exception("dtnd sent error: %s", dtnd_response.error)
+        except Exception as err:
+            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+
     async def _get_new_bundles(self) -> list[BundleData]:
         LOG.debug("Retrieving new bundles")
         bundles: list[BundleData] = []
@@ -144,7 +154,7 @@ class Node(ABC):
                     if self._broker_pending == bundle.source:
                         self._broker = bundle.source
                         self._broker_pending = None
-                        LOG.debug(f"Now associated with broker {bundle.source}")
+                        LOG.info(f"Now associated with broker {bundle.source}")
                     else:
                         LOG.debug(f"Received ACK from unknown broker: {bundle.source}")
 

@@ -38,7 +38,7 @@ class Broker(Node):
 
         async with asyncio.TaskGroup() as tg:
             tg.create_task(self._announce_yourself())
-            tg.create_task(self._handle_bundle_messages())
+            tg.create_task(self._handle_bundles())
             tg.create_task(self._schedule_jobs())
 
     async def _announce_yourself(self) -> None:
@@ -55,15 +55,9 @@ class Broker(Node):
                 destination=BROADCAST_ADDRESS,
             )
 
-            try:
-                LOG.debug("Sending announcement")
-                dtnd_reply = await self._send_bundle(bundle=announcement)
-                if not dtnd_reply.success:
-                    LOG.error(f"Error sending bundle: {dtnd_reply.error}")
-            except Exception as err:
-                LOG.exception("Error sending bundle: %s", err)
+            await self._send_and_check(bundles=[announcement])
 
-    async def _handle_bundle_messages(self) -> None:
+    async def _handle_bundles(self) -> None:
         LOG.info("Starting bundle handler")
         while True:
             LOG.debug("Bundle handler going to sleep")
@@ -75,32 +69,28 @@ class Broker(Node):
                 bundles = await self._get_new_bundles()
                 if bundles:
                     LOG.debug(f"Bundles: {bundles}")
+                    replies: list[BundleData] = []
                     for bundle in bundles:
-                        await self._handle_bundle(bundle=bundle)
+                        reply = await self._handle_bundle(bundle=bundle)
+                        if reply is not None:
+                            replies.append(reply)
+                    if replies:
+                        await self._send_and_check(bundles=replies)
                 else:
                     LOG.debug("No new bundles")
             except Exception as err:
                 LOG.exception("Error fetching bundles: %s", err)
 
-    async def _handle_bundle(self, bundle: BundleData) -> None:
-        reply: BundleData | None
+    async def _handle_bundle(self, bundle: BundleData) -> BundleData | None:
+        reply: BundleData | None = None
         if bundle.type == BundleType.JOB_QUERY:
             reply = await self._handle_job_query(bundle=bundle)
         elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
             reply = await self._handle_discovery(bundle=bundle)
         else:
             LOG.warning(f"Won't handle bundle of type: {bundle.type}")
-            return
 
-        if reply is None:
-            return
-
-        try:
-            dtnd_reply = await self._send_bundle(bundle=reply)
-            if not dtnd_reply.success:
-                LOG.error("dtnd replied with error: %s", dtnd_reply.error)
-        except Exception as err:
-            LOG.exception("Error creating bundle: %s", err)
+        return reply
 
     async def _handle_job_query(self, bundle: BundleData) -> BundleData:
         LOG.debug("Handling jobs query")
