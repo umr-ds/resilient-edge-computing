@@ -106,13 +106,6 @@ class BundleCreate(Message):
         return parent_dict | own_dict
 
 
-BROADCAST_ADDRESS = EID.dtn("rec.all", "~")
-BROKER_MULTICAST_ADDRESS = EID.dtn("rec.broker", "~")
-DATASTORE_MULTICAST_ADDRESS = EID.dtn("rec.store", "~")
-EXECUTOR_MULTICAST_ADDRESS = EID.dtn("rec.executor", "~")
-CLIENT_MULTICAST_ADDRESS = EID.dtn("rec.client", "~")
-
-
 class BundleType(IntEnum):
     # 1-10: Broker discovery
     BROKER_ANNOUNCE = 1

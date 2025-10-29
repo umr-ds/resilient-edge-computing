@@ -10,10 +10,9 @@ from typing import override
 import msgpack
 from wasmtime import ExitTrap, Linker, Module, Store, Trap, WasiConfig, WasmtimeError
 
-from rec.dtn.eid import EID
+from rec.dtn.eid import DATASTORE_MULTICAST_ADDRESS, EID
 from rec.dtn.job import Capabilities, Job, JobInfo
 from rec.dtn.messages import (
-    DATASTORE_MULTICAST_ADDRESS,
     BundleCreate,
     BundleData,
     BundleType,

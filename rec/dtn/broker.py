@@ -3,6 +3,7 @@ from queue import Queue
 
 import msgpack
 
+from rec.dtn.eid import BROADCAST_ADDRESS
 from rec.dtn.messages import *
 from rec.dtn.node import Node
 from rec.util.log import LOG

@@ -154,3 +154,10 @@ class EID(str):
             return f"{cls._IPN_PREFIX}{node_i}.{svc_i}"
 
         raise EIDError("unknown scheme (expected 'dtn:' or 'ipn:')")
+
+
+BROADCAST_ADDRESS = EID.dtn("rec.all", "~")
+BROKER_MULTICAST_ADDRESS = EID.dtn("rec.broker", "~")
+DATASTORE_MULTICAST_ADDRESS = EID.dtn("rec.store", "~")
+EXECUTOR_MULTICAST_ADDRESS = EID.dtn("rec.executor", "~")
+CLIENT_MULTICAST_ADDRESS = EID.dtn("rec.client", "~")
