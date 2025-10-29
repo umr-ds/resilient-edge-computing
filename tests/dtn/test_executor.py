@@ -3,17 +3,17 @@ from __future__ import annotations
 import io
 import zipfile
 from dataclasses import replace
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
+from hypothesis import given
 
-from rec.dtn.eid import EID
+from rec.dtn.eid import BROADCAST_ADDRESS
 from rec.dtn.executor import Executor, WasmTrapError, _run_wasi_module
 from rec.dtn.job import Capabilities, Job, JobInfo
-from rec.dtn.messages import BundleData, BundleType
+from rec.dtn.messages import BundleData, BundleType, NodeType
 from rec.dtn.storage import NoSuchNameError
+from tests.dtn.utils.helpers import *
 
 HERE = Path(__file__).resolve().parent
 WASM = HERE / "artifacts" / "wasi-smoke.wasm"
@@ -101,6 +101,43 @@ def sample_job(wasm_path: Path) -> Job:
             "databin": b"\x00\x01\x02\x03",
         },
     )
+
+
+@pytest.mark.asyncio
+@given(node_id=dtn_eid(), broker_id=dtn_eid())
+async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
+    with TmpDirectory(prefix="/tmp") as root_dir:
+        executor = Executor(node_id=node_id, dtn_agent_socket="", root_dir=root_dir)
+
+        # broker announcement
+        broker_bundle = BundleData(
+            type=BundleType.BROKER_ANNOUNCE,
+            source=broker_id,
+            destination=BROADCAST_ADDRESS,
+            node_type=NodeType.BROKER,
+        )
+        reply = await executor._handle_bundle(bundle=broker_bundle)
+        assert isinstance(reply, list)
+        assert len(reply) == 1
+        reply_bundle = reply[0]
+        assert isinstance(reply_bundle, BundleData)
+        assert reply_bundle.type == BundleType.BROKER_REQUEST
+        assert reply_bundle.success
+        assert reply_bundle.error == ""
+        assert reply_bundle.node_type == NodeType.EXECUTOR
+
+        # broker ack
+        broker_bundle = BundleData(
+            type=BundleType.BROKER_ACK,
+            source=broker_id,
+            destination=node_id,
+            node_type=NodeType.BROKER,
+        )
+        reply = await executor._handle_bundle(bundle=broker_bundle)
+        assert isinstance(reply, list)
+        assert len(reply) == 0
+
+        assert executor._broker == broker_id
 
 
 class TestExecutorWasmModule:

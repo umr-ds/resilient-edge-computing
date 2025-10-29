@@ -2,8 +2,52 @@ import pytest
 from hypothesis import assume, given
 
 from rec.dtn.datastore import Datastore
+from rec.dtn.eid import BROADCAST_ADDRESS
 from rec.dtn.messages import BundleData, BundleType
-from tests.dtn.test_helpers import *
+from rec.dtn.node import NodeType
+from tests.dtn.utils.helpers import *
+
+
+@pytest.mark.asyncio
+@given(
+    node_id=dtn_eid(),
+    broker_id=dtn_eid(),
+)
+async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
+    with TmpDirectory(prefix="/tmp") as root_dir:
+        dstore = Datastore(
+            node_id=node_id, dtn_agent_socket="", root_directory=root_dir
+        )
+
+        # broker announcement
+        broker_bundle = BundleData(
+            type=BundleType.BROKER_ANNOUNCE,
+            source=broker_id,
+            destination=BROADCAST_ADDRESS,
+            node_type=NodeType.BROKER,
+        )
+        reply = await dstore._handle_bundle(bundle=broker_bundle)
+        assert isinstance(reply, list)
+        assert len(reply) == 1
+        reply_bundle = reply[0]
+        assert isinstance(reply_bundle, BundleData)
+        assert reply_bundle.type == BundleType.BROKER_REQUEST
+        assert reply_bundle.success
+        assert reply_bundle.error == ""
+        assert reply_bundle.node_type == NodeType.DATASTORE
+
+        # broker ack
+        broker_bundle = BundleData(
+            type=BundleType.BROKER_ACK,
+            source=broker_id,
+            destination=node_id,
+            node_type=NodeType.BROKER,
+        )
+        reply = await dstore._handle_bundle(bundle=broker_bundle)
+        assert isinstance(reply, list)
+        assert len(reply) == 0
+
+        assert dstore._broker == broker_id
 
 
 @pytest.mark.asyncio

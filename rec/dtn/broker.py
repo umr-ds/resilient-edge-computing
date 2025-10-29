@@ -123,6 +123,7 @@ class Broker(Node):
                         LOG.debug(
                             f"Received announcement from other broker: {bundle.source}"
                         )
+                        self.discovered_nodes[NodeType.BROKER].add(bundle.source)
                     return None
                 case BundleType.BROKER_REQUEST:
                     LOG.debug("Broker request")

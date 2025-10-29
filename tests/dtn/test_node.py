@@ -6,7 +6,7 @@ from hypothesis import given
 from rec.dtn.eid import BROADCAST_ADDRESS
 from rec.dtn.messages import BundleData, BundleType
 from rec.dtn.node import Node, NodeType
-from tests.dtn.test_helpers import *
+from tests.dtn.utils.helpers import *
 
 
 class DummyNode(Node):
