@@ -5,6 +5,7 @@ import zipfile
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -55,6 +56,8 @@ def job_dirs(tmp_path: Path) -> tuple[Path, Path]:
 @pytest.fixture
 def minimal_job_info() -> JobInfo:
     return JobInfo(
+        job_id=uuid4(),
+        submitter=EID("dtn:none"),
         wasm_module="wasm-module",
         capabilities=Capabilities(),
     )
@@ -66,6 +69,8 @@ def sample_job(wasm_path: Path) -> Job:
         wasm_data = f.read()
 
     job_info = JobInfo(
+        job_id=uuid4(),
+        submitter=EID("dtn:none"),
         wasm_module="wasm-module",
         capabilities=Capabilities(),
         argv=["a", "b", "c"],

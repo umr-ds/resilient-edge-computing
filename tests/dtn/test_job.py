@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -32,6 +33,8 @@ def job_caps() -> Capabilities:
 @pytest.fixture
 def full_job_info() -> JobInfo:
     return JobInfo(
+        job_id=uuid4(),
+        submitter=EID("dtn:none"),
         wasm_module="wasm-module",
         capabilities=Capabilities(),
         argv=["arg1", "arg2"],

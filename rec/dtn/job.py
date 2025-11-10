@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass, field
+from uuid import UUID
 
 import psutil
 
@@ -70,12 +71,14 @@ class Capabilities:
         )
 
 
-@dataclass
+@dataclass(eq=False, frozen=True)
 class JobInfo:
     """
     Complete specification for a WebAssembly job execution request.
 
     Attributes:
+        job_id (UUID): Globally unique identifier - generate with uuid.uuid4()
+        submitter (EID): EndpointID of the node which submitted this job.
         wasm_module (str): Named reference to the WebAssembly module to execute.
         capabilities (Capabilities): Required system resource capabilities to run this job.
         argv (list[str]): Program arguments.
@@ -94,6 +97,8 @@ class JobInfo:
         results_receiver (EID | None): Optional endpoint to send the results zip to.
     """
 
+    job_id: UUID
+    submitter: EID
     wasm_module: str
     capabilities: Capabilities
     argv: list[str] = field(default_factory=list)
@@ -106,6 +111,17 @@ class JobInfo:
     results: list[str] = field(default_factory=list)
     named_results: dict[str, str] = field(default_factory=dict)
     results_receiver: EID | None = None
+
+    def __str__(self) -> str:
+        return self.job_id.hex
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, JobInfo):
+            return self.job_id == other.job_id
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self.job_id)
 
     def required_named_data(self) -> set[str]:
         """
