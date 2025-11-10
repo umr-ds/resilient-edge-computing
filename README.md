@@ -13,11 +13,13 @@ git clone git@gitlab.uni-marburg.de:fb12/ag-freisleben/projects/resilient-edge-c
 cd resilient-edge-computing
 
 pip install -e .
-``` 
+# or, using uv
+uv sync
+```
 
 ### DTN
 
-In order to run the dtn-version of `REC`, you need to als orun a dtn-daemon. You can either use `dtn7-go` or `dtn7-rs`, just make sure to checkout the `rec` brach in either repository.
+In order to run the dtn-version of `REC`, you need to also run a dtn-daemon. You can either use `dtn7-go` or `dtn7-rs`, just make sure to checkout the `rec` brach in either repository.
 
 For `dtn7-go` use the following steps:
 
@@ -63,7 +65,7 @@ dispatch ="10s"
 where you need to replace all instances of `<...>` with some appropriate value.
 
 - `node_id`: name of the node, can be the same as the name of the `REC` that will be running, but does not have to be.
-   Something like `dtn://rec_1/` will work fine, just make sure no two instances of `dtnd` are running with the same `node_id`.
+  Something like `dtn://rec_1/` will work fine, just make sure no two instances of `dtnd` are running with the same `node_id`.
 - `path`: Path to some folder on you computer's filesystem where `dtnd` will store bundles.
 - `socket`: `REC` and `dtnd` communicate via a UNIX domain socket. `dtnd` will create the socket, so it needs to be started first.
 
@@ -84,7 +86,7 @@ For arguments, etc see `rec_dtn --help` and its subcommands.
 To start you own small test-network, use the following steps:
 
 1. Start a `broker`. There must be at least one broker running before the other nodes can do anthing.
-   
+
    ```shell
    rec_dtn v -s <path to socket> -i dtn://broker_1/ broker
    ```
@@ -93,7 +95,7 @@ To start you own small test-network, use the following steps:
    Replace `<path to socket>` with the same path as in the `dtnd` config.
 
 2. Start a `datastore`
-   
+
    ```shell
    rec_dtn -v -s <path to socket> -i dtn://datastore_1/ datastore <path to store directory>
    ```
@@ -128,6 +130,24 @@ We use the `client` command, and its `data` subcommand.
 The datastore we are addressing is `dtn://datastore_1/`, we are using the data-name `test/data`, we are using the `get` action to retrieve data from the store.
 Effectively, we are querying the same data that we stored with the previous command.
 
+### Testbed
+
+The project also comes with a small interactive testbed in a docker container.
+To build and run the testbed, use the following command:
+
+```shell
+docker build -t rec_testbed -f testbed/Dockerfile . && \
+docker run --privileged --rm -it --name rec_testbed -e LOGLEVEL=DEBUG rec_testbed
+```
+
+It comes with pre-configured dtn-daemons and running broker, datastore, and executor nodes.
+The only thing you need to do is to start a client node in the top-left Zellij pane.
+For example:
+
+```shell
+uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client query dtn://client/
+```
+
 ## Development
 
 If you want to participate in development, there are some additional steps:
@@ -140,6 +160,8 @@ To install these, run:
 ```shell
 pip install --group dev .
 pip install --group lint .
+# or, using uv
+uv sync --all-groups
 ```
 
 ### Setup pre-commit
@@ -149,6 +171,8 @@ If you have installed the development dependencies as mentioned above, then `pre
 
 ```shell
 pre-commit install
+# or, using uv
+uv run pre-commit install
 ```
 
 If you don't lint your files before pushing, then the CI pipeline will fail your commits!
@@ -160,6 +184,9 @@ To make sure that `pre-commit` does not fail your commit, you can manually run t
 ```shell
 black **/**/*.py
 isort --profile black .
+# or, using uv
+uv run black **/**/*.py
+uv run isort --profile black .
 ```
 
 ### Tests
@@ -170,6 +197,8 @@ To run all tests, just run pytest in the project root:
 
 ```shell
 pytest
+# or, using uv
+uv run pytest
 ```
 
 If tests are failing, then the CI pipeline will fail your commits!

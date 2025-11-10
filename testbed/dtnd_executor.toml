@@ -1,0 +1,19 @@
+node_id = "dtn://executor/"
+log_level = "Debug"
+
+[Store]
+path = "/tmp/executor_store"
+
+[Routing]
+algorithm = "epidemic"
+
+[Agents]
+[Agents.REC]
+socket = "/tmp/executor.socket"
+
+[[Listener]]
+type = "QUICL"
+address = ":35037"
+
+[Cron]
+dispatch ="10s"

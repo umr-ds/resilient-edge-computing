@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
@@ -114,7 +115,14 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    log_level = logging.DEBUG if args.v else logging.INFO
+    # Get log level from environment variable if set
+    env_log_level = os.getenv("LOGLEVEL", "").upper()
+    if env_log_level:
+        log_level = logging.getLevelNamesMapping().get(env_log_level, logging.INFO)
+    else:
+        # Fall back to command line argument
+        log_level = logging.DEBUG if args.v else logging.INFO
+
     LOG.setLevel(log_level)
 
     args.run(args)
