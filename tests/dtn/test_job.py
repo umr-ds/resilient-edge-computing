@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID
 
 import pytest
 
@@ -71,9 +71,18 @@ def job_caps() -> Capabilities:
 
 
 @pytest.fixture
+def job_caps_toml() -> str:
+    return """cpu_cores = 2
+free_cpu_capacity = 150
+free_memory = 4294967296
+free_disk_space = 34359738368
+"""
+
+
+@pytest.fixture
 def full_job_info() -> JobInfo:
     return JobInfo(
-        job_id=uuid4(),
+        job_id=UUID("12345678123456781234567812345678"),
         submitter=EID("dtn:none"),
         wasm_module="wasm-module",
         capabilities=Capabilities(),
@@ -90,7 +99,44 @@ def full_job_info() -> JobInfo:
     )
 
 
+@pytest.fixture
+def full_job_ino_toml() -> str:
+    return """job_id = "12345678-1234-5678-1234-567812345678"
+wasm_module = "wasm-module"
+results_receiver = "dtn://node/"
+argv = ["arg1", "arg2"]
+stdin_file = "stdin"
+dirs = ["/tmp", "/output"]
+stdout_file = "/output/stdout.txt"
+stderr_file = "/output/stderr.txt"
+
+[capabilities]
+cpu_cores = 1
+free_cpu_capacity = 0
+free_memory = 0
+free_disk_space = 0
+
+[env]
+VAR = "value"
+
+[data]
+"/input.txt" = "input"
+"/config.txt" = "config"
+
+[named_results]
+"/output/result.txt" = "result"
+"""
+
+
 class TestCapabilities:
+    def test_dumps(self, job_caps: Capabilities, job_caps_toml: str) -> None:
+        dumped = job_caps.dumps()
+        assert dumped == job_caps_toml
+
+    def test_loads(self, job_caps: Capabilities, job_caps_toml: str) -> None:
+        loaded = Capabilities.loads(job_caps_toml)
+        assert job_caps == loaded
+
     def test_capabilities_defaults(self):
         caps = Capabilities()
         assert caps.cpu_cores == 1
@@ -161,6 +207,14 @@ class TestCapabilities:
 
 
 class TestJobInfo:
+    def test_dumps(self, full_job_info: JobInfo, full_job_ino_toml: str) -> None:
+        dumped = full_job_info.dumps()
+        assert dumped == full_job_ino_toml
+
+    def test_loads(self, full_job_info: JobInfo, full_job_ino_toml: str) -> None:
+        loaded = JobInfo.loads(full_job_ino_toml)
+        assert full_job_info == loaded
+
     def test_required_named_data_basic(self, full_job_info: JobInfo):
         required = full_job_info.required_named_data()
         expected = {"wasm-module", "stdin", "input", "config"}

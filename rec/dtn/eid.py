@@ -30,6 +30,9 @@ class EID(str):
         norm = cls._normalize(value)
         return super().__new__(cls, norm)
 
+    def __bool__(self) -> bool:
+        return self != EID._DTN_NONE
+
     @classmethod
     def dtn(cls, node: str, service: Optional[str] = None) -> EID:
         """
