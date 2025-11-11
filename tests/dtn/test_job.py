@@ -100,7 +100,7 @@ def full_job_info() -> JobInfo:
 
 
 @pytest.fixture
-def full_job_ino_toml() -> str:
+def full_job_info_toml() -> str:
     return """job_id = "12345678-1234-5678-1234-567812345678"
 wasm_module = "wasm-module"
 results_receiver = "dtn://node/"
@@ -112,9 +112,6 @@ stderr_file = "/output/stderr.txt"
 
 [capabilities]
 cpu_cores = 1
-free_cpu_capacity = 0
-free_memory = 0
-free_disk_space = 0
 
 [env]
 VAR = "value"
@@ -207,12 +204,12 @@ class TestCapabilities:
 
 
 class TestJobInfo:
-    def test_dumps(self, full_job_info: JobInfo, full_job_ino_toml: str) -> None:
+    def test_dumps(self, full_job_info: JobInfo, full_job_info_toml: str) -> None:
         dumped = full_job_info.dumps()
-        assert dumped == full_job_ino_toml
+        assert dumped == full_job_info_toml
 
-    def test_loads(self, full_job_info: JobInfo, full_job_ino_toml: str) -> None:
-        loaded = JobInfo.loads(full_job_ino_toml)
+    def test_loads(self, full_job_info: JobInfo, full_job_info_toml: str) -> None:
+        loaded = JobInfo.loads(full_job_info_toml)
         assert full_job_info == loaded
 
     def test_required_named_data_basic(self, full_job_info: JobInfo):

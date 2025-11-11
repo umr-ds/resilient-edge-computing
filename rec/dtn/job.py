@@ -6,6 +6,7 @@ from uuid import UUID
 
 import psutil
 from aiofiles import open
+from msgpack import packb, unpackb
 from tomlkit import dumps, loads
 
 from rec.dtn.eid import EID
@@ -55,8 +56,15 @@ class Capabilities:
             free_disk_space=free_disk_space,
         )
 
+    def dictify(self) -> dict:
+        return {key: value for key, value in self.__dict__.items() if value}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Capabilities:
+        return cls(**data)
+
     def dumps(self) -> str:
-        return dumps(self.__dict__)
+        return dumps(self.dictify())
 
     async def dump(self, filename: str) -> None:
         async with open(filename, "w") as f:
@@ -64,13 +72,21 @@ class Capabilities:
 
     @classmethod
     def loads(cls, data: str) -> Capabilities:
-        return cls(**loads(data))
+        return cls.from_dict(loads(data).unwrap())
 
     @classmethod
     async def load(cls, filename: str) -> Capabilities:
         async with open(filename, "r") as f:
             data = await f.read()
             return cls.loads(data)
+
+    def serialize(self) -> bytes:
+        return packb(self.dictify())
+
+    @classmethod
+    def deserialize(cls, serialized: bytes) -> Capabilities:
+        deserialized = unpackb(serialized)
+        return cls.from_dict(deserialized)
 
     def is_capable_of(self, caps: Capabilities) -> bool:
         """
@@ -142,11 +158,20 @@ class JobInfo:
     def __hash__(self) -> int:
         return hash(self.job_id)
 
-    def dumps(self) -> str:
+    def dictify(self) -> dict:
         data = {key: value for key, value in self.__dict__.items() if value}
         data["job_id"] = str(self.job_id)
-        data["capabilities"] = self.capabilities.__dict__
-        return dumps(data)
+        data["capabilities"] = self.capabilities.dictify()
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> JobInfo:
+        data["job_id"] = UUID(data["job_id"])
+        data["capabilities"] = Capabilities.from_dict(data["capabilities"])
+        return cls(**data)
+
+    def dumps(self) -> str:
+        return dumps(self.dictify())
 
     async def dump(self, filename: str) -> None:
         async with open(filename, "w") as f:
@@ -155,15 +180,21 @@ class JobInfo:
     @classmethod
     def loads(cls, data: str) -> JobInfo:
         parsed = loads(data).unwrap()
-        parsed["job_id"] = UUID(parsed["job_id"])
-        parsed["capabilities"] = Capabilities(**parsed["capabilities"])
-        return cls(**parsed)
+        return cls.from_dict(parsed)
 
     @classmethod
     async def load(cls, filename: str) -> JobInfo:
         async with open(filename, "r") as f:
             data = await f.read()
             return cls.loads(data)
+
+    def serialize(self) -> bytes:
+        return packb(self.dictify())
+
+    @classmethod
+    def deserialize(cls, serialized: bytes) -> JobInfo:
+        deserialized = unpackb(serialized)
+        return cls.from_dict(deserialized)
 
     def required_named_data(self) -> set[str]:
         """
@@ -197,6 +228,25 @@ class Job:
 
     metadata: JobInfo
     data: dict[str, bytes]
+
+    def dictify(self) -> dict:
+        return {
+            "metadata": self.metadata.dictify(),
+            "data": self.data,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Job:
+        data["metadata"] = JobInfo.from_dict(data["metadata"])
+        return cls(**data)
+
+    def serialize(self) -> bytes:
+        return packb(self.dictify())
+
+    @classmethod
+    def deserialize(cls, serialized: bytes) -> Job:
+        deserialized = unpackb(serialized)
+        return cls.from_dict(deserialized)
 
     def has_all_data(self) -> bool:
         """

@@ -103,7 +103,7 @@ class Executor(Node):
         LOG.debug(f"Received JobBundle: {bundle}")
         to_send: list[BundleData] = []
 
-        job: Job = msgpack.unpackb(bundle.payload)
+        job = Job.deserialize(bundle.payload)
 
         for name, data in job.data.items():
             await self._storage.store_data(name=name, data=data)
