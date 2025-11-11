@@ -9,7 +9,7 @@ import psutil
 from rec.dtn.eid import EID
 
 
-@dataclass
+@dataclass(frozen=True)
 class Capabilities:
     """
     Represents required or available system resources for job scheduling.

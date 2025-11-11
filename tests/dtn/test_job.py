@@ -11,12 +11,52 @@ from rec.dtn.job import Capabilities, Job, JobInfo
 
 
 @pytest.fixture
-def system_caps() -> Capabilities:
+def system_caps_sufficient() -> Capabilities:
     return Capabilities(
         cpu_cores=4,
         free_cpu_capacity=300,
         free_memory=8 * 1024 * 1024 * 1024,
         free_disk_space=64 * 1024 * 1024 * 1024,
+    )
+
+
+@pytest.fixture
+def system_caps_insufficient_cpu_cores() -> Capabilities:
+    return Capabilities(
+        cpu_cores=1,
+        free_cpu_capacity=300,
+        free_memory=8 * 1024 * 1024 * 1024,
+        free_disk_space=64 * 1024 * 1024 * 1024,
+    )
+
+
+@pytest.fixture
+def system_caps_insufficient_cpu_capacity() -> Capabilities:
+    return Capabilities(
+        cpu_cores=1,
+        free_cpu_capacity=100,
+        free_memory=8 * 1024 * 1024 * 1024,
+        free_disk_space=64 * 1024 * 1024 * 1024,
+    )
+
+
+@pytest.fixture
+def system_caps_insufficient_memory() -> Capabilities:
+    return Capabilities(
+        cpu_cores=1,
+        free_cpu_capacity=100,
+        free_memory=2 * 1024 * 1024 * 1024,
+        free_disk_space=64 * 1024 * 1024 * 1024,
+    )
+
+
+@pytest.fixture
+def system_caps_insufficient_disk_space() -> Capabilities:
+    return Capabilities(
+        cpu_cores=1,
+        free_cpu_capacity=100,
+        free_memory=2 * 1024 * 1024 * 1024,
+        free_disk_space=16 * 1024 * 1024 * 1024,
     )
 
 
@@ -90,44 +130,34 @@ class TestCapabilities:
         assert caps.free_disk_space == 64 * 1024 * 1024 * 1024
 
     def test_is_capable_of_sufficient_resources(
-        self, system_caps: Capabilities, job_caps: Capabilities
+        self, system_caps_sufficient: Capabilities, job_caps: Capabilities
     ):
-        assert system_caps.is_capable_of(job_caps)
+        assert system_caps_sufficient.is_capable_of(job_caps)
 
     def test_is_capable_of_insufficient_cpu_cores(
-        self, system_caps: Capabilities, job_caps: Capabilities
+        self, system_caps_insufficient_cpu_cores: Capabilities, job_caps: Capabilities
     ):
-        system_caps.cpu_cores = 2
-        job_caps.cpu_cores = 4
-
-        assert not system_caps.is_capable_of(job_caps)
+        assert not system_caps_insufficient_cpu_cores.is_capable_of(job_caps)
 
     def test_is_capable_of_insufficient_cpu_capacity(
-        self, system_caps: Capabilities, job_caps: Capabilities
+        self,
+        system_caps_insufficient_cpu_capacity: Capabilities,
+        job_caps: Capabilities,
     ):
-        system_caps.free_cpu_capacity = 100
-        job_caps.free_cpu_capacity = 200
-
-        assert not system_caps.is_capable_of(job_caps)
+        assert not system_caps_insufficient_cpu_capacity.is_capable_of(job_caps)
 
     def test_is_capable_of_insufficient_memory(
-        self, system_caps: Capabilities, job_caps: Capabilities
+        self, system_caps_insufficient_memory: Capabilities, job_caps: Capabilities
     ):
-        system_caps.free_memory = 2 * 1024 * 1024 * 1024
-        job_caps.free_memory = 4 * 1024 * 1024 * 1024
-
-        assert not system_caps.is_capable_of(job_caps)
+        assert not system_caps_insufficient_memory.is_capable_of(job_caps)
 
     def test_is_capable_of_insufficient_disk_space(
-        self, system_caps: Capabilities, job_caps: Capabilities
+        self, system_caps_insufficient_disk_space: Capabilities, job_caps: Capabilities
     ):
-        system_caps.free_disk_space = 8 * 1024 * 1024 * 1024
-        job_caps.free_disk_space = 16 * 1024 * 1024 * 1024
+        assert not system_caps_insufficient_disk_space.is_capable_of(job_caps)
 
-        assert not system_caps.is_capable_of(job_caps)
-
-    def test_is_capable_of_exact_match(self, system_caps: Capabilities):
-        assert system_caps.is_capable_of(system_caps)
+    def test_is_capable_of_exact_match(self, system_caps_sufficient: Capabilities):
+        assert system_caps_sufficient.is_capable_of(system_caps_sufficient)
 
 
 class TestJobInfo:
