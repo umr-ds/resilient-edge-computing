@@ -132,22 +132,6 @@ class ComposeEnvironment:
         self._cleanup()
 
         try:
-            # Pull images
-            sp.run(
-                [
-                    "docker",
-                    "compose",
-                    "-f",
-                    str(self._compose_file),
-                    "-p",
-                    self._project_name,
-                    "pull",
-                ]
-                + list(self._services),
-                capture_output=True,
-                check=False,
-            )
-
             # Build images
             sp.run(
                 [
@@ -158,6 +142,7 @@ class ComposeEnvironment:
                     "-p",
                     self._project_name,
                     "build",
+                    "--pull",
                 ]
                 + list(self._services),
                 capture_output=True,
