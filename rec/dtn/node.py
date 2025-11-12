@@ -63,7 +63,7 @@ class Node(ABC):
             LOG.debug(f"Reply length: {reply_length}")
 
             data = await loop.sock_recv(s, reply_length)
-            reply = deserialize(data=data)
+            reply = deserialize(serialized=data)
             LOG.debug(f"Received reply: {reply}")
 
             assert isinstance(reply, Reply)

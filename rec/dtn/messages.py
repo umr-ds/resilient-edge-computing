@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import override
@@ -15,6 +16,15 @@ class InvalidMessageError(Exception):
 
     def __str__(self) -> str:
         return f"Data is not valid message: {self.data}"
+
+
+@dataclass
+class WrongMessageTypeError(Exception):
+    has: MessageType
+    needs: MessageType
+
+    def __str__(self) -> str:
+        return f"Message needs MessageType {self.needs}, but has {self.has}"
 
 
 class NodeType(IntEnum):
@@ -39,28 +49,48 @@ class Message:
     def dictify(self) -> dict:
         return self.__dict__
 
+    @classmethod
+    def from_dict(cls, data) -> Message:
+        return cls(**data)
+
 
 @dataclass
 class Reply(Message):
     success: bool
     error: str
 
+    def __post_init__(self) -> None:
+        if self.type != MessageType.REPLY:
+            raise WrongMessageTypeError(has=self.type, needs=MessageType.REPLY)
+
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
         own_dict = self.__dict__
         return parent_dict | own_dict
+
+    @classmethod
+    def from_dict(cls, data) -> Reply:
+        return cls(**data)
 
 
 @dataclass
 class Register(Message):
     endpoint_id: EID
 
+    def __post_init__(self) -> None:
+        if self.type != MessageType.REGISTER:
+            raise WrongMessageTypeError(has=self.type, needs=MessageType.REGISTER)
+
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
         own_dict = self.__dict__
         return parent_dict | own_dict
+
+    @classmethod
+    def from_dict(cls, data) -> Register:
+        return cls(**data)
 
 
 @dataclass
@@ -68,42 +98,61 @@ class Fetch(Message):
     endpoint_id: EID
     node_type: NodeType
 
+    def __post_init__(self) -> None:
+        if self.type != MessageType.FETCH:
+            raise WrongMessageTypeError(has=self.type, needs=MessageType.FETCH)
+
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
         own_dict = self.__dict__
         return parent_dict | own_dict
 
+    @classmethod
+    def from_dict(cls, data) -> Fetch:
+        return cls(**data)
+
 
 @dataclass
 class FetchReply(Reply):
-    bundles: list[BundleData | dict]
+    bundles: list[BundleData]
 
     def __post_init__(self) -> None:
-        self.bundles = [
-            BundleData(**bundle) for bundle in self.bundles if isinstance(bundle, dict)
-        ] + [bundle for bundle in self.bundles if isinstance(bundle, BundleData)]
+        if self.type != MessageType.FETCH_REPLY:
+            raise WrongMessageTypeError(has=self.type, needs=MessageType.FETCH_REPLY)
 
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
-        own_dict = {"bundles": [message.dictify() for message in self.bundles]}
+        own_dict = {"bundles": [bundle.dictify() for bundle in self.bundles]}
         return parent_dict | own_dict
+
+    @classmethod
+    def from_dict(cls, data) -> FetchReply:
+        data["bundles"] = [
+            BundleData.from_dict(bundle_data) for bundle_data in data["bundles"]
+        ]
+        return cls(**data)
 
 
 @dataclass
 class BundleCreate(Message):
-    bundle: BundleData | dict
+    bundle: BundleData
 
     def __post_init__(self) -> None:
-        if isinstance(self.bundle, dict):
-            self.bundle = BundleData(**self.bundle)
+        if self.type != MessageType.CREATE:
+            raise WrongMessageTypeError(has=self.type, needs=MessageType.CREATE)
 
     @override
     def dictify(self) -> dict:
         parent_dict = super().dictify()
         own_dict = {"bundle": self.bundle.dictify()}
         return parent_dict | own_dict
+
+    @classmethod
+    def from_dict(cls, data) -> BundleCreate:
+        data["bundle"] = BundleData.from_dict(data["bundle"])
+        return cls(**data)
 
 
 class BundleType(IntEnum):
@@ -130,7 +179,7 @@ class BundleData:
     source: EID
     destination: EID
     payload: bytes = b""
-    success: bool = True
+    success: bool = False
     error: str = ""
     # used by broker discovery
     node_type: NodeType = 0
@@ -140,30 +189,20 @@ class BundleData:
     named_data: str | list[str] | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.source, EID):
-            self.source = EID(self.source)
-        if not isinstance(self.destination, EID):
-            self.destination = EID(self.destination)
-
-        if self.submitter is not None:
-            self.submitter = EID(self.submitter)
+        # TODO check validity
+        pass
 
     def dictify(self) -> dict:
-        own_dict = self.__dict__
+        return {key: value for key, value in self.__dict__.items() if value}
 
-        if self.payload == b"":
-            del own_dict["payload"]
+    @classmethod
+    def from_dict(cls, data: dict) -> BundleData:
+        data["source"] = EID(data["source"])
+        data["destination"] = EID(data["destination"])
+        if "submitter" in data:
+            data["submitter"] = EID(data["submitter"])
 
-        if self.node_type == 0:
-            del own_dict["node_type"]
-
-        if self.submitter is None:
-            del own_dict["submitter"]
-
-        if self.named_data is None:
-            del own_dict["named_data"]
-
-        return own_dict
+        return cls(**data)
 
 
 def serialize(message: Message) -> bytes:
@@ -171,19 +210,19 @@ def serialize(message: Message) -> bytes:
     return packb(data)
 
 
-MESSAGE_CONSTRUCTORS: dict[MessageType, type[Message]] = {
-    MessageType.REPLY: Reply,
-    MessageType.REGISTER: Register,
-    MessageType.FETCH: Fetch,
-    MessageType.FETCH_REPLY: FetchReply,
-    MessageType.CREATE: BundleCreate,
+MESSAGE_CONSTRUCTORS: dict[MessageType, Callable[[dict], Message]] = {
+    MessageType.REPLY: Reply.from_dict,
+    MessageType.REGISTER: Register.from_dict,
+    MessageType.FETCH: Fetch.from_dict,
+    MessageType.FETCH_REPLY: FetchReply.from_dict,
+    MessageType.CREATE: BundleCreate.from_dict,
 }
 
 
-def deserialize(data: bytes) -> Message:
-    data_dict: dict = unpackb(data)
+def deserialize(serialized: bytes) -> Message:
+    data_dict: dict = unpackb(serialized)
 
     if data_dict["type"] not in MESSAGE_CONSTRUCTORS:
         raise InvalidMessageError(data_dict)
 
-    return MESSAGE_CONSTRUCTORS[data_dict["type"]](**data_dict)
+    return MESSAGE_CONSTRUCTORS[data_dict["type"]](data_dict)

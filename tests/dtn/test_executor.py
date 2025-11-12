@@ -8,10 +8,12 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+from msgpack import packb
 
 from rec.dtn.eid import EID
 from rec.dtn.executor import Executor, WasmTrapError, _run_wasi_module
 from rec.dtn.job import Capabilities, Job, JobInfo
+from rec.dtn.messages import BundleData, BundleType
 from rec.dtn.storage import NoSuchNameError
 
 HERE = Path(__file__).resolve().parent
@@ -70,7 +72,7 @@ def sample_job(wasm_path: Path) -> Job:
 
     job_info = JobInfo(
         job_id=uuid4(),
-        submitter=EID("dtn:none"),
+        submitter=EID.dtn("client", ""),
         wasm_module="wasm-module",
         capabilities=Capabilities(),
         argv=["a", "b", "c"],
@@ -280,7 +282,7 @@ class TestExecutorCollectResults:
 
         job = replace(
             minimal_job_info,
-            results_receiver=None,
+            results_receiver=EID.none(),
         )
 
         results = await executor._collect_results(job, job_dir)
@@ -512,3 +514,16 @@ class TestExecutorRunJob:
         # Check that the job directory was cleaned up
         job_dirs = list(executor._root_dir.glob("job-*"))
         assert len(job_dirs) == 0
+
+    @pytest.mark.asyncio
+    async def test_job_bundles(self, executor: Executor, sample_job: Job) -> None:
+        job_bytes = sample_job.serialize()
+        submit_bundle = BundleData(
+            type=BundleType.JOB_SUBMIT,
+            source=EID.dtn("client"),
+            destination=EID.dtn("executor"),
+            payload=job_bytes,
+        )
+
+        responses = await executor._handle_bundle(bundle=submit_bundle)
+        assert not responses
