@@ -100,11 +100,12 @@ algorithm = "epidemic"
 socket = "{socket_path}"
 
 [[Listener]]
-type = "mtcp"
+type = "QUICL"
 address = ":35037"
 
 [Cron]
 dispatch = "10s"
+gc = "1h15s"
 """
 
     return config_content
