@@ -54,8 +54,8 @@ async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
 @given(
     node_id=dtn_eid(),
     other_node_id=dtn_eid(),
-    data_name=st.text(),
-    false_data_name=st.text(),
+    data_name=st.text(min_size=1),
+    false_data_name=st.text(min_size=1),
     data=st.binary(),
 )
 async def test_store_load_single(

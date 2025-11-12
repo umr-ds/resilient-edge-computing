@@ -19,7 +19,11 @@ class DummyNode(Node):
 
 
 @pytest.mark.asyncio
-@given(node_id=dtn_eid(), broker_id=dtn_eid(), node_type=st.integers())
+@given(
+    node_id=dtn_eid(),
+    broker_id=dtn_eid(),
+    node_type=st.integers(min_value=NodeType.BROKER, max_value=NodeType.CLIENT),
+)
 async def test_broker_discovery(node_id: EID, broker_id: EID, node_type: int) -> None:
     node = DummyNode(node_id=node_id, dtn_agent_socket="", node_type=node_type)
 

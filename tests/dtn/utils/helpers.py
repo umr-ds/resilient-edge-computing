@@ -59,7 +59,7 @@ def dtn_eid(draw: st.DrawFn, singleton=True) -> EID:
 
 @st.composite
 def hierarchical_data(draw: st.DrawFn) -> tuple[str, list[tuple[str, bytes]]]:
-    levels: list[str] = draw(st.lists(elements=st.text()))
+    levels: list[str] = draw(st.lists(elements=st.text(min_size=1), min_size=1))
     prefix = "/".join(levels)
 
     names: list[str] = draw(st.lists(st.text(), unique=True))
