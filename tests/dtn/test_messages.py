@@ -1,8 +1,7 @@
 from hypothesis import given
 
 from rec.dtn.messages import *
-
-from .test_helpers import *
+from tests.dtn.test_helpers import *
 
 
 @st.composite

@@ -2,8 +2,7 @@ import pytest
 from hypothesis import given
 
 from rec.dtn.eid import EIDError
-
-from .test_helpers import *
+from tests.dtn.test_helpers import *
 
 
 class TestEIDBasics:
