@@ -135,6 +135,7 @@ class Broker(Node):
                             type=BundleType.BROKER_ACK,
                             source=self.node_id,
                             destination=bundle.source,
+                            node_type=self.node_type,
                         )
                 case _:
                     LOG.warning(f"Won't handle bundle of type {bundle.type}")
