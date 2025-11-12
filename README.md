@@ -136,7 +136,7 @@ The project also comes with a small interactive testbed in a docker container.
 To build and run the testbed, use the following command:
 
 ```shell
-docker build -t rec_testbed -f testbed/Dockerfile . && \
+docker build --pull -t rec_testbed -f testbed/Dockerfile . && \
 docker run --privileged --rm -it --name rec_testbed -e LOGLEVEL=DEBUG rec_testbed
 ```
 
