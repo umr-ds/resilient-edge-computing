@@ -74,36 +74,43 @@ class Datastore(Node):
     async def _handle_data(self, bundle: BundleData) -> list[BundleData]:
         LOG.debug("Named data bundle")
         bundles: list[BundleData] = []
+        if isinstance(bundle.named_data, str):
+            named_data = [bundle.named_data]
+        else:
+            named_data = bundle.named_data
+
         match bundle.type:
             case BundleType.NDATA_PUT:
                 LOG.debug("Data action is PUT")
                 if bundle.named_data is None:
                     LOG.error("Name was none, this should never happen")
                     return bundles
-                if isinstance(bundle.named_data, str):
-                    bundle.named_data = [bundle.named_data]
-                for name in bundle.named_data:
+
+                success = True
+                error = ""
+                for name in named_data:
+                    try:
+                        await self._storage.store_data(name=name, data=bundle.payload)
+                    except NameTakenError as err:
+                        success = False
+                        error = str(err)
+
                     response = BundleData(
                         type=BundleType.NDATA_PUT,
                         source=self.node_id,
                         destination=bundle.source,
                         payload=b"",
                         named_data=name,
+                        success=success,
+                        error=error,
                     )
-                    try:
-                        await self._storage.store_data(name=name, data=bundle.payload)
-                    except NameTakenError as err:
-                        response.success = False
-                        response.error = str(err)
                     bundles.append(response)
             case BundleType.NDATA_GET:
                 LOG.debug("Data action is GET")
                 if bundle.named_data is None:
                     LOG.error("Name was none, this should never happen")
                     return bundles
-                if isinstance(bundle.named_data, str):
-                    bundle.named_data = [bundle.named_data]
-                for name in bundle.named_data:
+                for name in named_data:
                     loaded = await self._storage.load_data(name=name)
                     LOG.debug(f"Loaded data: {loaded}")
                     for l_name, l_data in loaded:

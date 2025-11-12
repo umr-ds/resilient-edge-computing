@@ -10,16 +10,24 @@ from msgpack import packb, unpackb
 from rec.dtn.eid import EID
 
 
-@dataclass
-class InvalidMessageError(Exception):
+@dataclass(frozen=True)
+class InvalidMessageError(ValueError):
     data: dict
 
     def __str__(self) -> str:
         return f"Data is not valid message: {self.data}"
 
 
-@dataclass
-class WrongMessageTypeError(Exception):
+@dataclass(frozen=True)
+class InvalidMessageError(ValueError):
+    reason: dict
+
+    def __str__(self) -> str:
+        return f"Data is not valid message: {self.data}"
+
+
+@dataclass(frozen=True)
+class WrongMessageTypeError(ValueError):
     has: MessageType
     needs: MessageType
 
@@ -42,7 +50,7 @@ class MessageType(IntEnum):
     CREATE = 5
 
 
-@dataclass
+@dataclass(frozen=True)
 class Message:
     type: MessageType
 
@@ -54,7 +62,7 @@ class Message:
         return cls(**data)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Reply(Message):
     success: bool
     error: str
@@ -74,7 +82,7 @@ class Reply(Message):
         return cls(**data)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Register(Message):
     endpoint_id: EID
 
@@ -93,7 +101,7 @@ class Register(Message):
         return cls(**data)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Fetch(Message):
     endpoint_id: EID
     node_type: NodeType
@@ -113,7 +121,7 @@ class Fetch(Message):
         return cls(**data)
 
 
-@dataclass
+@dataclass(frozen=True)
 class FetchReply(Reply):
     bundles: list[BundleData]
 
@@ -135,7 +143,7 @@ class FetchReply(Reply):
         return cls(**data)
 
 
-@dataclass
+@dataclass(frozen=True)
 class BundleCreate(Message):
     bundle: BundleData
 
@@ -173,7 +181,7 @@ class BundleType(IntEnum):
     NDATA_DEL = 23
 
 
-@dataclass
+@dataclass(frozen=True)
 class BundleData:
     type: BundleType
     source: EID

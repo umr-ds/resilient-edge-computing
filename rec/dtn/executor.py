@@ -7,7 +7,6 @@ from collections import deque
 from pathlib import Path
 from typing import override
 
-import msgpack
 from wasmtime import ExitTrap, Linker, Module, Store, Trap, WasiConfig, WasmtimeError
 
 from rec.dtn.eid import DATASTORE_MULTICAST_ADDRESS, EID
@@ -135,9 +134,11 @@ class Executor(Node):
         LOG.debug(f"Received NamedData: {bundle}")
 
         if isinstance(bundle.named_data, str):
-            bundle.named_data = [bundle.named_data]
+            named_data = [bundle.named_data]
+        else:
+            named_data = bundle.named_data
 
-        for name in bundle.named_data:
+        for name in named_data:
             await self._storage.store_data(name=name, data=bundle.payload)
 
         async with self._job_ready_cv:
