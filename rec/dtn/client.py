@@ -84,7 +84,6 @@ class Client(Node):
             type=BundleType.JOB_QUERY,
             source=self.node_id,
             destination=self._broker,
-            payload=b"",
             submitter=EID(submitter),
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
@@ -106,7 +105,6 @@ class Client(Node):
             type=BundleType.NDATA_GET,
             source=self.node_id,
             destination=datastore,
-            payload=b"",
             named_data=name,
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)

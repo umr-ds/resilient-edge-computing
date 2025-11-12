@@ -7,6 +7,11 @@ from .test_helpers import *
 
 @st.composite
 def randomized_discovery_bundle(draw: st.DrawFn) -> BundleData:
+    success = draw(st.booleans())
+    if not success:
+        error = draw(st.text(min_size=1))
+    else:
+        error = ""
     return BundleData(
         type=draw(
             st.sampled_from(
@@ -19,8 +24,8 @@ def randomized_discovery_bundle(draw: st.DrawFn) -> BundleData:
         ),
         source=draw(dtn_eid()),
         destination=draw(dtn_eid()),
-        success=draw(st.booleans()),
-        error=draw(st.text()),
+        success=success,
+        error=error,
         node_type=draw(
             st.sampled_from(
                 (
@@ -36,6 +41,11 @@ def randomized_discovery_bundle(draw: st.DrawFn) -> BundleData:
 
 @st.composite
 def randomized_job_bundle(draw: st.DrawFn) -> BundleData:
+    success = draw(st.booleans())
+    if not success:
+        error = draw(st.text(min_size=1))
+    else:
+        error = ""
     return BundleData(
         type=draw(
             st.sampled_from(
@@ -49,8 +59,8 @@ def randomized_job_bundle(draw: st.DrawFn) -> BundleData:
         ),
         source=draw(dtn_eid()),
         destination=draw(dtn_eid()),
-        success=draw(st.booleans()),
-        error=draw(st.text()),
+        success=success,
+        error=error,
         payload=draw(st.binary()),
         submitter=draw(dtn_eid()),
     )
@@ -58,6 +68,11 @@ def randomized_job_bundle(draw: st.DrawFn) -> BundleData:
 
 @st.composite
 def randomized_data_bundle(draw: st.DrawFn) -> BundleData:
+    success = draw(st.booleans())
+    if not success:
+        error = draw(st.text(min_size=1))
+    else:
+        error = ""
     return BundleData(
         type=draw(
             st.sampled_from(
@@ -70,8 +85,8 @@ def randomized_data_bundle(draw: st.DrawFn) -> BundleData:
         ),
         source=draw(dtn_eid()),
         destination=draw(dtn_eid()),
-        success=draw(st.booleans()),
-        error=draw(st.text()),
+        success=success,
+        error=error,
         payload=draw(st.binary()),
         named_data=draw(
             st.one_of(
@@ -96,10 +111,15 @@ def randomized_bundle(draw: st.DrawFn) -> BundleData:
 
 @st.composite
 def randomized_reply(draw: st.DrawFn) -> Reply:
+    success = draw(st.booleans())
+    if not success:
+        error = draw(st.text(min_size=1))
+    else:
+        error = ""
     return Reply(
         type=MessageType.REPLY,
-        success=draw(st.booleans()),
-        error=draw(st.text()),
+        success=success,
+        error=error,
     )
 
 
@@ -124,11 +144,16 @@ def randomized_fetch(draw: st.DrawFn) -> Fetch:
 
 @st.composite
 def randomized_fetch_reply(draw: st.DrawFn) -> FetchReply:
+    success = draw(st.booleans())
+    if not success:
+        error = draw(st.text(min_size=1))
+    else:
+        error = ""
     return FetchReply(
         type=MessageType.FETCH_REPLY,
         bundles=draw(st.lists(elements=randomized_bundle())),
-        success=draw(st.booleans()),
-        error=draw(st.text()),
+        success=success,
+        error=error,
     )
 
 

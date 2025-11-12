@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from msgpack import packb
 
 from rec.dtn.eid import EID
 from rec.dtn.executor import Executor, WasmTrapError, _run_wasi_module

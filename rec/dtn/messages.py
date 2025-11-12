@@ -10,29 +10,12 @@ from msgpack import packb, unpackb
 from rec.dtn.eid import EID
 
 
-@dataclass(frozen=True)
 class InvalidMessageError(ValueError):
-    data: dict
-
-    def __str__(self) -> str:
-        return f"Data is not valid message: {self.data}"
+    """Raised when a message is malformed"""
 
 
-@dataclass(frozen=True)
-class InvalidMessageError(ValueError):
-    reason: dict
-
-    def __str__(self) -> str:
-        return f"Data is not valid message: {self.data}"
-
-
-@dataclass(frozen=True)
-class WrongMessageTypeError(ValueError):
-    has: MessageType
-    needs: MessageType
-
-    def __str__(self) -> str:
-        return f"Message needs MessageType {self.needs}, but has {self.has}"
+class InvalidBundleError(ValueError):
+    """Raised when a bundle is malformed"""
 
 
 class NodeType(IntEnum):
@@ -69,7 +52,17 @@ class Reply(Message):
 
     def __post_init__(self) -> None:
         if self.type != MessageType.REPLY:
-            raise WrongMessageTypeError(has=self.type, needs=MessageType.REPLY)
+            raise InvalidMessageError(
+                f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
+            )
+        if not self.success and not self.error:
+            raise InvalidMessageError(
+                f"If operation was unsuccessful, there should be an error"
+            )
+        if self.success and self.error:
+            raise InvalidMessageError(
+                f"If operation was successful, there should be no error"
+            )
 
     @override
     def dictify(self) -> dict:
@@ -88,7 +81,11 @@ class Register(Message):
 
     def __post_init__(self) -> None:
         if self.type != MessageType.REGISTER:
-            raise WrongMessageTypeError(has=self.type, needs=MessageType.REGISTER)
+            raise InvalidMessageError(
+                f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
+            )
+        if not self.endpoint_id:
+            raise InvalidMessageError("EndpointID must not be dtn:none")
 
     @override
     def dictify(self) -> dict:
@@ -108,7 +105,11 @@ class Fetch(Message):
 
     def __post_init__(self) -> None:
         if self.type != MessageType.FETCH:
-            raise WrongMessageTypeError(has=self.type, needs=MessageType.FETCH)
+            raise InvalidMessageError(
+                f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
+            )
+        if not self.endpoint_id:
+            raise InvalidMessageError("EndpointID must not be dtn:none")
 
     @override
     def dictify(self) -> dict:
@@ -127,7 +128,9 @@ class FetchReply(Reply):
 
     def __post_init__(self) -> None:
         if self.type != MessageType.FETCH_REPLY:
-            raise WrongMessageTypeError(has=self.type, needs=MessageType.FETCH_REPLY)
+            raise InvalidMessageError(
+                f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
+            )
 
     @override
     def dictify(self) -> dict:
@@ -149,7 +152,9 @@ class BundleCreate(Message):
 
     def __post_init__(self) -> None:
         if self.type != MessageType.CREATE:
-            raise WrongMessageTypeError(has=self.type, needs=MessageType.CREATE)
+            raise InvalidMessageError(
+                f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
+            )
 
     @override
     def dictify(self) -> dict:
@@ -187,7 +192,7 @@ class BundleData:
     source: EID
     destination: EID
     payload: bytes = b""
-    success: bool = False
+    success: bool = True
     error: str = ""
     # used by broker discovery
     node_type: NodeType = 0
@@ -197,11 +202,43 @@ class BundleData:
     named_data: str | list[str] | None = None
 
     def __post_init__(self) -> None:
-        # TODO check validity
-        pass
+        # general validity checks
+        if not self.source:
+            raise InvalidBundleError("Bundles must be sent by someone")
+        if not self.destination:
+            raise InvalidBundleError("Bundles must be addressed to someone")
+        if not self.success and not self.error:
+            raise InvalidBundleError(
+                f"If operation was unsuccessful, there should be an error"
+            )
+        if self.success and self.error:
+            raise InvalidBundleError(
+                f"If operation was successful, there should be no error"
+            )
+
+        # checks for discovery bundles
+        if BundleType.BROKER_ANNOUNCE <= self.type <= BundleType.BROKER_ACK:
+            if self.node_type < NodeType.BROKER or self.node_type > NodeType.CLIENT:
+                raise InvalidBundleError(f"Invalid node type: {self.node_type}")
+
+        # checks for job query/list
+        if self.type == BundleType.JOB_QUERY or self.type == BundleType.JOB_LIST:
+            if not self.submitter:
+                raise InvalidBundleError(
+                    "Job query/list bundles must have a submitter set"
+                )
+
+        # checks for named data
+        if BundleType.NDATA_PUT <= self.type <= BundleType.NDATA_DEL:
+            if not self.named_data:
+                raise InvalidBundleError(
+                    "Named data bundles need to have a data name set"
+                )
 
     def dictify(self) -> dict:
-        return {key: value for key, value in self.__dict__.items() if value}
+        data = {key: value for key, value in self.__dict__.items() if value}
+        data["success"] = self.success
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> BundleData:
@@ -231,6 +268,6 @@ def deserialize(serialized: bytes) -> Message:
     data_dict: dict = unpackb(serialized)
 
     if data_dict["type"] not in MESSAGE_CONSTRUCTORS:
-        raise InvalidMessageError(data_dict)
+        raise InvalidMessageError(f"Message type {data_dict["type"]} unknown")
 
     return MESSAGE_CONSTRUCTORS[data_dict["type"]](data_dict)

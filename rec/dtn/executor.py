@@ -123,7 +123,6 @@ class Executor(Node):
                 type=BundleType.NDATA_GET,
                 source=self.node_id,
                 destination=DATASTORE_MULTICAST_ADDRESS,
-                payload=b"",
                 named_data=list(missing),
             )
             to_send.append(request)

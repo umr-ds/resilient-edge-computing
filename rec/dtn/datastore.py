@@ -99,7 +99,6 @@ class Datastore(Node):
                         type=BundleType.NDATA_PUT,
                         source=self.node_id,
                         destination=bundle.source,
-                        payload=b"",
                         named_data=name,
                         success=success,
                         error=error,
