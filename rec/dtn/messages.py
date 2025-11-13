@@ -9,6 +9,9 @@ from msgpack import packb, unpackb
 
 from rec.dtn.eid import EID
 
+# (2^64)-1
+MSGPACK_MAXINT = 18446744073709551615
+
 
 class InvalidMessageError(ValueError):
     """Raised when a message is malformed"""

@@ -4,14 +4,15 @@ from queue import Queue
 import msgpack
 
 from rec.dtn.eid import BROADCAST_ADDRESS
+from rec.dtn.job import JobInfo, dictify_job_infos
 from rec.dtn.messages import *
 from rec.dtn.node import Node
 from rec.util.log import LOG
 
 
 class Broker(Node):
-    completed_jobs: set
-    queued_jobs: Queue
+    completed_jobs: set[JobInfo]
+    queued_jobs: Queue[JobInfo]
 
     discovered_nodes: dict[NodeType, set[EID]]
 
@@ -97,8 +98,8 @@ class Broker(Node):
         LOG.debug("Handling jobs query")
         async with self._state_mutex.reader_lock:
             jobs = {
-                "completed": list(self.completed_jobs),
-                "queued": list(self.queued_jobs.queue),
+                "completed": dictify_job_infos(self.completed_jobs),
+                "queued": dictify_job_infos(self.queued_jobs.queue),
             }
             jobs_bytes = msgpack.packb(jobs)
             bundle_response = BundleData(

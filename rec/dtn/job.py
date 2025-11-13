@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from msgpack import packb, unpackb
 from tomlkit import dumps, loads
 
 from rec.dtn.eid import EID
+from rec.dtn.messages import MSGPACK_MAXINT
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,23 @@ class Capabilities:
     free_cpu_capacity: int = 0
     free_memory: int = 0
     free_disk_space: int = 0
+
+    def __post_init__(self) -> None:
+        if self.cpu_cores <= 0:
+            raise ValueError("Must have a positive number of CPU cores")
+        if self.free_cpu_capacity < 0:
+            raise ValueError("Must have a non-negative amount of free CPU capacity")
+        if self.free_memory < 0:
+            raise ValueError("Must have a non-negative amount of free memory")
+        if self.free_disk_space < 0:
+            raise ValueError("Must have a non-negative amount of free disk space")
+        if (
+            self.cpu_cores > MSGPACK_MAXINT
+            or self.free_cpu_capacity > MSGPACK_MAXINT
+            or self.free_memory > MSGPACK_MAXINT
+            or self.free_disk_space > MSGPACK_MAXINT
+        ):
+            raise ValueError(f"Values may not be larger than {MSGPACK_MAXINT}")
 
     @classmethod
     def from_system(cls) -> Capabilities:
@@ -147,6 +166,12 @@ class JobInfo:
     results: list[str] = field(default_factory=list)
     named_results: dict[str, str] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if not self.job_id:
+            raise ValueError("Job needs an ID")
+        if not self.wasm_module:
+            raise ValueError("Job needs a wasm module")
+
     def __str__(self) -> str:
         return self.job_id.hex
 
@@ -208,6 +233,14 @@ class JobInfo:
             required_names.append(self.stdin_file)
         required_names.extend(self.data.values())
         return set(required_names)
+
+
+def dictify_job_infos(jobs: Iterable[JobInfo]) -> list[dict]:
+    return [job.dictify() for job in jobs]
+
+
+def job_infos_from_dicts(job_dicts: Iterable[dict]) -> list[JobInfo]:
+    return [JobInfo.from_dict(job_dict) for job_dict in job_dicts]
 
 
 @dataclass
