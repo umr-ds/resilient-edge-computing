@@ -44,7 +44,7 @@ WORKDIR /app
 
 RUN uv python install 3.12
 
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 
 RUN uv sync --no-install-project
 
