@@ -1,3 +1,5 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 # Resilient Edge Computing
 
 ## Setup
@@ -202,3 +204,9 @@ uv run pytest
 ```
 
 If tests are failing, then the CI pipeline will fail your commits!
+
+#### Privileged CI runner
+
+If you clone this project and want to run the CI pipeline, you will need to setup a "privileged" runner for the integration tests.
+
+A step-by-step howto can be found in [the runner readme](GITLAB_RUNNER_SETUP.md) 

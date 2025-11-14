@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "rec"
 version = "0.1.0"
 description = "Run jobs in a distributed, resilient local execution network."
-#readme = "Readme.md"
+readme = "README.md"
 requires-python = ">= 3.10"
 dependencies = [
     # REC Core utilities
@@ -50,9 +50,12 @@ maintainers = [
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: BSD License",
+    "License :: OSI Approved :: MIT License",
 
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
@@ -81,6 +84,7 @@ rec_dtn = "rec.run_dtn:main"
 
 [project.urls]
 Repository = "https://github.com/umr-ds/resilient-edge-computing"
+Issues = "https://github.com/umr-ds/resilient-edge-computing/issues"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
