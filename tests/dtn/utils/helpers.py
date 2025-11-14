@@ -8,6 +8,20 @@ from hypothesis import strategies as st
 from rec.dtn.eid import EID
 
 
+@dataclass
+class TmpDirectory:
+    prefix: str
+
+    def __enter__(self) -> Path:
+        path = Path(f"{self.prefix}/{uuid4()}")
+        self.path = path
+        path.mkdir(parents=True)
+        return path
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        rmtree(self.path)
+
+
 @st.composite
 def dtn_eid(draw: st.DrawFn, singleton=True) -> EID:
     node: str = draw(
@@ -43,15 +57,14 @@ def dtn_eid(draw: st.DrawFn, singleton=True) -> EID:
     return eid
 
 
-@dataclass
-class TmpDirectory:
-    prefix: str
+@st.composite
+def hierarchical_data(draw: st.DrawFn) -> tuple[str, list[tuple[str, bytes]]]:
+    levels: list[str] = draw(st.lists(elements=st.text()))
+    prefix = "/".join(levels)
 
-    def __enter__(self) -> Path:
-        path = Path(f"{self.prefix}/{uuid4()}")
-        self.path = path
-        path.mkdir(parents=True)
-        return path
+    names: list[str] = draw(st.lists(st.text(), unique=True))
+    data = []
+    for name in names:
+        data.append((f"{prefix}/{name}", draw(st.binary())))
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        rmtree(self.path)
+    return prefix, data
