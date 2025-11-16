@@ -2,7 +2,7 @@ import subprocess as sp
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generator
+from typing import Iterator
 
 import pytest
 
@@ -112,9 +112,7 @@ gc = "1h15s"
 
 
 @pytest.fixture
-def broker_datastore_executor_client_go_env() -> (
-    Generator[DtnTestEnvironment, None, None]
-):
+def dtnd_go_env() -> Iterator[DtnTestEnvironment]:
     """
     Provides a DTN test environment with four Docker containers.
     Each container runs its own Go DTN Daemon (service name, node id):
@@ -202,3 +200,57 @@ def broker_datastore_executor_client_go_env() -> (
             config_paths=config_paths,
             daemon_processes=daemon_processes,
         )
+
+
+@pytest.fixture
+def dtnd_go_bde_env(dtnd_go_env: DtnTestEnvironment) -> Iterator[DtnTestEnvironment]:
+    """
+    Provides a DTN test environment with broker, datastore, and executor already running.
+
+    This fixture extends dtnd_go_env by starting the broker, datastore, and executor services,
+    leaving the client available for test-specific use.
+
+    Yields:
+        DtnTestEnvironment with broker, datastore, and executor services running.
+    """
+    env = dtnd_go_env
+
+    # Container paths for data storage
+    datastore_root = Path("/tmp/test_data/datastore_root")
+    executor_root = Path("/tmp/test_data/executor_root")
+
+    # Create data directories in containers
+    env.compose_env.exec("datastore-ns", f"mkdir -p {datastore_root}")
+    env.compose_env.exec("executor-ns", f"mkdir -p {executor_root}")
+
+    # Start broker
+    broker_cmd = (
+        f"cd /app && uv run rec_dtn "
+        f"--id dtn://broker/ "
+        f"--socket {env.socket_paths['broker']} "
+        f"-v "
+        f"broker"
+    )
+    env.compose_env.popen("broker-ns", broker_cmd)
+
+    # Start datastore
+    datastore_cmd = (
+        f"cd /app && uv run rec_dtn "
+        f"--id dtn://datastore/ "
+        f"--socket {env.socket_paths['datastore']} "
+        f"-v "
+        f"datastore {datastore_root}"
+    )
+    env.compose_env.popen("datastore-ns", datastore_cmd)
+
+    # Start executor
+    executor_cmd = (
+        f"cd /app && uv run rec_dtn "
+        f"--id dtn://executor/ "
+        f"--socket {env.socket_paths['executor']} "
+        f"-v "
+        f"executor {executor_root}"
+    )
+    env.compose_env.popen("executor-ns", executor_cmd)
+
+    yield env
