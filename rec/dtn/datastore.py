@@ -1,7 +1,9 @@
 import asyncio
 from pathlib import Path
+from typing import override
 
-from rec.dtn.messages import *
+from rec.dtn.eid import EID
+from rec.dtn.messages import BundleData, BundleType, NodeType
 from rec.dtn.node import Node
 from rec.dtn.storage import NameTakenError, Storage
 from rec.util.log import LOG
@@ -50,7 +52,7 @@ class Datastore(Node):
                     replies: list[BundleData] = []
                     for bundle in bundles:
                         bundle_replies = await self._handle_bundle(bundle=bundle)
-                        replies = replies + bundle_replies
+                        replies.extend(bundle_replies)
 
                     if replies:
                         await self._send_and_check(bundles=replies)

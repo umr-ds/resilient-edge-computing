@@ -62,6 +62,8 @@ class Node(ABC):
             reply_length = int.from_bytes(bytes=data, byteorder="big", signed=False)
             LOG.debug(f"Reply length: {reply_length}")
 
+            assert reply_length > 0
+
             data = await loop.sock_recv(s, reply_length)
             reply = deserialize(serialized=data)
             LOG.debug(f"Received reply: {reply}")

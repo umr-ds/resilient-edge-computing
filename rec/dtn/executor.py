@@ -78,7 +78,7 @@ class Executor(Node):
                     replies: list[BundleData] = []
                     for bundle in bundles:
                         bundle_replies = await self._handle_bundle(bundle=bundle)
-                        replies = replies + bundle_replies
+                        replies.extend(bundle_replies)
                     if replies:
                         await self._send_and_check(bundles=replies)
                 else:
@@ -119,13 +119,15 @@ class Executor(Node):
             LOG.info(f"Job is missing named data: {missing}")
 
             # Request missing named data from datastores
-            request = BundleData(
-                type=BundleType.NDATA_GET,
-                source=self.node_id,
-                destination=DATASTORE_MULTICAST_ADDRESS,
-                named_data=list(missing),
-            )
-            to_send.append(request)
+            # TODO: Send one request per data item for now since dtnd has issues with lists
+            for name in missing:
+                request = BundleData(
+                    type=BundleType.NDATA_GET,
+                    source=self.node_id,
+                    destination=DATASTORE_MULTICAST_ADDRESS,
+                    named_data=name,
+                )
+                to_send.append(request)
 
         return to_send
 
