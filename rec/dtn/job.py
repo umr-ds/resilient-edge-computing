@@ -3,7 +3,8 @@ from __future__ import annotations
 import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from uuid import UUID
+from pathlib import Path
+from uuid import UUID, uuid4
 
 import psutil
 from aiofiles import open
@@ -193,6 +194,10 @@ class JobInfo:
     def from_dict(cls, data: dict) -> JobInfo:
         data["job_id"] = UUID(data["job_id"])
         data["capabilities"] = Capabilities.from_dict(data["capabilities"])
+        if "submitter" in data and not isinstance(data["submitter"], EID):
+            data["submitter"] = EID(data["submitter"])
+        if "results_receiver" in data and not isinstance(data["results_receiver"], EID):
+            data["results_receiver"] = EID(data["results_receiver"])
         return cls(**data)
 
     def dumps(self) -> str:
@@ -300,3 +305,154 @@ class Job:
         """
         required = self.metadata.required_named_data()
         return required - self.data.keys()
+
+
+@dataclass
+class JobOnDisk:
+    """
+    Represents a job stored on disk.
+
+    Attributes:
+        metadata (JobInfo): The job's specification.
+        data (dict[str, Path]): Mapping from named data identifiers to their filesystem paths.
+            Keys should match the named references in the JobInfo.
+    """
+
+    metadata: JobInfo
+    data: dict[str, Path]
+
+    def validate_paths(self) -> list[str]:
+        """
+        Check if all referenced data files exist on disk.
+
+        Returns:
+            list[str]: List of missing file paths.
+                Empty list if all files exist.
+        """
+        missing = []
+        for path in self.data.values():
+            if not path.exists():
+                missing.append(str(path))
+        return missing
+
+    async def as_job(self) -> Job:
+        """
+        Load the job's binary data from disk and return a Job instance.
+
+        Returns:
+            Job: Job instance with metadata and loaded binary data.
+
+        Raises:
+            FileNotFoundError: If any referenced data file does not exist.
+            PermissionError: If any data file cannot be read due to permissions.
+            OSError: If any other I/O error occurs while reading data files.
+        """
+        loaded_data = {}
+        for name, path in self.data.items():
+            async with open(path, "rb") as f:
+                loaded_data[name] = await f.read()
+        return Job(metadata=self.metadata, data=loaded_data)
+
+
+@dataclass
+class ExecutionPlan:
+    """
+    Represents a complete execution plan with named data and jobs to execute.
+
+    An execution plan is the structure for defining a batch of jobs.
+    It contains:
+    - Named data that will be published and can be referenced by multiple jobs (avoiding duplication)
+    - A list of jobs to be executed, each with their own metadata and data references.
+
+    Attributes:
+        named_data (dict[str, Path]): Shared data files that will be published and can be referenced by multiple jobs.
+            Maps named identifiers to filesystem paths.
+        jobs (list[JobOnDisk]): List of jobs to be executed as part of this plan.
+    """
+
+    named_data: dict[str, Path]
+    jobs: list[JobOnDisk]
+
+    @classmethod
+    async def from_toml(cls, toml_path: Path) -> ExecutionPlan:
+        """
+        Load an execution plan from a TOML file.
+
+        File paths in the TOML can be relative (resolved relative to the TOML file's directory) or absolute.
+
+        Args:
+            toml_path (Path): Path to the TOML file containing the execution plan.
+
+        Returns:
+            ExecutionPlan: Parsed execution plan with resolved file paths.
+
+        Raises:
+            FileNotFoundError: If the TOML file does not exist.
+            TOMLDecodeError: If the TOML file is malformed.
+            KeyError: If required fields are missing from the TOML structure.
+            ValueError: If the TOML structure is invalid.
+        """
+        base_dir = toml_path.parent
+
+        async with open(toml_path, "r") as f:
+            content = await f.read()
+            data = loads(content).unwrap()
+
+        # Parse Named Data
+        named_data = {}
+        for name, path_str in data.get("named_data", {}).items():
+            path = Path(path_str)
+            if not path.is_absolute():
+                path = base_dir / path
+            named_data[name] = path
+
+        # Parse Jobs
+        jobs = []
+        for job_data in data.get("jobs", []):
+            metadata_dict = job_data.get("metadata", {})
+            job_data_dict = job_data.get("data", {})
+
+            # Generate new UUID for the job
+            metadata_dict["job_id"] = str(uuid4())
+            # Submitter will be set by the client upon submission
+            metadata_dict["submitter"] = EID.none()
+
+            # Parse metadata
+            metadata = JobInfo.from_dict(metadata_dict)
+
+            # Parse job-specific data paths
+            job_paths = {}
+            for name, path_str in job_data_dict.items():
+                path = Path(path_str)
+                if not path.is_absolute():
+                    path = base_dir / path
+                job_paths[name] = path
+
+            jobs.append(JobOnDisk(metadata=metadata, data=job_paths))
+
+        return cls(named_data=named_data, jobs=jobs)
+
+    def validate_all_paths(self) -> list[str]:
+        """
+        Validate that all referenced files exist on disk.
+
+        Checks both named_data paths and all job-specific data paths.
+
+        Returns:
+            list[str]: List of missing file paths.
+                Empty list if all files exist.
+        """
+        missing: list[str] = []
+
+        # Check named_data
+        for path in self.named_data.values():
+            if not path.exists():
+                missing.append(str(path))
+
+        # Check each job's data
+        for job in self.jobs:
+            job_missing = job.validate_paths()
+            if job_missing:
+                missing.extend(job_missing)
+
+        return missing
