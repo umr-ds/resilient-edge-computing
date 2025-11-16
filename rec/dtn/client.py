@@ -1,12 +1,15 @@
-#! /usr/bin/env python3
-
 import asyncio
 import os
 from argparse import Namespace
+from pathlib import Path
+from typing import override
 
+import msgpack
 from tomlkit import dump, load
 
-from rec.dtn.messages import *
+from rec.dtn.eid import EID
+from rec.dtn.job import ExecutionPlan, Job
+from rec.dtn.messages import BundleCreate, BundleData, BundleType, MessageType, NodeType
 from rec.dtn.node import Node
 from rec.util.log import LOG
 
@@ -87,18 +90,24 @@ class Client(Node):
             submitter=EID(submitter),
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
-        reply = await self._send_message(message=message)
-        print(reply)
+        await self._send_message(message=message)
         broker_response = await self.wait_reply(BundleType.JOB_LIST)
         if not broker_response.success:
             LOG.error(
                 "Broker responded with error %s", broker_response.error, exc_info=False
             )
         else:
-            jobs = unpackb(broker_response.payload)
+            jobs = msgpack.unpackb(broker_response.payload)
             print(jobs)
 
     async def data_get(self, datastore: EID, name: str) -> None:
+        """
+        Retrieve data from a datastore.
+
+        Args:
+            datastore (EID): The datastore endpoint ID.
+            name (str): The name of the data to retrieve.
+        """
         LOG.info(f"Performing data GET: Name: {name}")
 
         query_bundle = BundleData(
@@ -118,10 +127,21 @@ class Client(Node):
         else:
             print(store_rply.payload)
 
-    async def data_put(self, datastore: EID, name: str, data_file: str) -> None:
+    async def data_put(self, datastore: EID, name: str, data_file: Path) -> bool:
+        """
+        Upload data to a datastore.
+
+        Args:
+            datastore (EID): The datastore endpoint ID.
+            name (str): The name to store the data under.
+            data_file (Path): Path to the file to upload.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
         LOG.info(f"Performing data PUT: Name: {name}")
 
-        with open(data_file, "rb") as f:
+        with data_file.open("rb") as f:
             data = f.read()
 
         query_bundle = BundleData(
@@ -133,14 +153,108 @@ class Client(Node):
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
         reply = await self._send_message(message=message)
-        print(reply)
+
+        if not reply.success:
+            LOG.error(f"Failed to send data PUT for {name}: {reply.error}")
+            return False
+
         store_rply = await self.wait_reply(BundleType.NDATA_PUT)
         if not store_rply.success:
-            LOG.error(
-                "DataStore responded with error %s", store_rply.error, exc_info=False
-            )
+            LOG.error(f"DataStore rejected {name}: {store_rply.error}", exc_info=False)
+            return False
         else:
-            print("Success")
+            LOG.info(f"Successfully published {name}")
+            return True
+
+    async def execute_plan(self, plan_path: Path, datastore: EID) -> None:
+        """
+        Execute an execution plan: publish named data and submit jobs.
+
+        Args:
+            plan (ExecutionPlan): The execution plan to execute.
+            datastore (EID): Datastore EID for publishing named data.
+
+        Raises:
+            ValueError: If broker is not known or if paths are missing.
+        """
+        LOG.info("Starting execution plan")
+
+        plan = await ExecutionPlan.from_toml(plan_path)
+
+        missing_paths = plan.validate_all_paths()
+        if missing_paths:
+            raise ValueError(f"Missing data files: {missing_paths}")
+
+        if plan.named_data:
+            await self._publish_all_named_data(plan.named_data, datastore)
+
+        for idx, job_on_disk in enumerate(plan.jobs):
+            LOG.info(f"Submitting job {idx + 1}/{len(plan.jobs)}")
+            job = await job_on_disk.as_job()
+            await self._submit_job(job)
+
+        LOG.info("Execution plan submitted")
+
+    async def _publish_all_named_data(
+        self, named_data: dict[str, Path], datastore: EID
+    ) -> None:
+        """
+        Publish multiple named data items to datastore.
+
+        Args:
+            named_data (dict[str, Path]): Mapping of named identifiers to file paths.
+            datastore (EID): The datastore endpoint ID.
+        """
+        LOG.info(f"Publishing {len(named_data)} named data items")
+
+        for name, path in named_data.items():
+            await self.data_put(datastore=datastore, name=name, data_file=path)
+
+    async def _submit_job(self, job: Job) -> None:
+        """
+        Submit a job to the broker.
+
+        Args:
+            job: Job instance to submit.
+        """
+        LOG.debug(f"Submitting job: {job.metadata.wasm_module}")
+
+        # Dictify the job and set the submitter
+        job_dict = job.dictify()
+        job_dict["metadata"]["submitter"] = self.node_id
+
+        job_payload = msgpack.packb(job_dict)
+
+        bundle = BundleData(
+            type=BundleType.JOB_SUBMIT,
+            source=self.node_id,
+            destination=self._broker,
+            payload=job_payload,
+        )
+        message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
+
+        reply = await self._send_message(message=message)
+
+        job_id = job.metadata.job_id
+        if reply.success:
+            LOG.info(f"Job submitted successfully: {job_id}")
+        else:
+            LOG.error(f"Failed to submit job {job_id}: {reply.error}")
+
+    async def _check_for_job_results(self) -> None:
+        """
+        Check for job results and process them.
+        """
+        LOG.info("Checking for job results")
+        bundles = await self._get_new_bundles()
+
+        for bundle in bundles:
+            if bundle.type == BundleType.JOB_RESULT:
+                LOG.info("Received job result")
+
+                # TODO: Save result to disk?
+                result_data = bundle.payload
+                LOG.info(f"Result size: {len(result_data)} bytes")
 
 
 def main(args: Namespace) -> None:
@@ -168,5 +282,16 @@ def main(args: Namespace) -> None:
                             data_file=args.data_file,
                         )
                     )
+        case "exec":
+            try:
+                asyncio.run(
+                    client.execute_plan(
+                        plan_path=args.plan_file, datastore=args.datastore_id
+                    )
+                )
+            except Exception as e:
+                LOG.error(f"Failed to execute plan: {e}", exc_info=True)
+        case "check":
+            asyncio.run(client._check_for_job_results())
         case _:
             LOG.critical(f"Unknown command: {args.command}")

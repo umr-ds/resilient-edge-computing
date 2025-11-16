@@ -104,14 +104,26 @@ def main() -> None:
     client_named_data.add_argument("data_name", help="Name of data")
 
     client_named_data_subparsers = client_named_data.add_subparsers(dest="data_command")
-    client_named_data_get = client_named_data_subparsers.add_parser(
-        "get", help="Retrieve data from datastore"
-    )
+    client_named_data_subparsers.add_parser("get", help="Retrieve data from datastore")
 
     client_named_data_put = client_named_data_subparsers.add_parser(
         "put", help="Send data for storage"
     )
-    client_named_data_put.add_argument("data_file", help="Path to data file")
+    client_named_data_put.add_argument("data_file", help="Path to data file", type=Path)
+
+    client_exec_plan = client_subparsers.add_parser(
+        name="exec", help="Execute an execution plan"
+    )
+    client_exec_plan.add_argument(
+        "plan_file", help="Path to execution plan TOML file", type=Path
+    )
+    client_exec_plan.add_argument(
+        "datastore_id", help="EndpointID of datastore", type=EID
+    )
+
+    client_subparsers.add_parser(
+        name="check", help="Check for results of a submitted jobs"
+    )
 
     args = parser.parse_args()
 

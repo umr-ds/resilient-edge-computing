@@ -1,18 +1,19 @@
 import asyncio
 from queue import Queue
+from typing import override
 
 import msgpack
 
-from rec.dtn.eid import BROADCAST_ADDRESS
-from rec.dtn.job import JobInfo, dictify_job_infos
-from rec.dtn.messages import *
+from rec.dtn.eid import BROADCAST_ADDRESS, EID
+from rec.dtn.job import Job, JobInfo, dictify_job_infos
+from rec.dtn.messages import BundleData, BundleType, NodeType
 from rec.dtn.node import Node
 from rec.util.log import LOG
 
 
 class Broker(Node):
     completed_jobs: set[JobInfo]
-    queued_jobs: Queue[JobInfo]
+    queued_jobs: Queue[Job]
 
     discovered_nodes: dict[NodeType, set[EID]]
 
@@ -85,7 +86,9 @@ class Broker(Node):
 
     async def _handle_bundle(self, bundle: BundleData) -> BundleData | None:
         reply: BundleData | None = None
-        if bundle.type == BundleType.JOB_QUERY:
+        if bundle.type == BundleType.JOB_SUBMIT:
+            await self._handle_job_submit(bundle=bundle)
+        elif bundle.type == BundleType.JOB_QUERY:
             reply = await self._handle_job_query(bundle=bundle)
         elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
             reply = await self._handle_discovery(bundle=bundle)
@@ -94,12 +97,29 @@ class Broker(Node):
 
         return reply
 
+    async def _handle_job_submit(self, bundle: BundleData) -> None:
+        """
+        Handle a job submission by forwarding it to an available executor.
+
+        Args:
+            bundle (BundleData): The job submission bundle.
+        """
+        LOG.debug("Handling job submission")
+
+        async with self._state_mutex.writer_lock:
+            job = Job.deserialize(bundle.payload)
+            self.queued_jobs.put(job)
+            LOG.info(f"Queued job: {job.metadata.job_id}")
+
+        # TODO: ACK?
+
     async def _handle_job_query(self, bundle: BundleData) -> BundleData:
         LOG.debug("Handling jobs query")
         async with self._state_mutex.reader_lock:
+            queued_job_infos = [job.metadata for job in self.queued_jobs.queue]
             jobs = {
                 "completed": dictify_job_infos(self.completed_jobs),
-                "queued": dictify_job_infos(self.queued_jobs.queue),
+                "queued": dictify_job_infos(queued_job_infos),
             }
             jobs_bytes = msgpack.packb(jobs)
             bundle_response = BundleData(
@@ -149,5 +169,32 @@ class Broker(Node):
             LOG.debug("Job scheduler going to sleep")
             await asyncio.sleep(10)
 
+            async with self._state_mutex.reader_lock:
+                executors = self.discovered_nodes.get(NodeType.EXECUTOR, set())
+
+            if not executors:
+                LOG.info("No executors available to schedule jobs")
+                continue
+
             async with self._state_mutex.writer_lock:
-                LOG.debug("Running Job scheduler")
+                if self.queued_jobs.empty():
+                    LOG.debug("No jobs to schedule")
+                    continue
+                job = self.queued_jobs.get()
+
+            # For now, just forward to the first available executor
+            # TODO: Implement proper load balancing/scheduling/capabilities checking
+            executor = next(iter(executors))
+
+            LOG.info(f"Scheduling job {job.metadata.job_id} on executor {executor}")
+
+            job_submission = BundleData(
+                type=BundleType.JOB_SUBMIT,
+                source=self.node_id,
+                destination=executor,
+                payload=job.serialize(),
+            )
+
+            await self._send_and_check(bundles=[job_submission])
+
+            LOG.info(f"Job {job.metadata.job_id} scheduled on executor {executor}")

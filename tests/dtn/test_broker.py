@@ -2,14 +2,15 @@ from collections import Counter
 
 import pytest
 from hypothesis import given
+from hypothesis import strategies as st
 from msgpack import unpackb
 
 from rec.dtn.broker import Broker
-from rec.dtn.eid import BROADCAST_ADDRESS
-from rec.dtn.job import job_infos_from_dicts
+from rec.dtn.eid import BROADCAST_ADDRESS, EID
+from rec.dtn.job import Job, JobInfo, job_infos_from_dicts
 from rec.dtn.messages import BundleData, BundleType
 from rec.dtn.node import NodeType
-from tests.dtn.utils.helpers import *
+from tests.dtn.utils.helpers import dtn_eid, randomized_job_info
 
 
 @pytest.mark.asyncio
@@ -52,16 +53,19 @@ async def test_broker_discovery(broker_id: EID, node_id: EID, node_type: int) ->
 @pytest.mark.asyncio
 @given(
     broker_id=dtn_eid(),
-    queued_jobs=st.lists(elements=randomized_job_info(submitter=EID.dtn("client"))),
+    queued_job_infos=st.lists(
+        elements=randomized_job_info(submitter=EID.dtn("client"))
+    ),
     completed_jobs=st.sets(elements=randomized_job_info(submitter=EID.dtn("client"))),
 )
 async def test_broker_job_query(
-    broker_id: EID, queued_jobs: list[JobInfo], completed_jobs: set[JobInfo]
+    broker_id: EID, queued_job_infos: list[JobInfo], completed_jobs: set[JobInfo]
 ) -> None:
     client_id = EID.dtn("client")
     broker = Broker(node_id=broker_id, dtn_agent_socket="")
     broker.completed_jobs = completed_jobs
-    for job in queued_jobs:
+    for job_info in queued_job_infos:
+        job = Job(metadata=job_info, data={})
         broker.queued_jobs.put(job)
 
     job_query = BundleData(
@@ -88,4 +92,4 @@ async def test_broker_job_query(
     assert Counter(completed_jobs) == Counter(list_completed)
 
     list_queued = job_infos_from_dicts(list_jobs["queued"])
-    assert Counter(queued_jobs) == Counter(list_queued)
+    assert Counter(queued_job_infos) == Counter(list_queued)

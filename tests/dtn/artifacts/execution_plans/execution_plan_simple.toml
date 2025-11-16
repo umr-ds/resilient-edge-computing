@@ -1,0 +1,34 @@
+[[jobs]]
+
+[jobs.metadata]
+wasm_module = "wasm-module"
+results_receiver = "dtn://client/"
+argv = ["a", "b", "c"]
+stdin_file = "stdin"
+dirs = ["/output", "/temp"]
+stdout_file = "/output/stdout.log"
+stderr_file = "/output/stderr.log"
+results = ["/out.txt", "/output"]
+
+[jobs.metadata.capabilities]
+cpu_cores = 1
+free_cpu_capacity = 0
+free_memory = 0
+free_disk_space = 0
+
+[jobs.metadata.env]
+FOO = "bar"
+
+[jobs.metadata.data]
+"/infile.txt" = "infile"
+"/data.bin" = "databin"
+
+[jobs.metadata.named_results]
+"/out.txt" = "wasm_output_file"
+"/output" = "output_archive"
+
+[jobs.data]
+wasm-module = "../wasi-smoke.wasm"
+stdin = "data/stdin_input.txt"
+infile = "data/infile.txt"
+databin = "data/data.bin"

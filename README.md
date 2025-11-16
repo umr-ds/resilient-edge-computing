@@ -148,6 +148,10 @@ For example:
 
 ```shell
 uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client query dtn://client/
+# or
+uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client exec artifacts/execution_plans/execution_plan_simple.toml "dtn://datastore/"
+# followed by a check for results after some time
+uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client check
 ```
 
 ## Development
