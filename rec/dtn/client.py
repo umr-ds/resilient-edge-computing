@@ -160,8 +160,15 @@ class Client(Node):
 
         store_rply = await self.wait_reply(BundleType.NDATA_PUT)
         if not store_rply.success:
-            LOG.error(f"DataStore rejected {name}: {store_rply.error}", exc_info=False)
-            return False
+            if store_rply.error.endswith("already taken"):
+                LOG.warning(f"DataStore already has {name}, skipping PUT")
+                LOG.info(f"Successfully published {name}")
+                return True
+            else:
+                LOG.error(
+                    f"DataStore rejected {name}: {store_rply.error}", exc_info=False
+                )
+                return False
         else:
             LOG.info(f"Successfully published {name}")
             return True

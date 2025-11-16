@@ -19,7 +19,7 @@ from rec.dtn.messages import (
     NodeType,
 )
 from rec.dtn.node import Node
-from rec.dtn.storage import Storage
+from rec.dtn.storage import NameTakenError, Storage
 from rec.util.log import LOG
 
 
@@ -105,7 +105,11 @@ class Executor(Node):
         job = Job.deserialize(bundle.payload)
 
         for name, data in job.data.items():
-            await self._storage.store_data(name=name, data=data)
+            try:
+                await self._storage.store_data(name=name, data=data)
+            except NameTakenError:
+                LOG.warning(f"Job data name {name} is already taken. Ignoring.")
+
         missing = await self._storage.find_missing(job.metadata.required_named_data())
 
         async with self._state_mutex.writer_lock:
@@ -140,7 +144,10 @@ class Executor(Node):
             named_data = bundle.named_data
 
         for name in named_data:
-            await self._storage.store_data(name=name, data=bundle.payload)
+            try:
+                await self._storage.store_data(name=name, data=bundle.payload)
+            except NameTakenError:
+                LOG.warning(f"Incoming data name {name} is already taken. Ignoring.")
 
         async with self._job_ready_cv:
             self._job_ready_cv.notify_all()
@@ -235,7 +242,10 @@ class Executor(Node):
             return
 
         for name, data in results.items():
-            await self._storage.store_data(name=name, data=data)
+            try:
+                await self._storage.store_data(name=name, data=data)
+            except NameTakenError:
+                LOG.warning(f"Results data name {name} is already taken. Ignoring.")
 
     async def _send_named_results(self, results: dict[str, bytes]) -> None:
         if not results:
