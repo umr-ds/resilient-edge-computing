@@ -153,7 +153,7 @@ uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client exec artifa
 uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client exec artifacts/execution_plans/execution_plan_twice.toml "dtn://datastore/"
 uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client exec artifacts/execution_plans/execution_plan_twice_named.toml "dtn://datastore/"
 # followed by a check for results after some time
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client check
+uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client check /results
 ```
 
 ## Development

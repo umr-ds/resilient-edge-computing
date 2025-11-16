@@ -104,6 +104,7 @@ def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
     )
 
     # Check for the job result again and again until we find it or timeout
+    results_dir = Path("/tmp/test_data/client_results/")
     start_time = time.time()
     execution_timeout = 120.0
     end_time = start_time + execution_timeout
@@ -118,7 +119,7 @@ def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
             f"--id dtn://client/ "
             f"--socket {env.socket_paths['client']} "
             f"-v "
-            f"client check"
+            f"client check {results_dir}"
         )
         client_proc = env.compose_env.popen("client-ns", client_cmd)
         try:
@@ -130,6 +131,13 @@ def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
                     "Received job result",
                 ],
             )
-            return  # Test passed
+            break  # Test passed
         except AssertionError:
             pass  # Try again
+
+    # Check that the results file exists in the client results directory
+    exec_result = env.compose_env.exec("client-ns", f"ls {results_dir}")
+    result_files = [f for f in exec_result.stdout.split() if f.endswith("_result.zip")]
+    assert (
+        len(result_files) == 1
+    ), f"Expected 1 job result file, found {len(result_files)} in client results: {exec_result.stdout}"

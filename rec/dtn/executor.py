@@ -10,7 +10,7 @@ from typing import override
 from wasmtime import ExitTrap, Linker, Module, Store, Trap, WasiConfig, WasmtimeError
 
 from rec.dtn.eid import DATASTORE_MULTICAST_ADDRESS, EID
-from rec.dtn.job import Capabilities, Job, JobInfo
+from rec.dtn.job import Capabilities, Job, JobInfo, JobResult
 from rec.dtn.messages import (
     BundleCreate,
     BundleData,
@@ -241,7 +241,10 @@ class Executor(Node):
             type=BundleType.JOB_RESULT,
             source=self.node_id,
             destination=job.results_receiver,
-            payload=results,
+            payload=JobResult(
+                job_id=job.job_id,
+                results_data=results,
+            ).serialize(),
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
 
@@ -399,7 +402,7 @@ class Executor(Node):
             return None
 
         data_dir = (base_dir / "data").resolve()
-        zip_path = (base_dir / "results.zip").resolve()
+        zip_path = (base_dir / f"{str(job.job_id)}_result.zip").resolve()
 
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for path in job.results:

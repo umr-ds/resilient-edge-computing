@@ -121,8 +121,11 @@ def main() -> None:
         "datastore_id", help="EndpointID of datastore", type=EID
     )
 
-    client_subparsers.add_parser(
+    client_check = client_subparsers.add_parser(
         name="check", help="Check for results of a submitted jobs"
+    )
+    client_check.add_argument(
+        "results_dir", help="Directory to store results", type=Path
     )
 
     args = parser.parse_args()

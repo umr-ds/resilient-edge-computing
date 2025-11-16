@@ -8,7 +8,7 @@ import msgpack
 from tomlkit import dump, load
 
 from rec.dtn.eid import EID
-from rec.dtn.job import ExecutionPlan, Job
+from rec.dtn.job import ExecutionPlan, Job, JobResult
 from rec.dtn.messages import BundleCreate, BundleData, BundleType, MessageType, NodeType
 from rec.dtn.node import Node
 from rec.util.log import LOG
@@ -248,20 +248,25 @@ class Client(Node):
         else:
             LOG.error(f"Failed to submit job {job_id}: {reply.error}")
 
-    async def _check_for_job_results(self) -> None:
+    async def _check_for_job_results(self, results_dir: Path) -> None:
         """
         Check for job results and process them.
         """
         LOG.info("Checking for job results")
+
+        results_dir.mkdir(parents=True, exist_ok=True)
+
         bundles = await self._get_new_bundles()
 
         for bundle in bundles:
             if bundle.type == BundleType.JOB_RESULT:
                 LOG.info("Received job result")
 
-                # TODO: Save result to disk?
-                result_data = bundle.payload
-                LOG.info(f"Result size: {len(result_data)} bytes")
+                job_result = JobResult.deserialize(bundle.payload)
+                result_path = results_dir / f"{job_result.job_id}_result.zip"
+                with result_path.open("wb") as f:
+                    f.write(job_result.results_data)
+                LOG.info(f"Saved result to {result_path}")
 
 
 def main(args: Namespace) -> None:
@@ -299,6 +304,6 @@ def main(args: Namespace) -> None:
             except Exception as e:
                 LOG.error(f"Failed to execute plan: {e}", exc_info=True)
         case "check":
-            asyncio.run(client._check_for_job_results())
+            asyncio.run(client._check_for_job_results(results_dir=args.results_dir))
         case _:
             LOG.critical(f"Unknown command: {args.command}")

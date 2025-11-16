@@ -308,6 +308,38 @@ class Job:
 
 
 @dataclass
+class JobResult:
+    """
+    Represents the result of a completed job if that job had a results receiver.
+
+    Attributes:
+        job_id (UUID): The unique identifier of the job.
+        results_data (bytes): The binary content of the job's results.
+    """
+
+    job_id: UUID
+    results_data: bytes
+
+    def dictify(self) -> dict:
+        data = {key: value for key, value in self.__dict__.items() if value}
+        data["job_id"] = str(self.job_id)
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> JobResult:
+        data["job_id"] = UUID(data["job_id"])
+        return cls(**data)
+
+    def serialize(self) -> bytes:
+        return packb(self.dictify())
+
+    @classmethod
+    def deserialize(cls, serialized: bytes) -> JobResult:
+        deserialized = unpackb(serialized)
+        return cls.from_dict(deserialized)
+
+
+@dataclass
 class JobOnDisk:
     """
     Represents a job stored on disk.
