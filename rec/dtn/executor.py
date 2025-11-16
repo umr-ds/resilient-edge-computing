@@ -61,6 +61,7 @@ class Executor(Node):
         # Run bundle handler & scheduler concurrently
         async with asyncio.TaskGroup() as tg:
             tg.create_task(self._handle_bundles())
+            tg.create_task(self._fetch_missing_data())
             tg.create_task(self._scheduler())
 
     async def _handle_bundles(self) -> None:
@@ -92,15 +93,14 @@ class Executor(Node):
         if BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
             to_send = await self._handle_discovery(bundle=bundle)
         if bundle.type == BundleType.JOB_SUBMIT:
-            to_send = await self._handle_job(bundle=bundle)
+            await self._handle_job(bundle=bundle)
         if bundle.type == BundleType.NDATA_GET:
             await self._handle_data(bundle=bundle)
 
         return to_send
 
-    async def _handle_job(self, bundle: BundleData) -> list[BundleData]:
+    async def _handle_job(self, bundle: BundleData) -> None:
         LOG.debug(f"Received JobBundle: {bundle}")
-        to_send: list[BundleData] = []
 
         job = Job.deserialize(bundle.payload)
 
@@ -110,30 +110,12 @@ class Executor(Node):
             except NameTakenError:
                 LOG.warning(f"Job data name {name} is already taken. Ignoring.")
 
-        missing = await self._storage.find_missing(job.metadata.required_named_data())
-
         async with self._state_mutex.writer_lock:
             self._pending_jobs.append(job.metadata)
         async with self._job_ready_cv:
             self._job_ready_cv.notify_all()
 
         # TODO: send ACK?
-
-        if missing:
-            LOG.info(f"Job is missing named data: {missing}")
-
-            # Request missing named data from datastores
-            # TODO: Send one request per data item for now since dtnd has issues with lists
-            for name in missing:
-                request = BundleData(
-                    type=BundleType.NDATA_GET,
-                    source=self.node_id,
-                    destination=DATASTORE_MULTICAST_ADDRESS,
-                    named_data=name,
-                )
-                to_send.append(request)
-
-        return to_send
 
     async def _handle_data(self, bundle: BundleData) -> None:
         LOG.debug(f"Received NamedData: {bundle}")
@@ -187,6 +169,40 @@ class Executor(Node):
                 # Not runnable yet
                 self._pending_jobs.append(job)
             return None
+
+    async def _fetch_missing_data(self) -> None:
+        LOG.info("Starting missing data fetcher")
+        while True:
+            LOG.debug("Missing data fetcher going to sleep")
+            await asyncio.sleep(20)
+
+            missing = set()
+            async with self._state_mutex.reader_lock:
+                for job in self._pending_jobs:
+                    missing.update(
+                        await self._storage.find_missing(job.required_named_data())
+                    )
+
+            if missing:
+                LOG.info(f"Fetching missing data: {missing}")
+                # TODO: Send one request per data item for now since dtnd seems to have issues with lists
+                for name in missing:
+                    request = BundleData(
+                        type=BundleType.NDATA_GET,
+                        source=self.node_id,
+                        destination=DATASTORE_MULTICAST_ADDRESS,
+                        named_data=name,
+                    )
+                    try:
+                        dtnd_response = await self._send_message(
+                            BundleCreate(type=MessageType.CREATE, bundle=request)
+                        )
+                        if not dtnd_response.success:
+                            LOG.error("dtnd sent error: %s", dtnd_response.error)
+                    except Exception as err:
+                        LOG.exception(
+                            "error communicating with dtnd: %s", err, exc_info=True
+                        )
 
     async def _scheduler(self) -> None:
         LOG.info("Starting scheduler")
