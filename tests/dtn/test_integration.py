@@ -168,7 +168,7 @@ def test_simple_job_execution_go(
         f"--id dtn://client/ "
         f"--socket {env.socket_paths['client']} "
         f"-v "
-        f"client exec tests/dtn/artifacts/execution_plans/execution_plan_simple.toml dtn://datastore/"
+        f"client exec tests/dtn/artifacts/execution_plans/execution_plan_once.toml dtn://datastore/"
     )
     test_processes["client"] = env.compose_env.popen("client-ns", client_cmd)
 
