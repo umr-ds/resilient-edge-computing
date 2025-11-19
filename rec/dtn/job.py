@@ -313,21 +313,22 @@ class JobResult:
     Represents the result of a completed job if that job had a results receiver.
 
     Attributes:
-        job_id (UUID): The unique identifier of the job.
+        metadata (JobInfo): The job's specification.
         results_data (bytes): The binary content of the job's results.
     """
 
-    job_id: UUID
-    results_data: bytes
+    metadata: JobInfo
+    results_data: bytes = b""
 
     def dictify(self) -> dict:
-        data = {key: value for key, value in self.__dict__.items() if value}
-        data["job_id"] = str(self.job_id)
-        return data
+        return {
+            "metadata": self.metadata.dictify(),
+            "results_data": self.results_data,
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> JobResult:
-        data["job_id"] = UUID(data["job_id"])
+        data["metadata"] = JobInfo.from_dict(data["metadata"])
         return cls(**data)
 
     def serialize(self) -> bytes:

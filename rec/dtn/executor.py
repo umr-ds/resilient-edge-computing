@@ -34,7 +34,9 @@ class WasmTrapError(RuntimeError):
 class Executor(Node):
     _root_dir: Path
     _storage: Storage
-    _pending_jobs: deque[JobInfo]
+    _pending_jobs: deque[
+        tuple[EID, JobInfo]
+    ]  # Queue of pending jobs and the broker EID that sent them
     _job_ready_cv: asyncio.Condition
 
     def __init__(self, node_id: EID, dtn_agent_socket: str, root_dir: Path) -> None:
@@ -51,7 +53,7 @@ class Executor(Node):
         blob_directory = self._root_dir / "blobs"
         self._storage = Storage(db_path, blob_directory)
 
-        self._pending_jobs: deque[JobInfo] = deque()
+        self._pending_jobs: deque[tuple[EID, JobInfo]] = deque()
         self._job_ready_cv = asyncio.Condition()
 
     @override
@@ -111,7 +113,7 @@ class Executor(Node):
                 LOG.warning(f"Job data name {name} is already taken. Ignoring.")
 
         async with self._state_mutex.writer_lock:
-            self._pending_jobs.append(job.metadata)
+            self._pending_jobs.append((bundle.source, job.metadata))
         async with self._job_ready_cv:
             self._job_ready_cv.notify_all()
 
@@ -155,19 +157,23 @@ class Executor(Node):
 
     async def _has_runnable_job(self) -> bool:
         async with self._state_mutex.reader_lock:
-            for j in self._pending_jobs:
-                if await self._job_has_all_inputs(j) and self._system_can_run(j):
+            for _, job_info in self._pending_jobs:
+                if await self._job_has_all_inputs(job_info) and self._system_can_run(
+                    job_info
+                ):
                     return True
             return False
 
-    async def _pop_next_runnable_job(self) -> JobInfo | None:
+    async def _pop_next_runnable_job(self) -> tuple[EID, JobInfo] | None:
         async with self._state_mutex.writer_lock:
             for _ in range(len(self._pending_jobs)):
-                job = self._pending_jobs.popleft()
-                if await self._job_has_all_inputs(job) and self._system_can_run(job):
-                    return job
+                broker_eid, job_info = self._pending_jobs.popleft()
+                if await self._job_has_all_inputs(job_info) and self._system_can_run(
+                    job_info
+                ):
+                    return broker_eid, job_info
                 # Not runnable yet
-                self._pending_jobs.append(job)
+                self._pending_jobs.append((broker_eid, job_info))
             return None
 
     async def _fetch_missing_data(self) -> None:
@@ -178,9 +184,9 @@ class Executor(Node):
 
             missing = set()
             async with self._state_mutex.reader_lock:
-                for job in self._pending_jobs:
+                for _, job_info in self._pending_jobs:
                     missing.update(
-                        await self._storage.find_missing(job.required_named_data())
+                        await self._storage.find_missing(job_info.required_named_data())
                     )
 
             if missing:
@@ -212,37 +218,66 @@ class Executor(Node):
                 while not await self._has_runnable_job():
                     await self._job_ready_cv.wait()
 
-            job = await self._pop_next_runnable_job()
-            if job is None:
+            broker_eid, job_info = await self._pop_next_runnable_job()
+            if job_info is None:
                 # State changed between predicate and pop
                 continue
 
             try:
-                results, named_results = await self._run_job(job)
-                await self._send_results(job, results)
+                results, named_results = await self._run_job(job_info)
+                await self._send_results(broker_eid, job_info, results)
                 await self._store_named_results(named_results)
                 await self._send_named_results(named_results)
             except Exception:
-                LOG.exception("Job failed: %s", job)
+                LOG.exception("Job failed: %s", job_info)
             finally:
                 # Allow new jobs to be scheduled
                 async with self._job_ready_cv:
                     self._job_ready_cv.notify_all()
 
-    async def _send_results(self, job: JobInfo, results: bytes | None) -> None:
+    async def _send_results(
+        self, broker_eid: EID, job_info: JobInfo, results: bytes | None
+    ) -> None:
+        await self._send_completed_notification_to_broker(broker_eid, job_info)
+
         if not results:
             LOG.info("No results to send")
             return
-        if not job.results_receiver:
+        if not job_info.results_receiver:
             LOG.info("No result receiver specified, skipping sending results")
             return
 
+        await self._send_results_to_results_receiver(job_info, results)
+
+    async def _send_completed_notification_to_broker(
+        self, broker_eid: EID, job_info: JobInfo
+    ) -> None:
         bundle = BundleData(
             type=BundleType.JOB_RESULT,
             source=self.node_id,
-            destination=job.results_receiver,
+            destination=broker_eid,
             payload=JobResult(
-                job_id=job.job_id,
+                metadata=job_info,
+            ).serialize(),
+        )
+        message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
+
+        try:
+            dtnd_response = await self._send_message(message)
+            if not dtnd_response.success:
+                LOG.error("dtnd sent error: %s", dtnd_response.error)
+        except Exception as err:
+            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+
+    async def _send_results_to_results_receiver(
+        self, job_info: JobInfo, results: bytes
+    ) -> None:
+        bundle = BundleData(
+            type=BundleType.JOB_RESULT,
+            source=self.node_id,
+            destination=job_info.results_receiver,
+            payload=JobResult(
+                metadata=job_info,
                 results_data=results,
             ).serialize(),
         )

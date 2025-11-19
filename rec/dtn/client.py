@@ -263,7 +263,7 @@ class Client(Node):
                 LOG.info("Received job result")
 
                 job_result = JobResult.deserialize(bundle.payload)
-                result_path = results_dir / f"{job_result.job_id}_result.zip"
+                result_path = results_dir / f"{job_result.metadata.job_id}_result.zip"
                 with result_path.open("wb") as f:
                     f.write(job_result.results_data)
                 LOG.info(f"Saved result to {result_path}")

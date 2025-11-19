@@ -5,7 +5,7 @@ from typing import override
 import msgpack
 
 from rec.dtn.eid import BROADCAST_ADDRESS, EID
-from rec.dtn.job import Job, JobInfo, dictify_job_infos
+from rec.dtn.job import Job, JobInfo, JobResult, dictify_job_infos
 from rec.dtn.messages import BundleData, BundleType, NodeType
 from rec.dtn.node import Node
 from rec.util.log import LOG
@@ -88,6 +88,8 @@ class Broker(Node):
         reply: BundleData | None = None
         if bundle.type == BundleType.JOB_SUBMIT:
             await self._handle_job_submit(bundle=bundle)
+        elif bundle.type == BundleType.JOB_RESULT:
+            await self._handle_job_result(bundle=bundle)
         elif bundle.type == BundleType.JOB_QUERY:
             reply = await self._handle_job_query(bundle=bundle)
         elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
@@ -106,12 +108,30 @@ class Broker(Node):
         """
         LOG.debug("Handling job submission")
 
+        job = Job.deserialize(bundle.payload)
+
         async with self._state_mutex.writer_lock:
-            job = Job.deserialize(bundle.payload)
             self.queued_jobs.put(job)
-            LOG.info(f"Queued job: {job.metadata.job_id}")
+
+        LOG.info(f"Queued job: {job.metadata.job_id}")
 
         # TODO: ACK?
+
+    async def _handle_job_result(self, bundle: BundleData) -> None:
+        """
+        Handle a job result by storing it in the completed jobs set.
+
+        Args:
+            bundle (BundleData): The job result bundle.
+        """
+        LOG.debug("Handling job result")
+
+        job_result = JobResult.deserialize(bundle.payload)
+
+        async with self._state_mutex.writer_lock:
+            self.completed_jobs.add(job_result.metadata)
+
+        LOG.info(f"Stored completed job: {job_result.metadata.job_id}")
 
     async def _handle_job_query(self, bundle: BundleData) -> BundleData:
         LOG.debug("Handling jobs query")
@@ -121,17 +141,18 @@ class Broker(Node):
                 "completed": dictify_job_infos(self.completed_jobs),
                 "queued": dictify_job_infos(queued_job_infos),
             }
-            jobs_bytes = msgpack.packb(jobs)
-            bundle_response = BundleData(
-                type=BundleType.JOB_LIST,
-                source=self.node_id,
-                destination=bundle.source,
-                submitter=bundle.submitter,
-                payload=jobs_bytes,
-            )
-            LOG.debug(f"Response bundle: {bundle_response}")
 
-            return bundle_response
+        jobs_bytes = msgpack.packb(jobs)
+        bundle_response = BundleData(
+            type=BundleType.JOB_LIST,
+            source=self.node_id,
+            destination=bundle.source,
+            submitter=bundle.submitter,
+            payload=jobs_bytes,
+        )
+        LOG.debug(f"Response bundle: {bundle_response}")
+
+        return bundle_response
 
     @override
     async def _handle_discovery(self, bundle: BundleData) -> BundleData | None:
