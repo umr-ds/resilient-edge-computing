@@ -195,9 +195,9 @@ class Client(Node):
         if plan.named_data:
             await self._publish_all_named_data(plan.named_data, datastore)
 
-        for idx, job_on_disk in enumerate(plan.jobs):
+        for idx, lazy_job in enumerate(plan.jobs):
             LOG.info(f"Submitting job {idx + 1}/{len(plan.jobs)}")
-            job = await job_on_disk.as_job()
+            job = await lazy_job.as_job()
             await self._submit_job(job)
 
         LOG.info("Execution plan submitted")

@@ -340,9 +340,16 @@ class JobResult:
 
 
 @dataclass
-class JobOnDisk:
+class LazyJob:
     """
-    Represents a job stored on disk.
+    A lazy-loading wrapper for jobs with file-based data.
+
+    This class represents a job whose binary data hasn't been loaded into memory yet.
+    Instead of storing the actual binary data,
+    it maintains file paths and only loads the data when `as_job()` is called.
+
+    This is used with execution plans where jobs are defined with references to files on disk
+    and should only be loaded when ready to submit to the broker.
 
     Attributes:
         metadata (JobInfo): The job's specification.
@@ -399,11 +406,11 @@ class ExecutionPlan:
     Attributes:
         named_data (dict[str, Path]): Shared data files that will be published and can be referenced by multiple jobs.
             Maps named identifiers to filesystem paths.
-        jobs (list[JobOnDisk]): List of jobs to be executed as part of this plan.
+        jobs (list[LazyJob]): List of jobs to be executed as part of this plan.
     """
 
     named_data: dict[str, Path]
-    jobs: list[JobOnDisk]
+    jobs: list[LazyJob]
 
     @classmethod
     async def from_toml(cls, toml_path: Path) -> ExecutionPlan:
@@ -460,7 +467,7 @@ class ExecutionPlan:
                     path = base_dir / path
                 job_paths[name] = path
 
-            jobs.append(JobOnDisk(metadata=metadata, data=job_paths))
+            jobs.append(LazyJob(metadata=metadata, data=job_paths))
 
         return cls(named_data=named_data, jobs=jobs)
 
