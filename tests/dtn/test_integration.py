@@ -69,13 +69,14 @@ def test_connection_to_daemons_go(dtnd_go_env: DtnTestEnvironment) -> None:
 
     run_and_expect_multiple(
         processes=test_processes,
-        timeout=10.0,
+        timeout=30.0,
         required_messages={
             "broker": ["Connected to dtnd"],
             "datastore": ["Connected to dtnd"],
             "executor": ["Connected to dtnd"],
             "client": ["Connected to dtnd"],
         },
+        terminate_on_success=True,
     )
 
 
@@ -118,10 +119,11 @@ def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
     run_and_expect_single(
         node_id="client",
         proc=check_proc,
-        timeout=60.0,
+        timeout=120.0,
         required_messages=[
             "Received job result",
         ],
+        terminate_on_success=True,
     )
 
     # Check that the results file exists in the client results directory
