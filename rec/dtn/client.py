@@ -361,6 +361,17 @@ class Client(Node):
 
         await self._process_incoming_bundles()
 
+    async def listen_for_bundles(self) -> None:
+        """
+        Continuously listen for incoming bundles from the daemon, such as job results.
+        This runs indefinitely until interrupted.
+        """
+        LOG.info("Starting to listen for bundles from the daemon")
+
+        while True:
+            await self._process_incoming_bundles()
+            await asyncio.sleep(10)
+
 
 def main(args: Namespace) -> None:
     client = Client(
@@ -392,5 +403,10 @@ def main(args: Namespace) -> None:
                 LOG.error(f"Failed to execute plan: {e}", exc_info=True)
         case "check":
             asyncio.run(client.check_for_bundles())
+        case "listen":
+            try:
+                asyncio.run(client.listen_for_bundles())
+            except KeyboardInterrupt:
+                LOG.info("Stopping listener")
         case _:
             LOG.critical(f"Unknown command: {args.command}")

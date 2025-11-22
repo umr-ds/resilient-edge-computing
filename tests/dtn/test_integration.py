@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import subprocess as sp
-import time
 from pathlib import Path
 
 from tests.dtn.utils.integration_helpers import DtnTestEnvironment, requires_docker
@@ -107,38 +106,23 @@ def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
         ],
     )
 
-    # Periodically check for job results
-    start_time = time.time()
-    execution_timeout = 120.0
-    end_time = start_time + execution_timeout
-
-    while True:
-        if time.time() >= end_time:
-            raise TimeoutError("Job result was not received within the expected time")
-
-        # Run client check to retrieve any result bundles from daemon
-        check_cmd = (
-            f"cd /app && uv run rec_dtn "
-            f"--id dtn://client/ "
-            f"--socket {env.socket_paths['client']} "
-            f"-v "
-            f"client --results_dir {results_dir} check"
-        )
-        check_proc = env.compose_env.popen("client-ns", check_cmd)
-        try:
-            run_and_expect_single(
-                node_id="client",
-                proc=check_proc,
-                timeout=30.0,
-                required_messages=[
-                    "Received job result",
-                ],
-            )
-            break  # Test passed
-        except AssertionError:
-            # Try again
-            time.sleep(5)
-            pass
+    # Start client with listen command to retrieve any result bundles from daemon
+    check_cmd = (
+        f"cd /app && uv run rec_dtn "
+        f"--id dtn://client/ "
+        f"--socket {env.socket_paths['client']} "
+        f"-v "
+        f"client --results_dir {results_dir} listen"
+    )
+    check_proc = env.compose_env.popen("client-ns", check_cmd)
+    run_and_expect_single(
+        node_id="client",
+        proc=check_proc,
+        timeout=60.0,
+        required_messages=[
+            "Received job result",
+        ],
+    )
 
     # Check that the results file exists in the client results directory
     exec_result = env.compose_env.exec("client-ns", f"ls {results_dir}")

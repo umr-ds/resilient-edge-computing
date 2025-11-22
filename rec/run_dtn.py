@@ -127,6 +127,11 @@ def main() -> None:
         help="Check for incoming bundles, such as job results",
     )
 
+    client_subparsers.add_parser(
+        name="listen",
+        help="Continuously listen for incoming bundles, such as job results",
+    )
+
     args = parser.parse_args()
 
     # Get log level from environment variable if set

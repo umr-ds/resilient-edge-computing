@@ -155,8 +155,10 @@ uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results
 uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_once.toml
 uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_twice.toml
 uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_twice_named.toml
-# followed by a check to retrieve the result bundles from the daemon:
+# To retrieve result bundles, you can either check once:
 uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results check
+# or continuously listen for new bundles:
+uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results listen
 ```
 
 ## Development
