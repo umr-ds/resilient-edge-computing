@@ -1,4 +1,5 @@
 import asyncio
+import random
 from queue import Queue
 from typing import override
 
@@ -203,9 +204,10 @@ class Broker(Node):
                     continue
                 job = self.queued_jobs.get()
 
-            # For now, just forward to the first available executor
-            # TODO: Implement proper load balancing/scheduling/capabilities checking
-            executor = next(iter(executors))
+            # Randomly select an executor for rudimentary load balancing
+            # TODO: Implement proper load balancing
+            # TODO: Implement capabilities checking; this depends on executor capability announcements -> Heartbeats?
+            executor = random.choice(list(executors))
 
             LOG.info(f"Scheduling job {job.metadata.job_id} on executor {executor}")
 
