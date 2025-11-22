@@ -87,6 +87,13 @@ def main() -> None:
         help="File to store context information",
         default="context.toml",
     )
+    client_parser.add_argument(
+        "-r",
+        "--results_dir",
+        help="Directory to store job results",
+        type=Path,
+        required=True,
+    )
 
     client_subparsers = client_parser.add_subparsers(dest="command")
 
@@ -115,11 +122,9 @@ def main() -> None:
         "plan_file", help="Path to execution plan TOML file", type=Path
     )
 
-    client_check = client_subparsers.add_parser(
-        name="check", help="Check for results of a submitted jobs"
-    )
-    client_check.add_argument(
-        "results_dir", help="Directory to store results", type=Path
+    client_subparsers.add_parser(
+        name="check",
+        help="Check for incoming bundles, such as job results",
     )
 
     args = parser.parse_args()

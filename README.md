@@ -113,21 +113,24 @@ You can interact with the network via the `rec_dtn client` command.
 Here are some examples:
 
 ```shell
-rec_dtn -v -s <path to socket> -i dtn://client_1/ client data test/data put <path to file>
+rec_dtn -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> data test/data put <path to file>
 ```
 
 This starts a client with the node id `dtn://client_1/`
 Replace `<path to socket>` with the same path as in the `dtnd` config.
+Replace `<path to results directory>` with a path where the client can store results of jobs.
 
 We use the `client` command, and its `data` subcommand.
 We are using the data-name `test/data`, we are using the `put` action to submit data to the store, and lastly, we are sending the contents of `<path to file` (this needs to point to an existing file, of course).
 
 ```shell
-rec_dtn -v -s <path to socket> -i dtn://client_1/ client data test/data get
+rec_dtn -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> data test/data get
 ```
 
 This starts a client with the node id `dtn://client_1/`
 Replace `<path to socket>` with the same path as in the `dtnd` config.
+Replace `<path to results directory>` with a path where the client can store results of jobs.
+
 We use the `client` command, and its `data` subcommand.
 We are using the data-name `test/data`, we are using the `get` action to retrieve data from the store.
 Effectively, we are querying the same data that we stored with the previous command.
@@ -147,13 +150,13 @@ The only thing you need to do is to start a client node in the top-left Zellij p
 For example:
 
 ```shell
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client query dtn://client/
+uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results query dtn://client/
 # or any of the other client commands, e.g. to execute an execution plan:
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client exec artifacts/execution_plans/execution_plan_once.toml
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client exec artifacts/execution_plans/execution_plan_twice.toml
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client exec artifacts/execution_plans/execution_plan_twice_named.toml
-# followed by a check for results after some time
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client check /results
+uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_once.toml
+uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_twice.toml
+uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_twice_named.toml
+# followed by a check to retrieve the result bundles from the daemon:
+uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results check
 ```
 
 ## Development

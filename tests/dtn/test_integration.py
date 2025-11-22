@@ -63,7 +63,8 @@ def test_connection_to_daemons_go(dtnd_go_env: DtnTestEnvironment) -> None:
         f"--id dtn://client/ "
         f"--socket {env.socket_paths['client']} "
         f"-v "
-        f"client query dtn://test-submitter/"
+        f"client --results_dir /tmp/test_data/client_results "
+        f"query dtn://test-submitter/"
     )
     test_processes["client"] = env.compose_env.popen("client-ns", client_cmd)
 
@@ -83,19 +84,22 @@ def test_connection_to_daemons_go(dtnd_go_env: DtnTestEnvironment) -> None:
 def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
     env = dtnd_go_bde_env
 
-    # Start client
-    client_cmd = (
+    results_dir = Path("/tmp/test_data/client_results/")
+
+    # Start client with exec command
+    exec_cmd = (
         f"cd /app && uv run rec_dtn "
         f"--id dtn://client/ "
         f"--socket {env.socket_paths['client']} "
         f"-v "
-        f"client exec tests/dtn/artifacts/execution_plans/execution_plan_once.toml"
+        f"client --results_dir {results_dir} "
+        f"exec tests/dtn/artifacts/execution_plans/execution_plan_once.toml"
     )
-    client_proc = env.compose_env.popen("client-ns", client_cmd)
+    exec_proc = env.compose_env.popen("client-ns", exec_cmd)
 
     run_and_expect_single(
         node_id="client",
-        proc=client_proc,
+        proc=exec_proc,
         timeout=120.0,
         required_messages=[
             "Job submitted successfully",
@@ -103,8 +107,7 @@ def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
         ],
     )
 
-    # Check for the job result again and again until we find it or timeout
-    results_dir = Path("/tmp/test_data/client_results/")
+    # Periodically check for job results
     start_time = time.time()
     execution_timeout = 120.0
     end_time = start_time + execution_timeout
@@ -113,19 +116,19 @@ def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
         if time.time() >= end_time:
             raise TimeoutError("Job result was not received within the expected time")
 
-        # Start client
-        client_cmd = (
+        # Run client check to retrieve any result bundles from daemon
+        check_cmd = (
             f"cd /app && uv run rec_dtn "
             f"--id dtn://client/ "
             f"--socket {env.socket_paths['client']} "
             f"-v "
-            f"client check {results_dir}"
+            f"client --results_dir {results_dir} check"
         )
-        client_proc = env.compose_env.popen("client-ns", client_cmd)
+        check_proc = env.compose_env.popen("client-ns", check_cmd)
         try:
             run_and_expect_single(
                 node_id="client",
-                proc=client_proc,
+                proc=check_proc,
                 timeout=30.0,
                 required_messages=[
                     "Received job result",
@@ -133,7 +136,9 @@ def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
             )
             break  # Test passed
         except AssertionError:
-            pass  # Try again
+            # Try again
+            time.sleep(5)
+            pass
 
     # Check that the results file exists in the client results directory
     exec_result = env.compose_env.exec("client-ns", f"ls {results_dir}")

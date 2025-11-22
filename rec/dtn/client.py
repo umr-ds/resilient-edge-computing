@@ -17,8 +17,17 @@ from rec.util.log import LOG
 class Client(Node):
     context_file: str
     context_data: dict
+    results_dir: Path
+    _pending_responses: dict[BundleType, list[BundleData]]
+    _response_cv: asyncio.Condition
 
-    def __init__(self, node_id: str | EID, dtn_agent_socket: str, context_file: str):
+    def __init__(
+        self,
+        node_id: str | EID,
+        dtn_agent_socket: str,
+        context_file: str,
+        results_dir: Path,
+    ):
         super().__init__(
             node_id=node_id,
             dtn_agent_socket=dtn_agent_socket,
@@ -26,6 +35,11 @@ class Client(Node):
         )
 
         self.context_file = context_file
+        self.results_dir = results_dir
+        self.results_dir.mkdir(parents=True, exist_ok=True)
+
+        self._pending_responses = {}
+        self._response_cv = asyncio.Condition()
 
         if os.path.isfile(context_file):
             with open(context_file, "r") as f:
@@ -71,16 +85,113 @@ class Client(Node):
         with open(self.context_file, "w") as f:
             dump(self.context_data, f)
 
+    async def _process_incoming_bundles(self) -> None:
+        """
+        Process all currently available bundles once.
+        """
+        LOG.debug("Processing incoming bundles")
+        try:
+            bundles = await self._get_new_bundles()
+            if bundles:
+                LOG.debug(f"Bundles: {bundles}")
+                for bundle in bundles:
+                    await self._handle_bundle(bundle=bundle)
+            else:
+                LOG.debug("No new bundles")
+        except Exception as err:
+            LOG.exception("Error fetching bundles: %s", err)
+
+    async def _handle_bundle(self, bundle: BundleData) -> None:
+        """
+        Handle an incoming bundle based on its type.
+
+        Args:
+            bundle (BundleData): The incoming bundle to handle.
+        """
+        LOG.debug(f"Handling bundle: {bundle}")
+
+        if bundle.type == BundleType.JOB_RESULT:
+            await self._handle_job_result(bundle=bundle)
+        elif bundle.type == BundleType.JOB_LIST:
+            await self._cache_response(bundle=bundle)
+        elif bundle.type == BundleType.NDATA_GET:
+            await self._cache_response(bundle=bundle)
+        elif bundle.type == BundleType.NDATA_PUT:
+            await self._cache_response(bundle=bundle)
+        elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
+            # Discovery handled in _find_broker
+            pass
+        else:
+            LOG.warning(f"Won't handle bundle of type: {bundle.type}")
+
+    async def _handle_job_result(self, bundle: BundleData) -> None:
+        """
+        Handle a job result bundle by saving the results to the results directory.
+
+        Args:
+            bundle (BundleData): The job result bundle.
+        """
+        LOG.info("Received job result")
+
+        job_result = JobResult.deserialize(bundle.payload)
+        result_path = self.results_dir / f"{job_result.metadata.job_id}_result.zip"
+
+        with result_path.open("wb") as f:
+            f.write(job_result.results_data)
+
+        LOG.info(f"Saved result to {result_path}")
+
+    async def _cache_response(self, bundle: BundleData) -> None:
+        """
+        Cache a response bundle for synchronous operations to retrieve.
+
+        Args:
+            bundle (BundleData): The response bundle to cache.
+        """
+        async with self._response_cv:
+            if bundle.type not in self._pending_responses:
+                self._pending_responses[bundle.type] = []
+            self._pending_responses[bundle.type].append(bundle)
+            self._response_cv.notify_all()
+
     async def wait_reply(self, wait_for: BundleType) -> BundleData:
-        LOG.info("Waiting for reply")
+        """
+        Wait for a reply bundle of specific type, checking for new bundles periodically.
+
+        Args:
+            wait_for (BundleType): The type of bundle to wait for.
+        """
+        LOG.info(f"Waiting for reply of type {wait_for}")
+
         while True:
             await asyncio.sleep(10)
-            bundles = await self._get_new_bundles()
-            for bundle in bundles:
-                if bundle.type == wait_for:
-                    return bundle
+
+            # Check if we already have the response cached
+            async with self._response_cv:
+                if (
+                    wait_for in self._pending_responses
+                    and self._pending_responses[wait_for]
+                ):
+                    return self._pending_responses[wait_for].pop(0)
+
+            # Process any new bundles
+            await self._process_incoming_bundles()
+
+            # Check again if response arrived
+            async with self._response_cv:
+                if (
+                    wait_for in self._pending_responses
+                    and self._pending_responses[wait_for]
+                ):
+                    return self._pending_responses[wait_for].pop(0)
 
     async def job_query(self, submitter: str) -> None:
+        """
+        Query the broker for jobs submitted by a specific submitter.
+
+        Args:
+            submitter (str): The EndpointID of the job submitter to query for.
+        """
         LOG.info("Performing job query")
 
         query_bundle = BundleData(
@@ -242,30 +353,21 @@ class Client(Node):
         else:
             LOG.error(f"Failed to submit job {job_id}: {reply.error}")
 
-    async def _check_for_job_results(self, results_dir: Path) -> None:
+    async def check_for_bundles(self) -> None:
         """
-        Check for job results and process them.
+        Check for any incoming bundles from the daemon, such as job results.
         """
-        LOG.info("Checking for job results")
+        LOG.info("Checking for bundles from the daemon")
 
-        results_dir.mkdir(parents=True, exist_ok=True)
-
-        bundles = await self._get_new_bundles()
-
-        for bundle in bundles:
-            if bundle.type == BundleType.JOB_RESULT:
-                LOG.info("Received job result")
-
-                job_result = JobResult.deserialize(bundle.payload)
-                result_path = results_dir / f"{job_result.metadata.job_id}_result.zip"
-                with result_path.open("wb") as f:
-                    f.write(job_result.results_data)
-                LOG.info(f"Saved result to {result_path}")
+        await self._process_incoming_bundles()
 
 
 def main(args: Namespace) -> None:
     client = Client(
-        node_id=args.id, dtn_agent_socket=args.socket, context_file=args.context_file
+        node_id=args.id,
+        dtn_agent_socket=args.socket,
+        context_file=args.context_file,
+        results_dir=args.results_dir,
     )
     asyncio.run(client.run())
 
@@ -289,6 +391,6 @@ def main(args: Namespace) -> None:
             except Exception as e:
                 LOG.error(f"Failed to execute plan: {e}", exc_info=True)
         case "check":
-            asyncio.run(client._check_for_job_results(results_dir=args.results_dir))
+            asyncio.run(client.check_for_bundles())
         case _:
             LOG.critical(f"Unknown command: {args.command}")
