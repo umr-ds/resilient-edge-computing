@@ -89,7 +89,7 @@ def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
         f"--id dtn://client/ "
         f"--socket {env.socket_paths['client']} "
         f"-v "
-        f"client exec tests/dtn/artifacts/execution_plans/execution_plan_once.toml dtn://datastore/"
+        f"client exec tests/dtn/artifacts/execution_plans/execution_plan_once.toml"
     )
     client_proc = env.compose_env.popen("client-ns", client_cmd)
 

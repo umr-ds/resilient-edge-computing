@@ -310,7 +310,7 @@ class Executor(Node):
             bundle = BundleData(
                 type=BundleType.NDATA_PUT,
                 source=self.node_id,
-                destination=DATASTORE_MULTICAST_ADDRESS,
+                destination=self._broker,
                 payload=data,
                 named_data=name,
             )

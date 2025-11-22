@@ -93,6 +93,8 @@ class Broker(Node):
             await self._handle_job_result(bundle=bundle)
         elif bundle.type == BundleType.JOB_QUERY:
             reply = await self._handle_job_query(bundle=bundle)
+        elif bundle.type == BundleType.NDATA_PUT:
+            reply = await self._handle_ndata_put(bundle=bundle)
         elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
             reply = await self._handle_discovery(bundle=bundle)
         else:
@@ -154,6 +156,41 @@ class Broker(Node):
         LOG.debug(f"Response bundle: {bundle_response}")
 
         return bundle_response
+
+    async def _handle_ndata_put(self, bundle: BundleData) -> BundleData | None:
+        LOG.debug("Handling named data PUT")
+
+        async with self._state_mutex.reader_lock:
+            datastores = self.discovered_nodes.get(NodeType.DATASTORE, set())
+
+        if not datastores:
+            LOG.warning("No datastores available to forward named data PUT")
+            response = BundleData(
+                type=BundleType.NDATA_PUT,
+                source=self.node_id,
+                destination=bundle.source,
+                named_data=bundle.named_data,
+                success=False,
+                error="No datastores available",
+            )
+            return response
+
+        datastore = random.choice(list(datastores))
+        LOG.info(f"Forwarding named data PUT to datastore: {datastore}")
+
+        forward_bundle = BundleData(
+            type=BundleType.NDATA_PUT,
+            source=bundle.source,  # As if it came from the original sender
+            destination=datastore,
+            payload=bundle.payload,
+            submitter=bundle.source,
+            named_data=bundle.named_data,
+        )
+
+        await self._send_and_check(bundles=[forward_bundle])
+
+        # The datastore will answer directly to the original sender
+        return None
 
     @override
     async def _handle_discovery(self, bundle: BundleData) -> BundleData | None:

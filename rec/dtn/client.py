@@ -7,7 +7,7 @@ from typing import override
 import msgpack
 from tomlkit import dump, load
 
-from rec.dtn.eid import EID
+from rec.dtn.eid import DATASTORE_MULTICAST_ADDRESS, EID
 from rec.dtn.job import ExecutionPlan, Job, JobResult
 from rec.dtn.messages import BundleCreate, BundleData, BundleType, MessageType, NodeType
 from rec.dtn.node import Node
@@ -100,12 +100,11 @@ class Client(Node):
             jobs = msgpack.unpackb(broker_response.payload)
             print(jobs)
 
-    async def data_get(self, datastore: EID, name: str) -> None:
+    async def data_get(self, name: str) -> None:
         """
         Retrieve data from a datastore.
 
         Args:
-            datastore (EID): The datastore endpoint ID.
             name (str): The name of the data to retrieve.
         """
         LOG.info(f"Performing data GET: Name: {name}")
@@ -113,7 +112,7 @@ class Client(Node):
         query_bundle = BundleData(
             type=BundleType.NDATA_GET,
             source=self.node_id,
-            destination=datastore,
+            destination=DATASTORE_MULTICAST_ADDRESS,
             named_data=name,
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
@@ -127,12 +126,11 @@ class Client(Node):
         else:
             print(store_rply.payload)
 
-    async def data_put(self, datastore: EID, name: str, data_file: Path) -> bool:
+    async def data_put(self, name: str, data_file: Path) -> bool:
         """
         Upload data to a datastore.
 
         Args:
-            datastore (EID): The datastore endpoint ID.
             name (str): The name to store the data under.
             data_file (Path): Path to the file to upload.
 
@@ -147,7 +145,7 @@ class Client(Node):
         query_bundle = BundleData(
             type=BundleType.NDATA_PUT,
             source=self.node_id,
-            destination=datastore,
+            destination=self._broker,
             payload=data,
             named_data=name,
         )
@@ -173,13 +171,12 @@ class Client(Node):
             LOG.info(f"Successfully published {name}")
             return True
 
-    async def execute_plan(self, plan_path: Path, datastore: EID) -> None:
+    async def execute_plan(self, plan_path: Path) -> None:
         """
         Execute an execution plan: publish named data and submit jobs.
 
         Args:
-            plan (ExecutionPlan): The execution plan to execute.
-            datastore (EID): Datastore EID for publishing named data.
+            plan_path (Path): The path to the execution plan file.
 
         Raises:
             ValueError: If broker is not known or if paths are missing.
@@ -193,7 +190,7 @@ class Client(Node):
             raise ValueError(f"Missing data files: {missing_paths}")
 
         if plan.named_data:
-            await self._publish_all_named_data(plan.named_data, datastore)
+            await self._publish_all_named_data(named_data=plan.named_data)
 
         for idx, lazy_job in enumerate(plan.jobs):
             LOG.info(f"Submitting job {idx + 1}/{len(plan.jobs)}")
@@ -202,20 +199,17 @@ class Client(Node):
 
         LOG.info("Execution plan submitted")
 
-    async def _publish_all_named_data(
-        self, named_data: dict[str, Path], datastore: EID
-    ) -> None:
+    async def _publish_all_named_data(self, named_data: dict[str, Path]) -> None:
         """
         Publish multiple named data items to datastore.
 
         Args:
             named_data (dict[str, Path]): Mapping of named identifiers to file paths.
-            datastore (EID): The datastore endpoint ID.
         """
         LOG.info(f"Publishing {len(named_data)} named data items")
 
         for name, path in named_data.items():
-            await self.data_put(datastore=datastore, name=name, data_file=path)
+            await self.data_put(name=name, data_file=path)
 
     async def _submit_job(self, job: Job) -> None:
         """
@@ -281,26 +275,17 @@ def main(args: Namespace) -> None:
         case "data":
             match args.data_command:
                 case "get":
-                    asyncio.run(
-                        client.data_get(
-                            datastore=args.datastore_id, name=args.data_name
-                        )
-                    )
+                    asyncio.run(client.data_get(name=args.data_name))
                 case "put":
                     asyncio.run(
                         client.data_put(
-                            datastore=args.datastore_id,
                             name=args.data_name,
                             data_file=args.data_file,
                         )
                     )
         case "exec":
             try:
-                asyncio.run(
-                    client.execute_plan(
-                        plan_path=args.plan_file, datastore=args.datastore_id
-                    )
-                )
+                asyncio.run(client.execute_plan(plan_path=args.plan_file))
             except Exception as e:
                 LOG.error(f"Failed to execute plan: {e}", exc_info=True)
         case "check":

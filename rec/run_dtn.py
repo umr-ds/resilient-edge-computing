@@ -98,9 +98,6 @@ def main() -> None:
     client_named_data = client_subparsers.add_parser(
         name="data", help="Interact with datastore"
     )
-    client_named_data.add_argument(
-        "datastore_id", help="EndpointID of datastore", type=EID
-    )
     client_named_data.add_argument("data_name", help="Name of data")
 
     client_named_data_subparsers = client_named_data.add_subparsers(dest="data_command")
@@ -116,9 +113,6 @@ def main() -> None:
     )
     client_exec_plan.add_argument(
         "plan_file", help="Path to execution plan TOML file", type=Path
-    )
-    client_exec_plan.add_argument(
-        "datastore_id", help="EndpointID of datastore", type=EID
     )
 
     client_check = client_subparsers.add_parser(
