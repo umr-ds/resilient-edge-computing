@@ -3,7 +3,7 @@ from argparse import Namespace
 from pathlib import Path
 from typing import override
 
-import msgpack
+from ormsgpack import packb, unpackb
 from tomlkit import dump, load
 
 from rec.dtn.eid import DATASTORE_MULTICAST_ADDRESS, EID
@@ -210,7 +210,7 @@ class Client(Node):
                 "Broker responded with error %s", broker_response.error, exc_info=False
             )
         else:
-            jobs = msgpack.unpackb(broker_response.payload)
+            jobs = unpackb(broker_response.payload)
             print(jobs)
 
     async def data_get(self, name: str) -> None:
@@ -337,7 +337,7 @@ class Client(Node):
         job_dict = job.dictify()
         job_dict["metadata"]["submitter"] = self._node_id
 
-        job_payload = msgpack.packb(job_dict)
+        job_payload = packb(job_dict)
 
         bundle = BundleData(
             type=BundleType.JOB_SUBMIT,

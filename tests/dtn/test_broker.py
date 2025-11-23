@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from msgpack import unpackb
+from ormsgpack import unpackb
 
 from rec.dtn.broker import Broker
 from rec.dtn.eid import BROADCAST_ADDRESS, EID

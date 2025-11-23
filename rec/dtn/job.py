@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 import psutil
 from aiofiles import open
-from msgpack import packb, unpackb
+from ormsgpack import packb, unpackb
 from tomlkit import dumps, loads
 
 from rec.dtn.eid import EID

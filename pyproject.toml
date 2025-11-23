@@ -32,7 +32,7 @@ dependencies = [
 
     # REC DTN
     ## Message serialization
-    "msgpack",
+    "ormsgpack",
     ## Datastore
     "async-tinydb",
     "aiofiles",

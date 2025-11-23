@@ -3,7 +3,7 @@ import random
 from pathlib import Path
 from typing import override
 
-import msgpack
+from ormsgpack import packb
 
 from rec.dtn.eid import BROADCAST_ADDRESS, EID
 from rec.dtn.job import Job, JobInfo, JobResult, dictify_job_infos
@@ -158,7 +158,7 @@ class Broker(Node):
                 "queued": dictify_job_infos(queued_job_infos),
             }
 
-        jobs_bytes = msgpack.packb(jobs)
+        jobs_bytes = packb(jobs)
         bundle_response = BundleData(
             type=BundleType.JOB_LIST,
             source=self._node_id,

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import override
 
-from msgpack import packb, unpackb
+from ormsgpack import packb, unpackb
 
 from rec.dtn.eid import EID
 
