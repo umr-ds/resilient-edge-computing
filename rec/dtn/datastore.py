@@ -77,12 +77,13 @@ class Datastore(Node):
         else:
             named_data = bundle.named_data
 
+        if named_data is None:
+            LOG.error("Name was none, this should never happen")
+            return bundles
+
         match bundle.type:
             case BundleType.NDATA_PUT:
                 LOG.debug("Data action is PUT")
-                if bundle.named_data is None:
-                    LOG.error("Name was none, this should never happen")
-                    return bundles
 
                 success = True
                 error = ""
@@ -104,9 +105,7 @@ class Datastore(Node):
                     bundles.append(response)
             case BundleType.NDATA_GET:
                 LOG.debug("Data action is GET")
-                if bundle.named_data is None:
-                    LOG.error("Name was none, this should never happen")
-                    return bundles
+
                 for name in named_data:
                     loaded = await self._storage.load_data(name=name)
                     LOG.debug(f"Loaded data: {loaded}")
