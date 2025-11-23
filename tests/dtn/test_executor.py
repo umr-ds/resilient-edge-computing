@@ -3,17 +3,19 @@ from __future__ import annotations
 import io
 import zipfile
 from dataclasses import replace
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 from hypothesis import given
 
-from rec.dtn.eid import BROADCAST_ADDRESS
+from rec.dtn.eid import BROADCAST_ADDRESS, EID
 from rec.dtn.executor import Executor, WasmTrapError, _run_wasi_module
 from rec.dtn.job import Capabilities, Job, JobInfo
 from rec.dtn.messages import BundleData, BundleType, NodeType
 from rec.dtn.storage import NoSuchNameError
-from tests.dtn.utils.helpers import *
+from tests.dtn.utils.helpers import TmpDirectory, dtn_eid
 
 HERE = Path(__file__).resolve().parent
 WASM = HERE / "artifacts" / "wasi-smoke.wasm"
@@ -35,8 +37,8 @@ def executor(test_eid: EID, tmp_path: Path) -> Executor:
     with patch.object(Executor, "_register", new_callable=AsyncMock):
         executor = Executor(
             node_id=test_eid,
-            dtn_agent_socket="/tmp/executor_test.sock",
-            root_dir=tmp_path / "executor_root",
+            dtn_agent_socket=Path("/tmp/executor_test.sock"),
+            root_directory=tmp_path / "executor_root",
         )
         return executor
 
@@ -107,7 +109,9 @@ def sample_job(wasm_path: Path) -> Job:
 @given(node_id=dtn_eid(), broker_id=dtn_eid())
 async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
     with TmpDirectory(prefix="/tmp") as root_dir:
-        executor = Executor(node_id=node_id, dtn_agent_socket="", root_dir=root_dir)
+        executor = Executor(
+            node_id=node_id, dtn_agent_socket=Path(), root_directory=root_dir
+        )
 
         # broker announcement
         broker_bundle = BundleData(
@@ -390,6 +394,7 @@ class TestExecutorCollectResults:
 
         results = await executor._collect_results(job, job_dir)
 
+        assert results is not None
         with zipfile.ZipFile(io.BytesIO(results), "r") as zf:
             files = zf.namelist()
             assert len(files) == 4
@@ -548,7 +553,7 @@ class TestExecutorRunJob:
             assert "TO_STDERR" in stderr_content
 
         # Check that the job directory was cleaned up
-        job_dirs = list(executor._root_dir.glob("job-*"))
+        job_dirs = list(executor._root_directory.glob("job-*"))
         assert len(job_dirs) == 0
 
     @pytest.mark.asyncio

@@ -1,29 +1,40 @@
 import asyncio
 import sys
 from abc import ABC, abstractmethod
-from dataclasses import field
+from dataclasses import dataclass, field
+from pathlib import Path
 from socket import AF_UNIX, SOCK_STREAM, socket
 
 from aiorwlock import RWLock
 
-from rec.dtn.messages import *
+from rec.dtn.eid import EID
+from rec.dtn.messages import (
+    BundleCreate,
+    BundleData,
+    BundleType,
+    Fetch,
+    FetchReply,
+    Message,
+    MessageType,
+    NodeType,
+    Register,
+    Reply,
+    deserialize,
+    serialize,
+)
 from rec.util.log import LOG
 
 
 @dataclass
 class Node(ABC):
-    node_id: EID
-    dtn_agent_socket: str
-    node_type: NodeType
+    _node_id: EID
+    _dtn_agent_socket: Path
+    _node_type: NodeType
 
     _state_mutex: RWLock = field(default_factory=RWLock)
 
     _broker_pending: EID | None = None
     _broker: EID | None = None
-
-    def __post_init__(self) -> None:
-        if isinstance(self.node_id, str):
-            self.node_id = EID(self.node_id)
 
     @abstractmethod
     async def run(self) -> None:
@@ -39,9 +50,9 @@ class Node(ABC):
 
     async def _send_message(self, message: Message) -> Reply:
         loop = asyncio.get_running_loop()
-        LOG.info(f"Connecting to dtnd on {self.dtn_agent_socket}")
+        LOG.info(f"Connecting to dtnd on {self._dtn_agent_socket}")
         with socket(AF_UNIX, SOCK_STREAM) as s:
-            s.connect(self.dtn_agent_socket)
+            s.connect(str(self._dtn_agent_socket))
             LOG.debug("Connected to dtnd")
 
             ## serialize and send message
@@ -73,7 +84,7 @@ class Node(ABC):
 
     async def _register(self) -> None:
         LOG.info("Performing registration")
-        message = Register(type=MessageType.REGISTER, endpoint_id=self.node_id)
+        message = Register(type=MessageType.REGISTER, endpoint_id=self._node_id)
         LOG.debug(f"Sending registration message: {message}")
 
         try:
@@ -113,7 +124,7 @@ class Node(ABC):
         bundles: list[BundleData] = []
 
         message = Fetch(
-            type=MessageType.FETCH, endpoint_id=self.node_id, node_type=self.node_type
+            type=MessageType.FETCH, endpoint_id=self._node_id, node_type=self._node_type
         )
         LOG.debug(f"Sending fetch: {message}")
         reply = await self._send_message(message=message)
@@ -144,9 +155,9 @@ class Node(ABC):
                         )
                         response = BundleData(
                             type=BundleType.BROKER_REQUEST,
-                            source=self.node_id,
+                            source=self._node_id,
                             destination=bundle.source,
-                            node_type=self.node_type,
+                            node_type=self._node_type,
                         )
                         responses.append(response)
 

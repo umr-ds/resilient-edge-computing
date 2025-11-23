@@ -1,5 +1,4 @@
 import asyncio
-import os
 from argparse import Namespace
 from pathlib import Path
 from typing import override
@@ -15,42 +14,43 @@ from rec.util.log import LOG
 
 
 class Client(Node):
-    context_file: str
-    context_data: dict
-    results_dir: Path
+    _context_file: Path
+    _context_data: dict
+    _results_directory: Path
+
     _pending_responses: dict[BundleType, list[BundleData]]
     _response_cv: asyncio.Condition
 
     def __init__(
         self,
-        node_id: str | EID,
-        dtn_agent_socket: str,
-        context_file: str,
-        results_dir: Path,
-    ):
+        node_id: EID,
+        dtn_agent_socket: Path,
+        context_file: Path,
+        results_directory: Path,
+    ) -> None:
         super().__init__(
-            node_id=node_id,
-            dtn_agent_socket=dtn_agent_socket,
-            node_type=NodeType.CLIENT,
+            _node_id=node_id,
+            _dtn_agent_socket=dtn_agent_socket,
+            _node_type=NodeType.CLIENT,
         )
 
-        self.context_file = context_file
-        self.results_dir = results_dir
-        self.results_dir.mkdir(parents=True, exist_ok=True)
+        self._context_file = context_file
+        self._results_directory = results_directory
+        self._results_directory.mkdir(parents=True, exist_ok=True)
 
         self._pending_responses = {}
         self._response_cv = asyncio.Condition()
 
-        if os.path.isfile(context_file):
-            with open(context_file, "r") as f:
-                self.context_data = load(f)
+        if self._context_file.is_file():
+            with self._context_file.open("r") as f:
+                self._context_data = load(f)
                 assert (
-                    "broker" in self.context_data
+                    "broker" in self._context_data
                 ), "context file must contain broker address"
-                assert self.context_data["broker"], "broker address must be a value"
-                self._broker = EID(self.context_data["broker"])
+                assert self._context_data["broker"], "broker address must be a value"
+                self._broker = EID(self._context_data["broker"])
         else:
-            self.context_data = {}
+            self._context_data = {}
 
     @override
     async def run(self) -> None:
@@ -81,9 +81,9 @@ class Client(Node):
                             LOG.exception("Error sending bundle: %s", err)
 
         LOG.info("Saving broker info")
-        self.context_data["broker"] = self._broker
-        with open(self.context_file, "w") as f:
-            dump(self.context_data, f)
+        self._context_data["broker"] = self._broker
+        with self._context_file.open("w") as f:
+            dump(self._context_data, f)
 
     async def _process_incoming_bundles(self) -> None:
         """
@@ -134,7 +134,9 @@ class Client(Node):
         LOG.info("Received job result")
 
         job_result = JobResult.deserialize(bundle.payload)
-        result_path = self.results_dir / f"{job_result.metadata.job_id}_result.zip"
+        result_path = (
+            self._results_directory / f"{job_result.metadata.job_id}_result.zip"
+        )
 
         with result_path.open("wb") as f:
             f.write(job_result.results_data)
@@ -196,7 +198,7 @@ class Client(Node):
 
         query_bundle = BundleData(
             type=BundleType.JOB_QUERY,
-            source=self.node_id,
+            source=self._node_id,
             destination=self._broker,
             submitter=EID(submitter),
         )
@@ -222,7 +224,7 @@ class Client(Node):
 
         query_bundle = BundleData(
             type=BundleType.NDATA_GET,
-            source=self.node_id,
+            source=self._node_id,
             destination=DATASTORE_MULTICAST_ADDRESS,
             named_data=name,
         )
@@ -255,7 +257,7 @@ class Client(Node):
 
         query_bundle = BundleData(
             type=BundleType.NDATA_PUT,
-            source=self.node_id,
+            source=self._node_id,
             destination=self._broker,
             payload=data,
             named_data=name,
@@ -333,13 +335,13 @@ class Client(Node):
 
         # Dictify the job and set the submitter
         job_dict = job.dictify()
-        job_dict["metadata"]["submitter"] = self.node_id
+        job_dict["metadata"]["submitter"] = self._node_id
 
         job_payload = msgpack.packb(job_dict)
 
         bundle = BundleData(
             type=BundleType.JOB_SUBMIT,
-            source=self.node_id,
+            source=self._node_id,
             destination=self._broker,
             payload=job_payload,
         )
@@ -378,7 +380,7 @@ def main(args: Namespace) -> None:
         node_id=args.id,
         dtn_agent_socket=args.socket,
         context_file=args.context_file,
-        results_dir=args.results_dir,
+        results_directory=args.results_directory,
     )
     asyncio.run(client.run())
 

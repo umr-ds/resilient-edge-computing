@@ -35,7 +35,7 @@ def _run_executor(args: Namespace) -> None:
     executor = Executor(
         node_id=args.id,
         dtn_agent_socket=args.socket,
-        root_dir=args.root_directory,
+        root_directory=args.root_directory,
     )
     asyncio.run(executor.run())
 
@@ -59,6 +59,7 @@ def main() -> None:
         "--socket",
         default="/tmp/rec_test_1.sock",
         help="Path to the dtn application-agent's socket",
+        type=Path,
     )
     parser.add_argument("-v", action="store_true", help="verbose logging")
 
@@ -70,7 +71,7 @@ def main() -> None:
     datastore_parser = subparsers.add_parser(name="datastore")
     datastore_parser.set_defaults(run=_run_datastore)
     datastore_parser.add_argument(
-        "root_directory", help="Root directory for database & data blobs"
+        "root_directory", help="Root directory for datastore storage", type=Path
     )
 
     executor_parser = subparsers.add_parser(name="executor")
@@ -86,9 +87,11 @@ def main() -> None:
         "--context_file",
         help="File to store context information",
         default="context.toml",
+        type=Path,
     )
     client_parser.add_argument(
         "-r",
+        "--results_directory",
         "--results_dir",
         help="Directory to store job results",
         type=Path,
@@ -100,12 +103,14 @@ def main() -> None:
     client_job_query = client_subparsers.add_parser(
         name="query", help="Query broker for jobs"
     )
-    client_job_query.add_argument("submitter", help="EndpointID of job submitter")
+    client_job_query.add_argument(
+        "submitter", help="EndpointID of job submitter", type=EID
+    )
 
     client_named_data = client_subparsers.add_parser(
         name="data", help="Interact with datastore"
     )
-    client_named_data.add_argument("data_name", help="Name of data")
+    client_named_data.add_argument("data_name", help="Name of data", type=str)
 
     client_named_data_subparsers = client_named_data.add_subparsers(dest="data_command")
     client_named_data_subparsers.add_parser("get", help="Retrieve data from datastore")

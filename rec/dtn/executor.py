@@ -32,28 +32,31 @@ class WasmTrapError(RuntimeError):
 
 
 class Executor(Node):
-    _root_dir: Path
+    _root_directory: Path
     _storage: Storage
+
     _pending_jobs: deque[
         tuple[EID, JobInfo]
     ]  # Queue of pending jobs and the broker EID that sent them
     _job_ready_cv: asyncio.Condition
 
-    def __init__(self, node_id: EID, dtn_agent_socket: str, root_dir: Path) -> None:
+    def __init__(
+        self, node_id: EID, dtn_agent_socket: Path, root_directory: Path
+    ) -> None:
         super().__init__(
-            node_id=node_id,
-            dtn_agent_socket=dtn_agent_socket,
-            node_type=NodeType.EXECUTOR,
+            _node_id=node_id,
+            _dtn_agent_socket=dtn_agent_socket,
+            _node_type=NodeType.EXECUTOR,
         )
 
-        self._root_dir = root_dir
-        self._root_dir.mkdir(parents=True, exist_ok=True)
+        self._root_directory = root_directory
+        self._root_directory.mkdir(parents=True, exist_ok=True)
 
-        db_path = self._root_dir / "database.db"
-        blob_directory = self._root_dir / "blobs"
+        db_path = self._root_directory / "database.db"
+        blob_directory = self._root_directory / "blobs"
         self._storage = Storage(db_path, blob_directory)
 
-        self._pending_jobs: deque[tuple[EID, JobInfo]] = deque()
+        self._pending_jobs = deque()
         self._job_ready_cv = asyncio.Condition()
 
     @override
@@ -195,7 +198,7 @@ class Executor(Node):
                 for name in missing:
                     request = BundleData(
                         type=BundleType.NDATA_GET,
-                        source=self.node_id,
+                        source=self._node_id,
                         destination=DATASTORE_MULTICAST_ADDRESS,
                         named_data=name,
                     )
@@ -254,7 +257,7 @@ class Executor(Node):
     ) -> None:
         bundle = BundleData(
             type=BundleType.JOB_RESULT,
-            source=self.node_id,
+            source=self._node_id,
             destination=broker_eid,
             payload=JobResult(
                 metadata=job_info,
@@ -274,7 +277,7 @@ class Executor(Node):
     ) -> None:
         bundle = BundleData(
             type=BundleType.JOB_RESULT,
-            source=self.node_id,
+            source=self._node_id,
             destination=job_info.results_receiver,
             payload=JobResult(
                 metadata=job_info,
@@ -309,7 +312,7 @@ class Executor(Node):
         for name, data in results.items():
             bundle = BundleData(
                 type=BundleType.NDATA_PUT,
-                source=self.node_id,
+                source=self._node_id,
                 destination=self._broker,
                 payload=data,
                 named_data=name,
@@ -326,7 +329,7 @@ class Executor(Node):
     async def _run_job(self, job: JobInfo) -> tuple[bytes | None, dict[str, bytes]]:
         LOG.info("Starting job: %s", job)
         async with self._state_mutex.writer_lock:
-            job_dir = (self._root_dir / f"job-{id(job)}").resolve()
+            job_dir = (self._root_directory / f"job-{id(job)}").resolve()
             job_dir.mkdir(parents=True, exist_ok=True)
             wasm_file, stdin_path, data_dir = await self._prepare_wasi_environment(
                 job, job_dir

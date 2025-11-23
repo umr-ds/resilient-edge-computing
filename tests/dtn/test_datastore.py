@@ -1,11 +1,14 @@
+from pathlib import Path
+
 import pytest
 from hypothesis import assume, given
+from hypothesis import strategies as st
 
 from rec.dtn.datastore import Datastore
-from rec.dtn.eid import BROADCAST_ADDRESS
+from rec.dtn.eid import BROADCAST_ADDRESS, EID
 from rec.dtn.messages import BundleData, BundleType
 from rec.dtn.node import NodeType
-from tests.dtn.utils.helpers import *
+from tests.dtn.utils.helpers import TmpDirectory, dtn_eid, hierarchical_data
 
 
 @pytest.mark.asyncio
@@ -16,7 +19,9 @@ from tests.dtn.utils.helpers import *
 async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
     with TmpDirectory(prefix="/tmp") as root_dir:
         dstore = Datastore(
-            node_id=node_id, dtn_agent_socket="", root_directory=root_dir
+            node_id=node_id,
+            dtn_agent_socket=Path("/tmp/dtn_agent.sock"),
+            root_directory=root_dir,
         )
 
         # broker announcement
@@ -64,7 +69,7 @@ async def test_store_load_single(
     assume(not data_name.startswith(false_data_name))
     with TmpDirectory(prefix="/tmp") as root_dir:
         dstore = Datastore(
-            node_id=node_id, dtn_agent_socket="", root_directory=root_dir
+            node_id=node_id, dtn_agent_socket=Path(), root_directory=root_dir
         )
 
         # store data in datastore
@@ -123,7 +128,7 @@ async def test_store_load_hierarchical(
     data_dict = {name: datum for name, datum in data[1]}
     with TmpDirectory(prefix="/tmp") as root_dir:
         dstore = Datastore(
-            node_id=node_id, dtn_agent_socket="", root_directory=root_dir
+            node_id=node_id, dtn_agent_socket=Path(), root_directory=root_dir
         )
 
         # store data in datastore

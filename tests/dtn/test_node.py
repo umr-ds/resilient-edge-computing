@@ -1,12 +1,14 @@
+from pathlib import Path
 from typing import override
 
 import pytest
 from hypothesis import given
+from hypothesis import strategies as st
 
-from rec.dtn.eid import BROADCAST_ADDRESS
+from rec.dtn.eid import BROADCAST_ADDRESS, EID
 from rec.dtn.messages import BundleData, BundleType
 from rec.dtn.node import Node, NodeType
-from tests.dtn.utils.helpers import *
+from tests.dtn.utils.helpers import dtn_eid
 
 
 class DummyNode(Node):
@@ -25,7 +27,7 @@ class DummyNode(Node):
     node_type=st.integers(min_value=NodeType.BROKER, max_value=NodeType.CLIENT),
 )
 async def test_broker_discovery(node_id: EID, broker_id: EID, node_type: int) -> None:
-    node = DummyNode(node_id=node_id, dtn_agent_socket="", node_type=node_type)
+    node = DummyNode(_node_id=node_id, _dtn_agent_socket=Path(), _node_type=node_type)
 
     # broker announcement
     broker_bundle = BundleData(

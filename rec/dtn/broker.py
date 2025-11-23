@@ -1,5 +1,6 @@
 import asyncio
 import random
+from pathlib import Path
 from typing import override
 
 import msgpack
@@ -21,11 +22,11 @@ class Broker(Node):
 
     _discovered_nodes: dict[NodeType, set[EID]]
 
-    def __init__(self, node_id: str | EID, dtn_agent_socket: str) -> None:
+    def __init__(self, node_id: EID, dtn_agent_socket: Path) -> None:
         super().__init__(
-            node_id=node_id,
-            dtn_agent_socket=dtn_agent_socket,
-            node_type=NodeType.BROKER,
+            _node_id=node_id,
+            _dtn_agent_socket=dtn_agent_socket,
+            _node_type=NodeType.BROKER,
             _broker=node_id,
         )
 
@@ -62,7 +63,7 @@ class Broker(Node):
             announcement = BundleData(
                 type=BundleType.BROKER_ANNOUNCE,
                 node_type=NodeType.BROKER,
-                source=self.node_id,
+                source=self._node_id,
                 destination=BROADCAST_ADDRESS,
             )
 
@@ -160,7 +161,7 @@ class Broker(Node):
         jobs_bytes = msgpack.packb(jobs)
         bundle_response = BundleData(
             type=BundleType.JOB_LIST,
-            source=self.node_id,
+            source=self._node_id,
             destination=bundle.source,
             submitter=bundle.submitter,
             payload=jobs_bytes,
@@ -191,7 +192,7 @@ class Broker(Node):
         async with self._state_mutex.writer_lock:
             match bundle.type:
                 case BundleType.BROKER_ANNOUNCE:
-                    if bundle.source != self.node_id:
+                    if bundle.source != self._node_id:
                         LOG.debug(
                             f"Received announcement from other broker: {bundle.source}"
                         )
@@ -210,9 +211,9 @@ class Broker(Node):
 
                     return BundleData(
                         type=BundleType.BROKER_ACK,
-                        source=self.node_id,
+                        source=self._node_id,
                         destination=bundle.source,
-                        node_type=self.node_type,
+                        node_type=self._node_type,
                     )
                 case _:
                     LOG.warning(f"Won't handle bundle of type {bundle.type}")
@@ -300,7 +301,7 @@ class Broker(Node):
 
         job_submission = BundleData(
             type=BundleType.JOB_SUBMIT,
-            source=self.node_id,
+            source=self._node_id,
             destination=executor,
             payload=job.serialize(),
         )

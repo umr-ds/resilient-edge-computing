@@ -1,4 +1,5 @@
 from collections import Counter
+from pathlib import Path
 
 import pytest
 from hypothesis import given
@@ -20,7 +21,7 @@ from tests.dtn.utils.helpers import dtn_eid, randomized_job_info
     node_type=st.integers(min_value=2, max_value=4),
 )
 async def test_broker_discovery(broker_id: EID, node_id: EID, node_type: int) -> None:
-    broker = Broker(node_id=broker_id, dtn_agent_socket="")
+    broker = Broker(node_id=broker_id, dtn_agent_socket=Path())
 
     # announcement from other broker
     bundle = BundleData(
@@ -62,7 +63,7 @@ async def test_broker_job_query(
     broker_id: EID, queued_job_infos: list[JobInfo], completed_jobs: set[JobInfo]
 ) -> None:
     client_id = EID.dtn("client")
-    broker = Broker(node_id=broker_id, dtn_agent_socket="")
+    broker = Broker(node_id=broker_id, dtn_agent_socket=Path())
     broker._completed_jobs = completed_jobs
     for job_info in queued_job_infos:
         job = Job(metadata=job_info, data={})
@@ -76,6 +77,7 @@ async def test_broker_job_query(
     )
 
     response = await broker._handle_bundle(bundle=job_query)
+    assert response is not None
     assert response.type == BundleType.JOB_LIST
     assert response.source == broker_id
     assert response.destination == client_id

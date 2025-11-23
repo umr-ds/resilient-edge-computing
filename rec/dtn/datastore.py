@@ -10,25 +10,21 @@ from rec.util.log import LOG
 
 
 class Datastore(Node):
-    _root_directory: Path
     _storage: Storage
 
     def __init__(
-        self, node_id: str | EID, dtn_agent_socket: str, root_directory: str | Path
+        self, node_id: EID, dtn_agent_socket: Path, root_directory: Path
     ) -> None:
         super().__init__(
-            node_id=node_id,
-            dtn_agent_socket=dtn_agent_socket,
-            node_type=NodeType.DATASTORE,
+            _node_id=node_id,
+            _dtn_agent_socket=dtn_agent_socket,
+            _node_type=NodeType.DATASTORE,
         )
-        if isinstance(root_directory, str):
-            self._root_directory = Path(root_directory)
-        else:
-            self._root_directory = root_directory
-        self._root_directory.mkdir(parents=True, exist_ok=True)
 
-        db_path = self._root_directory / "database.db"
-        blob_directory = self._root_directory / "blobs"
+        root_directory.mkdir(parents=True, exist_ok=True)
+
+        db_path = root_directory / "database.db"
+        blob_directory = root_directory / "blobs"
         self._storage = Storage(db_path, blob_directory)
 
     @override
@@ -99,7 +95,7 @@ class Datastore(Node):
 
                     response = BundleData(
                         type=BundleType.NDATA_PUT,
-                        source=self.node_id,
+                        source=self._node_id,
                         destination=bundle.source,
                         named_data=name,
                         success=success,
@@ -117,7 +113,7 @@ class Datastore(Node):
                     for l_name, l_data in loaded:
                         response = BundleData(
                             type=BundleType.NDATA_GET,
-                            source=self.node_id,
+                            source=self._node_id,
                             destination=bundle.source,
                             payload=l_data,
                             named_data=l_name,
