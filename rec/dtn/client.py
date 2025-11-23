@@ -48,7 +48,7 @@ class Client(Node):
                     "broker" in self._context_data
                 ), "context file must contain broker address"
                 assert self._context_data["broker"], "broker address must be a value"
-                self._broker = EID(self._context_data["broker"])
+                self._broker = EID(str(self._context_data["broker"]))
         else:
             self._context_data = {}
 
@@ -196,6 +196,10 @@ class Client(Node):
         """
         LOG.info("Performing job query")
 
+        if self._broker is None:
+            LOG.error("Broker address was none, this should never happen")
+            return
+
         query_bundle = BundleData(
             type=BundleType.JOB_QUERY,
             source=self._node_id,
@@ -251,6 +255,10 @@ class Client(Node):
             bool: True if successful, False otherwise.
         """
         LOG.info(f"Performing data PUT: Name: {name}")
+
+        if self._broker is None:
+            LOG.error("Broker address was none, this should never happen")
+            return False
 
         with data_file.open("rb") as f:
             data = f.read()
@@ -332,6 +340,10 @@ class Client(Node):
             job: Job instance to submit.
         """
         LOG.debug(f"Submitting job: {job.metadata.wasm_module}")
+
+        if self._broker is None:
+            LOG.error("Broker address was none, this should never happen")
+            return
 
         # Dictify the job and set the submitter
         job_dict = job.dictify()
