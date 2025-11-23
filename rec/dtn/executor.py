@@ -7,7 +7,16 @@ from collections import deque
 from pathlib import Path
 from typing import override
 
-from wasmtime import ExitTrap, Linker, Module, Store, Trap, WasiConfig, WasmtimeError
+from wasmtime import (
+    ExitTrap,
+    Func,
+    Linker,
+    Module,
+    Store,
+    Trap,
+    WasiConfig,
+    WasmtimeError,
+)
 
 from rec.dtn.eid import DATASTORE_MULTICAST_ADDRESS, EID
 from rec.dtn.job import Capabilities, Job, JobInfo, JobResult
@@ -130,6 +139,10 @@ class Executor(Node):
         else:
             named_data = bundle.named_data
 
+        if named_data is None:
+            LOG.error("Name was none, this should never happen")
+            return
+
         for name in named_data:
             try:
                 await self._storage.store_data(name=name, data=bundle.payload)
@@ -221,10 +234,12 @@ class Executor(Node):
                 while not await self._has_runnable_job():
                     await self._job_ready_cv.wait()
 
-            broker_eid, job_info = await self._pop_next_runnable_job()
-            if job_info is None:
+            result = await self._pop_next_runnable_job()
+            if result is None:
                 # State changed between predicate and pop
                 continue
+
+            broker_eid, job_info = result
 
             try:
                 results, named_results = await self._run_job(job_info)
@@ -307,6 +322,10 @@ class Executor(Node):
     async def _send_named_results(self, results: dict[str, bytes]) -> None:
         if not results:
             LOG.info("No named results to send")
+            return
+
+        if self._broker is None:
+            LOG.error("Broker address was none, this should never happen")
             return
 
         for name, data in results.items():
@@ -657,7 +676,7 @@ def _run_wasi_module_sync(
 
         exports = instance.exports(store)
         start = exports.get("_start")
-        if start is None:
+        if not isinstance(start, Func):
             raise WasmSetupError("The module does not export a `_start` function.")
 
         start(store)
