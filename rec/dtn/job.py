@@ -58,7 +58,7 @@ class Capabilities:
         Returns:
             Capabilities: Current system capabilities.
         """
-        cpu_count = psutil.cpu_count()
+        cpu_count = psutil.cpu_count() or 1
         cpu_usage_percent = psutil.cpu_percent(interval=0.1)
         total_cpu_capacity = cpu_count * 100
         used_cpu_capacity = cpu_usage_percent * cpu_count
