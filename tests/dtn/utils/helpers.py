@@ -101,6 +101,6 @@ def randomized_job_info(draw: st.DrawFn, submitter: EID | None = None) -> JobInf
         stderr_file=draw(st.one_of(st.text(), st.none())),
         results=draw(st.lists(elements=st.text())),
         named_results=draw(st.dictionaries(keys=st.text(), values=st.text())),
-        results_receiver=draw(st.one_of(dtn_eid(), st.none())),
+        results_receiver=draw(dtn_eid()),
     )
     return job_info
