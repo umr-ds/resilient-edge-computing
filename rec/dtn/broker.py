@@ -203,6 +203,10 @@ class Broker(Node):
                     return []
                 case BundleType.BROKER_REQUEST:
                     LOG.debug("Broker request")
+                    if not bundle.node_type:
+                        LOG.warning("No node type specified in broker request")
+                        return []
+
                     self._discovered_nodes[bundle.node_type].add(bundle.source)
                     LOG.info(
                         f"Discovered node {bundle.source} of type {bundle.node_type}"
