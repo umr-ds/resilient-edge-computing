@@ -104,7 +104,10 @@ class Broker(Node):
         elif bundle.type == BundleType.NDATA_PUT:
             await self._handle_ndata_put(bundle=bundle)
         elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
-            reply = await self._handle_discovery(bundle=bundle)
+            replies = await self._handle_discovery(bundle=bundle)
+            # The _handle_discovery override returns at most one reply
+            if replies:
+                reply = replies[0]
         else:
             LOG.warning(f"Won't handle bundle of type: {bundle.type}")
 
@@ -186,7 +189,7 @@ class Broker(Node):
         await self._forward_ndata(bundle, datastore)
 
     @override
-    async def _handle_discovery(self, bundle: BundleData) -> BundleData | None:
+    async def _handle_discovery(self, bundle: BundleData) -> list[BundleData]:
         LOG.debug("Handling discovery")
 
         async with self._state_mutex.writer_lock:
@@ -197,7 +200,7 @@ class Broker(Node):
                             f"Received announcement from other broker: {bundle.source}"
                         )
                         self._discovered_nodes[NodeType.BROKER].add(bundle.source)
-                    return None
+                    return []
                 case BundleType.BROKER_REQUEST:
                     LOG.debug("Broker request")
                     self._discovered_nodes[bundle.node_type].add(bundle.source)
@@ -209,15 +212,17 @@ class Broker(Node):
                     async with self._queue_cv:
                         self._queue_cv.notify_all()
 
-                    return BundleData(
-                        type=BundleType.BROKER_ACK,
-                        source=self._node_id,
-                        destination=bundle.source,
-                        node_type=self._node_type,
-                    )
+                    return [
+                        BundleData(
+                            type=BundleType.BROKER_ACK,
+                            source=self._node_id,
+                            destination=bundle.source,
+                            node_type=self._node_type,
+                        )
+                    ]
                 case _:
                     LOG.warning(f"Won't handle bundle of type {bundle.type}")
-                    return None
+                    return []
 
     async def _queue_worker(self) -> None:
         """
