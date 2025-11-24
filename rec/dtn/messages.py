@@ -23,6 +23,7 @@ class InvalidBundleError(ValueError):
 
 
 class NodeType(IntEnum):
+    NONE = 0
     BROKER = 1
     EXECUTOR = 2
     DATASTORE = 3
@@ -199,11 +200,11 @@ class BundleData:
     success: bool = True
     error: str = ""
     # used by broker discovery
-    node_type: NodeType | None = None
+    node_type: NodeType = NodeType.NONE
     # used by job query/list
-    submitter: EID | None = None
+    submitter: EID = EID.none()
     # used by named data
-    named_data: str | list[str] | None = None
+    named_data: str | list[str] = ""
 
     def __post_init__(self) -> None:
         # general validity checks
