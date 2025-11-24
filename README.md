@@ -135,6 +135,191 @@ We use the `client` command, and its `data` subcommand.
 We are using the data-name `test/data`, we are using the `get` action to retrieve data from the store.
 Effectively, we are querying the same data that we stored with the previous command.
 
+### Execution Plans
+
+Execution plans are TOML files that define batch job executions. They allow you to:
+
+- Publish shared named data (can be referenced by any future jobs)
+- Define multiple jobs to be executed
+- Chain jobs together (use output from one job as input to another)
+
+To execute an execution plan:
+
+```shell
+rec_dtn -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> exec <path to execution plan>
+```
+
+#### Execution Plan Format
+
+An execution plan consists of two main sections:
+
+1. **`[named_data]`** (optional): Shared named data that can be referenced by multiple jobs
+2. **`[[jobs]]`**: (optional) List of jobs to execute
+
+#### Simple Execution Plan Example
+
+Here's a basic execution plan that runs a single WebAssembly module:
+
+```toml
+[[jobs]]
+
+[jobs.metadata]
+wasm_module = "wasm-module"                    # Name of the WASM module to execute
+results_receiver = "dtn://client/"             # Where to send results
+argv = ["a", "b", "c"]                         # Command-line arguments
+stdin_file = "stdin"                           # Named data to use as stdin
+dirs = ["/output", "/temp"]                    # Directories to create in execution environment
+stdout_file = "/output/stdout.log"             # Where to write stdout
+stderr_file = "/output/stderr.log"             # Where to write stderr
+results = ["/out.txt", "/output"]              # Files/dirs to return directly to results_receiver
+
+[jobs.metadata.capabilities]
+cpu_cores = 1                                  # Required CPU cores
+free_cpu_capacity = 0                          # Required free CPU capacity (0-100 per core)
+free_memory = 0                                # Required free memory in bytes
+free_disk_space = 0                            # Required free disk space in bytes
+
+[jobs.metadata.env]
+FOO = "bar"                                    # Environment variables
+
+[jobs.metadata.data]
+"/data.bin" = "databin"                        # Map execution environment paths to named data
+
+[jobs.metadata.named_results]
+"/out.txt" = "wasm_output_file"                # Store file as named data
+"/output" = "output_archive"                   # Store directory as named data (zipped)
+
+[jobs.data]
+wasm-module = "../wasi-module.wasm"            # Local file paths for named data
+stdin = "data/stdin.txt"
+databin = "data/data.bin"
+```
+
+#### Execution Plan with Shared Data
+
+Use the `[named_data]` section to avoid duplicating data across multiple jobs:
+
+```toml
+# Shared data that can be referenced by multiple jobs
+[named_data]
+wasm-module = "../wasi-module.wasm"
+stdin = "data/stdin.txt"
+databin = "data/data.bin"
+
+# First job
+[[jobs]]
+
+[jobs.metadata]
+wasm_module = "wasm-module"
+results_receiver = "dtn://client/"
+argv = ["a", "b", "c"]
+stdin_file = "stdin"
+dirs = ["/output"]
+results = ["/output"]
+
+[jobs.metadata.capabilities]
+cpu_cores = 1
+
+[jobs.metadata.data]
+"/data.bin" = "databin"
+
+[jobs.metadata.named_results]
+"/output" = "output_archive_1"
+
+# Second job - can reference the same shared data
+[[jobs]]
+
+[jobs.metadata]
+wasm_module = "wasm-module"
+results_receiver = "dtn://client/"
+argv = ["x", "y", "z"]
+stdin_file = "stdin"
+dirs = ["/output"]
+results = ["/output"]
+
+[jobs.metadata.capabilities]
+cpu_cores = 1
+
+[jobs.metadata.data]
+"/data.bin" = "databin"
+
+[jobs.metadata.named_results]
+"/output" = "output_archive_2"
+```
+
+#### Chaining Jobs
+
+You can chain jobs by using named results from one job as input to another:
+
+```toml
+# First job: Process initial data
+[[jobs]]
+
+[jobs.metadata]
+wasm_module = "processor"
+results_receiver = "dtn://client/"
+stdin_file = "input_data"
+results = ["/out.txt"]
+
+[jobs.metadata.capabilities]
+cpu_cores = 1
+
+[jobs.metadata.named_results]
+"/out.txt" = "processed_data"                  # Store output as named data
+
+[jobs.data]
+processor = "../processor.wasm"
+input_data = "data/initial.txt"
+
+# Second job: Use output from first job as input
+[[jobs]]
+
+[jobs.metadata]
+wasm_module = "analyzer"
+results_receiver = "dtn://client/"
+stdin_file = "processed_data"                  # Use first job's output
+results = ["/analysis.txt"]
+
+[jobs.metadata.capabilities]
+cpu_cores = 1
+
+[jobs.metadata.named_results]
+"/analysis.txt" = "final_analysis"
+
+[jobs.data]
+analyzer = "../analyzer.wasm"
+```
+
+#### Field Reference
+
+**Job Metadata Fields:**
+
+- `wasm_module` (required): Named reference to the WebAssembly module
+- `results_receiver`: EID where results should be sent
+- `argv`: Command-line arguments for the WASM module
+- `env`: Environment variables (key-value pairs)
+- `stdin_file`: Named data to use as standard input
+- `dirs`: Directories to create before execution
+- `data`: Map execution environment paths to named data references
+- `stdout_file`: Path where stdout should be written
+- `stderr_file`: Path where stderr should be written
+- `results`: Paths to collect and send directly to `results_receiver` (zipped)
+- `named_results`: Map paths to named data identifiers for persistent storage
+
+**Capabilities Fields:**
+
+- `cpu_cores`: Number of CPU cores required
+- `free_cpu_capacity`: Required CPU capacity (0-100 per core, max = cores \* 100)
+- `free_memory`: Required memory in bytes
+- `free_disk_space`: Required disk space in bytes
+
+**Data Specifications:**
+
+- Paths in `[jobs.data]` or `[named_data]` are relative to the execution plan file
+- Named data in `named_results` is automatically published to datastores
+- Directories in `named_results` are automatically zipped before storage
+- Files and directories in `results` are packaged together into a zip file and sent directly to `results_receiver`
+
 ### Testbed
 
 The project also comes with a small interactive testbed in a docker container.
@@ -220,4 +405,4 @@ If tests are failing, then the CI pipeline will fail your commits!
 
 If you clone this project and want to run the CI pipeline, you will need to setup a "privileged" runner for the integration tests.
 
-A step-by-step howto can be found in [the runner readme](GITLAB_RUNNER_SETUP.md) 
+A step-by-step howto can be found in [the runner readme](GITLAB_RUNNER_SETUP.md).
