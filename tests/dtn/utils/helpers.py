@@ -25,7 +25,7 @@ class TmpDirectory:
 
 
 @st.composite
-def dtn_eid(draw: st.DrawFn, singleton=True) -> EID:
+def _dtn_eid(draw: st.DrawFn, singleton=True) -> EID:
     node: str = draw(
         st.text(
             alphabet=st.characters(
@@ -57,6 +57,14 @@ def dtn_eid(draw: st.DrawFn, singleton=True) -> EID:
     else:
         eid = EID.dtn(node=node, service=f"~{service}")
     return eid
+
+
+@st.composite
+def dtn_eid(draw: st.DrawFn, singleton=True, not_none=False) -> EID:
+    if not_none:
+        return draw(_dtn_eid(singleton=singleton))
+    else:
+        return draw(st.one_of(_dtn_eid(singleton=singleton), st.just(EID.none())))
 
 
 @st.composite

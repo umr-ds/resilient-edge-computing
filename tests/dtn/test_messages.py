@@ -34,8 +34,8 @@ def randomized_discovery_bundle(draw: st.DrawFn) -> BundleData:
                 )
             )
         ),
-        source=draw(dtn_eid()),
-        destination=draw(dtn_eid()),
+        source=draw(dtn_eid(not_none=True)),
+        destination=draw(dtn_eid(not_none=True)),
         success=success,
         error=error,
         node_type=draw(
@@ -69,12 +69,12 @@ def randomized_job_bundle(draw: st.DrawFn) -> BundleData:
                 )
             )
         ),
-        source=draw(dtn_eid()),
-        destination=draw(dtn_eid()),
+        source=draw(dtn_eid(not_none=True)),
+        destination=draw(dtn_eid(not_none=True)),
         success=success,
         error=error,
         payload=draw(st.binary()),
-        submitter=draw(dtn_eid()),
+        submitter=draw(dtn_eid(not_none=True)),
     )
 
 
@@ -95,8 +95,8 @@ def randomized_data_bundle(draw: st.DrawFn) -> BundleData:
                 )
             )
         ),
-        source=draw(dtn_eid()),
-        destination=draw(dtn_eid()),
+        source=draw(dtn_eid(not_none=True)),
+        destination=draw(dtn_eid(not_none=True)),
         success=success,
         error=error,
         payload=draw(st.binary()),
@@ -139,7 +139,7 @@ def randomized_reply(draw: st.DrawFn) -> Reply:
 def randomized_register(draw: st.DrawFn) -> Register:
     return Register(
         type=MessageType.REGISTER,
-        endpoint_id=draw(dtn_eid(singleton=draw(st.booleans()))),
+        endpoint_id=draw(dtn_eid(singleton=draw(st.booleans()), not_none=True)),
     )
 
 
@@ -147,7 +147,7 @@ def randomized_register(draw: st.DrawFn) -> Register:
 def randomized_fetch(draw: st.DrawFn) -> Fetch:
     return Fetch(
         type=MessageType.FETCH,
-        endpoint_id=draw(dtn_eid(singleton=draw(st.booleans()))),
+        endpoint_id=draw(dtn_eid(singleton=draw(st.booleans()), not_none=True)),
         node_type=NodeType(
             draw(st.integers(min_value=NodeType.BROKER, max_value=NodeType.CLIENT))
         ),

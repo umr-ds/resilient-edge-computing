@@ -13,8 +13,8 @@ from tests.dtn.utils.helpers import TmpDirectory, dtn_eid, hierarchical_data
 
 @pytest.mark.asyncio
 @given(
-    node_id=dtn_eid(),
-    broker_id=dtn_eid(),
+    node_id=dtn_eid(not_none=True),
+    broker_id=dtn_eid(not_none=True),
 )
 async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
     with TmpDirectory(prefix="/tmp") as root_dir:
@@ -57,8 +57,8 @@ async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
 
 @pytest.mark.asyncio
 @given(
-    node_id=dtn_eid(),
-    other_node_id=dtn_eid(),
+    node_id=dtn_eid(not_none=True),
+    other_node_id=dtn_eid(not_none=True),
     data_name=st.text(min_size=1),
     false_data_name=st.text(min_size=1),
     data=st.binary(),
@@ -121,7 +121,11 @@ async def test_store_load_single(
 
 
 @pytest.mark.asyncio
-@given(node_id=dtn_eid(), other_node_id=dtn_eid(), data=hierarchical_data())
+@given(
+    node_id=dtn_eid(not_none=True),
+    other_node_id=dtn_eid(not_none=True),
+    data=hierarchical_data(),
+)
 async def test_store_load_hierarchical(
     node_id: EID, other_node_id: EID, data: tuple[str, list[tuple[str, bytes]]]
 ) -> None:

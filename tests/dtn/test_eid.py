@@ -78,7 +78,8 @@ class TestDTNEIDs:
 
     @given(eid=dtn_eid())
     def test_dtn_valid_all(self, eid: EID) -> None:
-        assert eid
+        # everything is happening as part of the generator
+        pass
 
 
 class TestIPNEIDs:

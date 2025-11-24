@@ -16,8 +16,8 @@ from tests.dtn.utils.helpers import dtn_eid, randomized_job_info
 
 @pytest.mark.asyncio
 @given(
-    broker_id=dtn_eid(),
-    node_id=dtn_eid(),
+    broker_id=dtn_eid(not_none=True),
+    node_id=dtn_eid(not_none=True),
     node_type=st.integers(min_value=2, max_value=4),
 )
 async def test_broker_discovery(broker_id: EID, node_id: EID, node_type: int) -> None:
@@ -53,7 +53,7 @@ async def test_broker_discovery(broker_id: EID, node_id: EID, node_type: int) ->
 
 @pytest.mark.asyncio
 @given(
-    broker_id=dtn_eid(),
+    broker_id=dtn_eid(not_none=True),
     queued_job_infos=st.lists(
         elements=randomized_job_info(submitter=EID.dtn("client"))
     ),
