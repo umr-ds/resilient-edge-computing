@@ -13,7 +13,7 @@ COPY --from=dtnd-go-builder /dtnd-go /usr/local/bin/dtnd-go
 
 WORKDIR /app
 
-RUN uv python install 3.12
+RUN uv python install 3.14
 
 COPY pyproject.toml uv.lock README.md ./
 

@@ -42,7 +42,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /app
 
-RUN uv python install 3.12
+RUN uv python install 3.14
 
 COPY pyproject.toml uv.lock README.md ./
 

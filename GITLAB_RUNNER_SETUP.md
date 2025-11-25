@@ -31,7 +31,7 @@ docker compose -f gitlab-runner-compose.yml exec gitlab-runner \
     --url "https://gitlab.uni-marburg.de/" \
     --token "TOKEN" \
     --executor "docker" \
-    --docker-image "python:3.13" \
+    --docker-image "python:3.14" \
     --docker-privileged \
     --description "NAME (Privileged Runner)"
 ```
@@ -53,7 +53,7 @@ For example:
 ```yaml
 pytest:
   stage: unit_test
-  image: python:3.13
+  image: python:3.14
   tags:
     - privileged # This matches the runner tag
   services:

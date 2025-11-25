@@ -3,7 +3,7 @@ stages:
   - unit_test
 pre-commit:
   stage: lint
-  image: python:3.13
+  image: python:3.14
   script:
     - pip install --upgrade pip
     - pip install --group dev .
@@ -14,7 +14,7 @@ pre-commit:
     - if: $CI_COMMIT_BRANCH == "DTN"
 pytest:
   stage: unit_test
-  image: python:3.13
+  image: python:3.14
   tags:
     - privileged
   services:
