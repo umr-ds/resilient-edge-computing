@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 
 class EIDError(ValueError):
@@ -34,14 +33,14 @@ class EID(str):
         return self != EID._DTN_NONE
 
     @classmethod
-    def dtn(cls, node: str, service: Optional[str] = None) -> EID:
+    def dtn(cls, node: str, service: str | None = None) -> EID:
         """
         Create a DTN EndpointID from node and optional service.
         Use `EID.none()` for the `dtn:none` endpoint.
 
         Args:
             node (str): DTN node name.
-            service (Optional[str]): DTN service name or `None`. Defaults to `None`.
+            service (str | None): DTN service name or `None`. Defaults to `None`.
 
         Returns:
             EID: The constructed DTN EndpointID.
@@ -85,12 +84,12 @@ class EID(str):
         """
         return cls(cls._DTN_NONE)
 
-    def node(self) -> Optional[str]:
+    def node(self) -> str | None:
         """
         Get the node part of the EndpointID, or `None` for `dtn:none`.
 
         Returns:
-            Optional[str]: The node part of the EndpointID, or `None`.
+            str | None: The node part of the EndpointID, or `None`.
         """
         if self == self._DTN_NONE:
             return None
@@ -98,12 +97,12 @@ class EID(str):
             return self[len(self._DTN_PREFIX) :].split(sep="/", maxsplit=1)[0]
         return self[len(self._IPN_PREFIX) :].split(sep=".", maxsplit=1)[0]
 
-    def service(self) -> Optional[str]:
+    def service(self) -> str | None:
         """
         Get the service part of the EndpointID, or `None` for `dtn:none`.
 
         Returns:
-            Optional[str]: The service part of the EndpointID, or `None`.
+            str | None: The service part of the EndpointID, or `None`.
         """
         if self == self._DTN_NONE:
             return None
