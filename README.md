@@ -21,11 +21,11 @@ uv sync
 
 ### DTN
 
-In order to run the dtn-version of `REC`, you need to also run a dtn-daemon. You can either use `dtn7-go` or `dtn7-rs`, just make sure to checkout the `rec` brach in either repository.
+In order to run the DTN version of `REC`, you need to also run a DTN daemon. You can either use `dtn7-go` or `dtn7-rs`, just make sure to checkout the `rec` branch in either repository.
 
 For `dtn7-go` use the following steps:
 
-Install the [go programming langauge](https://go.dev/)
+Install the [Go programming language](https://go.dev/)
 
 Clone and build `dtnd`
 
@@ -40,7 +40,7 @@ go build ./cmd/dtnd
 ```
 
 This should leave you with an executable called `dtnd` in the project root directory.
-Next you need a config file, like this
+Next, you need a config file, like this:
 
 ```toml
 node_id = "dtn://<node id>/"
@@ -61,17 +61,17 @@ type = "QUICL"
 address = ":35037"
 
 [Cron]
-dispatch ="10s"
+dispatch = "10s"
 ```
 
-where you need to replace all instances of `<...>` with some appropriate value.
+Where you need to replace all instances of `<...>` with some appropriate value.
 
-- `node_id`: name of the node, can be the same as the name of the `REC` that will be running, but does not have to be.
-  Something like `dtn://rec_1/` will work fine, just make sure no two instances of `dtnd` are running with the same `node_id`.
-- `path`: Path to some folder on you computer's filesystem where `dtnd` will store bundles.
+- `node_id`: Name of the node; can be the same as the name of the `REC` that will be running, but does not have to be.
+  Something like `dtn://rec_1/` will work fine; just make sure no two instances of `dtnd` are running with the same `node_id`.
+- `path`: Path to some folder on your computer's filesystem where `dtnd` will store bundles.
 - `socket`: `REC` and `dtnd` communicate via a UNIX domain socket. `dtnd` will create the socket, so it needs to be started first.
 
-Lastly, run `dtnd` and point it to you config file:
+Lastly, run `dtnd` and point it to your config file:
 
 ```shell
 ./dtnd config.toml
@@ -81,13 +81,13 @@ Lastly, run `dtnd` and point it to you config file:
 
 Make sure `dtnd` is running (see above).
 The entry-point is `rec/run_dtn.py`, which is pointed to by the `rec_dtn` command.
-For arguments, etc see `rec_dtn --help` and its subcommands.
+For arguments, etc., see `rec_dtn --help` and its subcommands.
 
 ### Start network
 
-To start you own small test-network, use the following steps:
+To start your own small test-network, use the following steps:
 
-1. Start a `broker`. There must be at least one broker running before the other nodes can do anthing.
+1. Start a `broker`. There must be at least one broker running before the other nodes can do anything.
 
    ```shell
    rec_dtn v -s <path to socket> -i dtn://broker_1/ broker
@@ -116,18 +116,18 @@ Here are some examples:
 rec_dtn -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> data test/data put <path to file>
 ```
 
-This starts a client with the node id `dtn://client_1/`
+This starts a client with the node id `dtn://client_1/`.
 Replace `<path to socket>` with the same path as in the `dtnd` config.
 Replace `<path to results directory>` with a path where the client can store results of jobs.
 
 We use the `client` command, and its `data` subcommand.
-We are using the data-name `test/data`, we are using the `put` action to submit data to the store, and lastly, we are sending the contents of `<path to file` (this needs to point to an existing file, of course).
+We are using the data-name `test/data`, we are using the `put` action to submit data to the store, and lastly, we are sending the contents of `<path to file>` (this needs to point to an existing file, of course).
 
 ```shell
 rec_dtn -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> data test/data get
 ```
 
-This starts a client with the node id `dtn://client_1/`
+This starts a client with the node id `dtn://client_1/`.
 Replace `<path to socket>` with the same path as in the `dtnd` config.
 Replace `<path to results directory>` with a path where the client can store results of jobs.
 
@@ -322,7 +322,7 @@ analyzer = "../analyzer.wasm"
 
 ### Testbed
 
-The project also comes with a small interactive testbed in a docker container.
+The project also comes with a small interactive testbed in a Docker container.
 To build and run the testbed, use the following command:
 
 ```shell
@@ -330,7 +330,7 @@ docker build --pull -t rec_testbed -f testbed/Dockerfile . && \
 docker run --privileged --rm -it --name rec_testbed -e LOGLEVEL=DEBUG rec_testbed
 ```
 
-It comes with pre-configured dtn-daemons and running broker, datastore, and executor nodes.
+It comes with pre-configured DTN daemons and running broker, datastore, and executor nodes.
 The only thing you need to do is to start a client node in the top-left Zellij pane.
 For example:
 
@@ -364,7 +364,7 @@ uv sync --all-groups
 
 ### Setup pre-commit
 
-[pre-commit](https://pre-commit.com/) is a utility which runs a number of tasks (in oru case linting and input sorting) before each commit.
+[pre-commit](https://pre-commit.com/) is a utility which runs a number of tasks (in our case linting and input sorting) before each commit.
 If you have installed the development dependencies as mentioned above, then `pre-commit` should already be installed, but you need to set it up to run:
 
 ```shell
@@ -390,7 +390,7 @@ uv run isort --profile black .
 ### Tests
 
 Please make sure to write unit tests whenever feasible.
-Test are stores in the `tests` directory.
+Tests are stored in the `tests` directory.
 To run all tests, just run pytest in the project root:
 
 ```shell
