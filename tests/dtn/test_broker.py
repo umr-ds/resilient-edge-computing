@@ -32,7 +32,7 @@ async def test_broker_discovery(broker_id: EID, node_id: EID, node_type: int) ->
     reply = await broker._handle_bundle(bundle=bundle)
     assert reply is None
     if broker_id != node_id:
-        assert node_id in broker.discovered_nodes[NodeType.BROKER]
+        assert node_id in broker._discovered_nodes[NodeType.BROKER]
 
     # other node responds to announcements
     bundle = BundleData(
@@ -47,7 +47,7 @@ async def test_broker_discovery(broker_id: EID, node_id: EID, node_type: int) ->
     assert reply.node_type == NodeType.BROKER
     assert reply.success
     assert reply.error == ""
-    assert node_id in broker.discovered_nodes[NodeType(node_type)]
+    assert node_id in broker._discovered_nodes[NodeType(node_type)]
 
 
 @pytest.mark.asyncio
@@ -63,10 +63,10 @@ async def test_broker_job_query(
 ) -> None:
     client_id = EID.dtn("client")
     broker = Broker(node_id=broker_id, dtn_agent_socket="")
-    broker.completed_jobs = completed_jobs
+    broker._completed_jobs = completed_jobs
     for job_info in queued_job_infos:
         job = Job(metadata=job_info, data={})
-        broker.queued_jobs.put(job)
+        broker._queued_jobs.append(job)
 
     job_query = BundleData(
         type=BundleType.JOB_QUERY,
