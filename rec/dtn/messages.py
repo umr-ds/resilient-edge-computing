@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import IntEnum
@@ -268,9 +269,32 @@ MESSAGE_CONSTRUCTORS: dict[MessageType, Callable[[dict], Message]] = {
 
 
 def deserialize(serialized: bytes) -> Message:
-    data_dict: dict = unpackb(serialized)
+    try:
+        data_dict: dict = unpackb(serialized)
 
-    if data_dict["type"] not in MESSAGE_CONSTRUCTORS:
-        raise InvalidMessageError(f"Message type {data_dict["type"]} unknown")
+        if "type" not in data_dict:
+            raise InvalidMessageError("Message missing 'type' field")
 
-    return MESSAGE_CONSTRUCTORS[data_dict["type"]](data_dict)
+        try:
+            msg_type = MessageType(data_dict["type"])
+        except ValueError:
+            raise InvalidMessageError(f"Unknown MessageType ID: {data_dict['type']}")
+
+        if msg_type not in MESSAGE_CONSTRUCTORS:
+            raise InvalidMessageError(f"No constructor defined for {msg_type}")
+
+        return MESSAGE_CONSTRUCTORS[msg_type](data_dict)
+
+    except Exception as err:
+        # Write the serialized data to a temp file for debugging
+        prefix = "rec_msg_dump_"
+
+        with tempfile.NamedTemporaryFile(
+            delete=False, prefix=prefix, suffix=".bin"
+        ) as tmp_file:
+            tmp_file.write(serialized)
+            tmp_filename = tmp_file.name
+
+        raise InvalidMessageError(
+            f"Deserialization failed: {err}. Raw data dumped to {tmp_filename}"
+        ) from err
