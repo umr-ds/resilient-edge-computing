@@ -223,11 +223,7 @@ class BundleData:
 
         # checks for discovery bundles
         if BundleType.BROKER_ANNOUNCE <= self.type <= BundleType.BROKER_ACK:
-            if (
-                not self.node_type
-                or self.node_type < NodeType.BROKER
-                or self.node_type > NodeType.CLIENT
-            ):
+            if self.node_type < NodeType.BROKER or self.node_type > NodeType.CLIENT:
                 raise InvalidBundleError(f"Invalid node type: {self.node_type}")
 
         # checks for job query/list

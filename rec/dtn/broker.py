@@ -203,7 +203,7 @@ class Broker(Node):
                     return []
                 case BundleType.BROKER_REQUEST:
                     LOG.debug("Broker request")
-                    if not bundle.node_type:
+                    if bundle.node_type == NodeType.NONE:
                         LOG.warning("No node type specified in broker request")
                         return []
 
