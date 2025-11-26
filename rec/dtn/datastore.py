@@ -71,19 +71,16 @@ class Datastore(Node):
 
     async def _handle_data(self, bundle: BundleData) -> list[BundleData]:
         LOG.debug("Named data bundle")
-        bundles: list[BundleData] = []
-        if isinstance(bundle.named_data, str):
-            named_data = [bundle.named_data]
-        else:
-            named_data = bundle.named_data
 
-        if named_data is None:
+        if not bundle.named_data:
             LOG.error(
                 "Received NDATA bundle with no name set. "
                 "This indicates a malformed bundle from the sender. "
                 "Ignoring."
             )
-            return bundles
+            return []
+
+        bundles: list[BundleData] = []
 
         match bundle.type:
             case BundleType.NDATA_PUT:
@@ -91,37 +88,37 @@ class Datastore(Node):
 
                 success = True
                 error = ""
-                for name in named_data:
-                    try:
-                        await self._storage.store_data(name=name, data=bundle.payload)
-                    except NameTakenError as err:
-                        success = False
-                        error = str(err)
-
-                    response = BundleData(
-                        type=BundleType.NDATA_PUT,
-                        source=self._node_id,
-                        destination=bundle.source,
-                        named_data=name,
-                        success=success,
-                        error=error,
+                try:
+                    await self._storage.store_data(
+                        name=bundle.named_data, data=bundle.payload
                     )
-                    bundles.append(response)
+                except NameTakenError as err:
+                    success = False
+                    error = str(err)
+
+                response = BundleData(
+                    type=BundleType.NDATA_PUT,
+                    source=self._node_id,
+                    destination=bundle.source,
+                    named_data=bundle.named_data,
+                    success=success,
+                    error=error,
+                )
+                bundles.append(response)
             case BundleType.NDATA_GET:
                 LOG.debug("Data action is GET")
 
-                for name in named_data:
-                    loaded = await self._storage.load_data(name=name)
-                    LOG.debug(f"Loaded data: {loaded}")
-                    for l_name, l_data in loaded:
-                        response = BundleData(
-                            type=BundleType.NDATA_GET,
-                            source=self._node_id,
-                            destination=bundle.source,
-                            payload=l_data,
-                            named_data=l_name,
-                        )
-                        bundles.append(response)
+                loaded = await self._storage.load_data(name=bundle.named_data)
+                LOG.debug(f"Loaded data: {loaded}")
+                for l_name, l_data in loaded:
+                    response = BundleData(
+                        type=BundleType.NDATA_GET,
+                        source=self._node_id,
+                        destination=bundle.source,
+                        payload=l_data,
+                        named_data=l_name,
+                    )
+                    bundles.append(response)
             case _:
                 LOG.error(f"Received bundle of type {bundle.type}, ignoring")
 

@@ -134,12 +134,7 @@ class Executor(Node):
     async def _handle_data(self, bundle: BundleData) -> None:
         LOG.debug(f"Received NamedData: {bundle}")
 
-        if isinstance(bundle.named_data, str):
-            named_data = [bundle.named_data]
-        else:
-            named_data = bundle.named_data
-
-        if named_data is None:
+        if not bundle.named_data:
             LOG.error(
                 "Received NDATA bundle with no name set. "
                 "This indicates a malformed bundle from the sender. "
@@ -147,11 +142,12 @@ class Executor(Node):
             )
             return
 
-        for name in named_data:
-            try:
-                await self._storage.store_data(name=name, data=bundle.payload)
-            except NameTakenError:
-                LOG.warning(f"Incoming data name {name} is already taken. Ignoring.")
+        try:
+            await self._storage.store_data(name=bundle.named_data, data=bundle.payload)
+        except NameTakenError:
+            LOG.warning(
+                f"Incoming data name {bundle.named_data} is already taken. Ignoring."
+            )
 
         async with self._job_ready_cv:
             self._job_ready_cv.notify_all()

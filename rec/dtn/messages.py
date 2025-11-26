@@ -204,7 +204,7 @@ class BundleData:
     # used by job query/list
     submitter: EID = EID.none()
     # used by named data
-    named_data: str | list[str] = ""
+    named_data: str = ""
 
     def __post_init__(self) -> None:
         # general validity checks

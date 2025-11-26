@@ -100,11 +100,7 @@ def randomized_data_bundle(draw: st.DrawFn) -> BundleData:
         success=success,
         error=error,
         payload=draw(st.binary()),
-        named_data=draw(
-            st.one_of(
-                st.text(min_size=1), st.lists(elements=st.text(min_size=1), min_size=1)
-            )
-        ),
+        named_data=draw(st.text(min_size=1)),
     )
 
 
