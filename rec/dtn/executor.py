@@ -140,7 +140,11 @@ class Executor(Node):
             named_data = bundle.named_data
 
         if named_data is None:
-            LOG.error("Name was none, this should never happen")
+            LOG.error(
+                "Received NDATA bundle with no name set. "
+                "This indicates a malformed bundle from the sender. "
+                "Ignoring."
+            )
             return
 
         for name in named_data:
@@ -325,7 +329,7 @@ class Executor(Node):
             return
 
         if self._broker is None:
-            LOG.error("Broker address was none, this should never happen")
+            LOG.error("No broker associated. Cannot send named results. Skipping.")
             return
 
         for name, data in results.items():

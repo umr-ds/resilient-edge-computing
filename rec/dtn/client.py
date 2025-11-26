@@ -193,12 +193,16 @@ class Client(Node):
 
         Args:
             submitter (str): The EndpointID of the job submitter to query for.
+
+        Raises:
+            RuntimeError: If no broker is associated.
         """
         LOG.info("Performing job query")
 
         if self._broker is None:
-            LOG.error("Broker address was none, this should never happen")
-            return
+            raise RuntimeError(
+                "No broker associated. This should not be the case at this point."
+            )
 
         query_bundle = BundleData(
             type=BundleType.JOB_QUERY,
@@ -253,12 +257,16 @@ class Client(Node):
 
         Returns:
             bool: True if successful, False otherwise.
+
+        Raises:
+            RuntimeError: If no broker is associated.
         """
         LOG.info(f"Performing data PUT: Name: {name}")
 
         if self._broker is None:
-            LOG.error("Broker address was none, this should never happen")
-            return False
+            raise RuntimeError(
+                "No broker associated. This should not be the case at this point."
+            )
 
         with data_file.open("rb") as f:
             data = f.read()
@@ -338,12 +346,16 @@ class Client(Node):
 
         Args:
             job: Job instance to submit.
+
+        Raises:
+            RuntimeError: If no broker is associated.
         """
         LOG.debug(f"Submitting job: {job.metadata.wasm_module}")
 
         if self._broker is None:
-            LOG.error("Broker address was none, this should never happen")
-            return
+            raise RuntimeError(
+                "No broker associated. This should not be the case at this point."
+            )
 
         # Dictify the job and set the submitter
         job_dict = job.dictify()

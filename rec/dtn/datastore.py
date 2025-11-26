@@ -78,7 +78,11 @@ class Datastore(Node):
             named_data = bundle.named_data
 
         if named_data is None:
-            LOG.error("Name was none, this should never happen")
+            LOG.error(
+                "Received NDATA bundle with no name set. "
+                "This indicates a malformed bundle from the sender. "
+                "Ignoring."
+            )
             return bundles
 
         match bundle.type:
