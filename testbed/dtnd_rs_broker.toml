@@ -1,0 +1,23 @@
+nodeid = "broker"
+debug = true
+beacon-period = true
+
+workdir = "/tmp/broker_store"
+db = "mem"
+
+recsocket = "/tmp/broker.socket"
+
+[routing]
+strategy = "epidemic"
+
+[convergencylayers]
+cla.0.id = "tcp"
+cla.0.port = 16163
+
+[core]
+janitor = "10s"
+
+[discovery]
+interval = "2s"
+peer-timeout = "20s"
+port = 3003

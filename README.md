@@ -23,7 +23,7 @@ uv sync
 
 In order to run the DTN version of `REC`, you need to also run a DTN daemon. You can either use `dtn7-go` or `dtn7-rs`, just make sure to checkout the `rec` branch in either repository.
 
-For `dtn7-go` use the following steps:
+#### dtn7-go
 
 Install the [Go programming language](https://go.dev/)
 
@@ -75,6 +75,64 @@ Lastly, run `dtnd` and point it to your config file:
 
 ```shell
 ./dtnd config.toml
+```
+
+#### dtn7-rs
+
+Install the [Rust programming language](https://www.rust-lang.org/tools/install)
+
+Clone and build `dtnd`
+
+```shell
+git clone git@gitlab.uni-marburg.de:fb12/ag-freisleben/projects/dtn7-rs.git
+
+cd dtn7-rs
+
+git checkout rec
+
+cargo install --locked --bin dtnd --path ./core/dtn7/
+```
+
+This will install the `dtnd` binary to your Cargo bin directory (usually `~/.cargo/bin/`).
+Next, you need a config file, like this:
+
+```toml
+nodeid = "<node id>"
+debug = true
+beacon-period = true
+
+workdir = "<path to storage directory>"
+db = "mem"
+
+recsocket = "<path to socket>"
+
+[routing]
+strategy = "epidemic"
+
+[convergencylayers]
+cla.0.id = "tcp"
+cla.0.port = 16163
+
+[core]
+janitor = "10s"
+
+[discovery]
+interval = "2s"
+peer-timeout = "20s"
+port = 3003
+```
+
+Where you need to replace all instances of `<...>` with some appropriate value.
+
+- `nodeid`: Name of the node; can be the same as the name of the `REC` that will be running, but does not have to be.
+  Something like `rec_1` will work fine; just make sure no two instances of `dtnd` are running with the same `nodeid`.
+- `workdir`: Path to some folder on your computer's filesystem where `dtnd` will store bundles.
+- `recsocket`: `REC` and `dtnd` communicate via a UNIX domain socket. `dtnd` will create the socket, so it needs to be started first.
+
+Lastly, run `dtnd` and point it to your config file:
+
+```shell
+dtnd -c config.toml
 ```
 
 ## Usage
@@ -327,10 +385,22 @@ To build and run the testbed, use the following command:
 
 ```shell
 docker build --pull -t rec_testbed -f testbed/Dockerfile . && \
-docker run --privileged --rm -it --name rec_testbed -e LOGLEVEL=DEBUG rec_testbed
+docker run --privileged --rm -it --name rec_testbed -e LOGLEVEL=DEBUG -e DAEMON=go rec_testbed
 ```
 
-It comes with pre-configured DTN daemons and running broker, datastore, and executor nodes.
+The testbed supports both the Go and Rust DTN daemon implementations. You can select which daemon to use via the `DAEMON` environment variable:
+
+```shell
+# Use Go daemon (default)
+docker run --privileged --rm -it --name rec_testbed -e LOGLEVEL=DEBUG -e DAEMON=go rec_testbed
+
+# Use Rust daemon
+docker run --privileged --rm -it --name rec_testbed -e LOGLEVEL=DEBUG -e DAEMON=rust rec_testbed
+```
+
+Valid values for `DAEMON` are `go` (default) or `rust` (case-insensitive).
+
+The testbed comes with pre-configured DTN daemons and running broker, datastore, and executor nodes.
 The only thing you need to do is to start a client node in the top-left Zellij pane.
 For example:
 

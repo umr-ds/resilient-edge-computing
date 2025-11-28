@@ -1,12 +1,20 @@
 import subprocess as sp
 import time
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Iterator
 
 import pytest
 
 from tests.dtn.utils.compose_env import ComposeEnvironment
+
+
+class DaemonType(Enum):
+    """Enum for supported DTN daemon types."""
+
+    GO = "go"
+    RUST = "rust"
 
 
 def _check_docker_support() -> tuple[bool, str]:
@@ -54,6 +62,7 @@ class DtnTestEnvironment:
 
     Attributes:
         compose_env: ComposeEnvironment managing the Docker containers.
+        daemon_type: The type of DTN daemon being used (Go or Rust).
         node_ids: List of node identifiers (e.g., ["broker", "datastore", "executor", "client"]).
         socket_paths: Mapping from node ID to its Unix socket path for communication.
         config_paths: Mapping from node ID to its TOML configuration file path.
@@ -61,6 +70,7 @@ class DtnTestEnvironment:
     """
 
     compose_env: ComposeEnvironment
+    daemon_type: DaemonType
     node_ids: list[str]
     socket_paths: dict[str, Path]
     config_paths: dict[str, Path]
@@ -111,27 +121,64 @@ gc = "1h15s"
     return config_content
 
 
-@pytest.fixture
-def dtnd_go_env() -> Iterator[DtnTestEnvironment]:
+def create_dtnd_config_rs(
+    node_id: str,
+    socket_dir: Path,
+    store_path: Path,
+) -> str:
     """
-    Provides a DTN test environment with four Docker containers.
-    Each container runs its own Go DTN Daemon (service name, node id):
-    - broker-ns, dtn://broker/
-    - datastore-ns, dtn://datastore/
-    - executor-ns, dtn://executor/
-    - client-ns, dtn://client/
+    Create a Rust DTN daemon configuration content as a string.
 
-    The containers are managed via Docker Compose and automatically cleaned up when the test completes.
+    Args:
+        node_id: The node identifier.
+        socket_dir: Directory path where the socket file will be created.
+        store_path: Path to the directory where the daemon will store its data.
+
+    Returns:
+        Configuration file content as a TOML-formatted string.
+    """
+    socket_path = socket_dir / f"{node_id}.socket"
+
+    config_content = f"""nodeid = "{node_id}"
+debug = true
+beacon-period = true
+
+workdir = "{store_path}"
+db = "mem"
+
+recsocket = "{socket_path}"
+
+[routing]
+strategy = "epidemic"
+
+[convergencylayers]
+cla.0.id = "tcp"
+cla.0.port = 16163
+
+[core]
+janitor = "10s"
+
+[discovery]
+interval = "2s"
+peer-timeout = "20s"
+port = 3003
+"""
+
+    return config_content
+
+
+def _create_dtnd_env(
+    daemon_type: DaemonType,
+) -> Iterator[DtnTestEnvironment]:
+    """
+    Internal helper to create a DTN test environment with the specified daemon type.
+
+    Args:
+        daemon_type: The type of DTN daemon to use (Go or Rust).
 
     Yields:
-        DtnTestEnvironment containing:
-            - compose_env: ComposeEnvironment for executing commands in containers
-            - node_ids: List of node identifiers
-            - socket_paths: Container paths to Unix domain sockets for each node
-            - config_paths: Container paths to TOML config files for each daemon
-            - daemon_processes: Running dtnd-go daemon processes for each node
+        DtnTestEnvironment with the specified daemon running in each container.
     """
-    # Create configuration files for each DTN daemon
     nodes = ["broker", "datastore", "executor", "client"]
     service_mapping = {
         "broker": "broker-ns",
@@ -149,6 +196,12 @@ def dtnd_go_env() -> Iterator[DtnTestEnvironment]:
     config_paths = {node: container_config_dir / f"{node}.toml" for node in nodes}
     store_paths = {node: container_store_base / node for node in nodes}
 
+    # Select daemon binary based on type
+    if daemon_type == DaemonType.GO:
+        daemon_cmd_template = "dtnd-go {config_path}"
+    else:
+        daemon_cmd_template = "dtnd-rs -c {config_path}"
+
     with ComposeEnvironment(COMPOSE_FILE) as compose_env:
         # Create necessary directories in each container
         for service in service_mapping.values():
@@ -159,9 +212,17 @@ def dtnd_go_env() -> Iterator[DtnTestEnvironment]:
         # Create config files and store directories for each node
         for node in nodes:
             service = service_mapping[node]
-            config_content = create_dtnd_config_go(
-                node, container_socket_dir, store_paths[node]
-            )
+
+            if daemon_type == DaemonType.GO:
+                config_content = create_dtnd_config_go(
+                    node, container_socket_dir, store_paths[node]
+                )
+            else:
+                config_content = create_dtnd_config_rs(
+                    node,
+                    container_socket_dir,
+                    store_paths[node],
+                )
 
             # Write config file to container
             compose_env.exec(
@@ -176,7 +237,7 @@ def dtnd_go_env() -> Iterator[DtnTestEnvironment]:
         for node in nodes:
             service = service_mapping[node]
             config_path = config_paths[node]
-            cmd = f"dtnd-go {config_path}"
+            cmd = daemon_cmd_template.format(config_path=config_path)
             daemon_processes[node] = compose_env.popen(service, cmd)
 
         # Give daemons a moment to start up
@@ -187,7 +248,7 @@ def dtnd_go_env() -> Iterator[DtnTestEnvironment]:
             if proc.poll() is not None:
                 stdout, stderr = proc.communicate()
                 raise RuntimeError(
-                    f"Daemon '{node}' failed to start. "
+                    f"Daemon '{node}' ({daemon_type.value}) failed to start. "
                     f"Exit code: {proc.returncode}, "
                     f"stdout: {stdout}, "
                     f"stderr: {stderr}"
@@ -195,6 +256,7 @@ def dtnd_go_env() -> Iterator[DtnTestEnvironment]:
 
         yield DtnTestEnvironment(
             compose_env=compose_env,
+            daemon_type=daemon_type,
             node_ids=nodes,
             socket_paths=socket_paths,
             config_paths=config_paths,
@@ -202,19 +264,60 @@ def dtnd_go_env() -> Iterator[DtnTestEnvironment]:
         )
 
 
-@pytest.fixture
-def dtnd_go_bde_env(dtnd_go_env: DtnTestEnvironment) -> Iterator[DtnTestEnvironment]:
+@pytest.fixture(params=[DaemonType.GO, DaemonType.RUST], ids=["go", "rust"])
+def dtnd_env(request: pytest.FixtureRequest) -> Iterator[DtnTestEnvironment]:
     """
-    Provides a DTN test environment with broker, datastore, and executor already running.
+    Parameterized fixture that provides a DTN test environment with both Go and Rust daemons.
 
-    This fixture extends dtnd_go_env by starting the broker, datastore, and executor services,
-    leaving the client available for test-specific use.
+    This fixture runs each test twice: once with the Go daemon and once with the Rust daemon.
 
     Yields:
-        DtnTestEnvironment with broker, datastore, and executor services running.
+        DtnTestEnvironment with either Go or Rust daemon running in each container.
     """
-    env = dtnd_go_env
+    yield from _create_dtnd_env(request.param)
 
+
+@pytest.fixture
+def dtnd_go_env() -> Iterator[DtnTestEnvironment]:
+    """
+    Provides a DTN test environment with four Docker containers using the Go daemon.
+
+    Each container runs its own Go DTN Daemon (service name, node id):
+    - broker-ns, dtn://broker/
+    - datastore-ns, dtn://datastore/
+    - executor-ns, dtn://executor/
+    - client-ns, dtn://client/
+
+    Yields:
+        DtnTestEnvironment with Go daemon running in each container.
+    """
+    yield from _create_dtnd_env(DaemonType.GO)
+
+
+@pytest.fixture
+def dtnd_rs_env() -> Iterator[DtnTestEnvironment]:
+    """
+    Provides a DTN test environment with four Docker containers using the Rust daemon.
+
+    Each container runs its own Rust DTN Daemon (service name, node id):
+    - broker-ns, broker
+    - datastore-ns, datastore
+    - executor-ns, executor
+    - client-ns, client
+
+    Yields:
+        DtnTestEnvironment with Rust daemon running in each container.
+    """
+    yield from _create_dtnd_env(DaemonType.RUST)
+
+
+def _start_bde_services(env: DtnTestEnvironment) -> None:
+    """
+    Start broker, datastore, and executor services in the given environment.
+
+    Args:
+        env: The DTN test environment to start services in.
+    """
     # Container paths for data storage
     datastore_root = Path("/tmp/test_data/datastore_root")
     executor_root = Path("/tmp/test_data/executor_root")
@@ -253,4 +356,48 @@ def dtnd_go_bde_env(dtnd_go_env: DtnTestEnvironment) -> Iterator[DtnTestEnvironm
     )
     env.compose_env.popen("executor-ns", executor_cmd)
 
-    yield env
+
+@pytest.fixture
+def dtnd_bde_env(dtnd_env: DtnTestEnvironment) -> Iterator[DtnTestEnvironment]:
+    """
+    Parameterized fixture with broker, datastore, and executor already running.
+
+    This fixture extends dtnd_env (parameterized for both Go and Rust) by starting
+    the broker, datastore, and executor services, leaving the client available
+    for test-specific use.
+
+    Yields:
+        DtnTestEnvironment with broker, datastore, and executor services running.
+    """
+    _start_bde_services(dtnd_env)
+    yield dtnd_env
+
+
+@pytest.fixture
+def dtnd_go_bde_env(dtnd_go_env: DtnTestEnvironment) -> Iterator[DtnTestEnvironment]:
+    """
+    Provides a Go DTN test environment with broker, datastore, and executor already running.
+
+    This fixture extends dtnd_go_env by starting the broker, datastore, and executor services,
+    leaving the client available for test-specific use.
+
+    Yields:
+        DtnTestEnvironment with Go daemon and broker, datastore, and executor services running.
+    """
+    _start_bde_services(dtnd_go_env)
+    yield dtnd_go_env
+
+
+@pytest.fixture
+def dtnd_rs_bde_env(dtnd_rs_env: DtnTestEnvironment) -> Iterator[DtnTestEnvironment]:
+    """
+    Provides a Rust DTN test environment with broker, datastore, and executor already running.
+
+    This fixture extends dtnd_rs_env by starting the broker, datastore, and executor services,
+    leaving the client available for test-specific use.
+
+    Yields:
+        DtnTestEnvironment with Rust daemon and broker, datastore, and executor services running.
+    """
+    _start_bde_services(dtnd_rs_env)
+    yield dtnd_rs_env

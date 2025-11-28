@@ -8,8 +8,8 @@ from tests.dtn.utils.proc_helpers import run_and_expect_multiple, run_and_expect
 
 
 @requires_docker
-def test_connection_to_daemons_go(dtnd_go_env: DtnTestEnvironment) -> None:
-    env = dtnd_go_env
+def test_connection_to_daemons(dtnd_env: DtnTestEnvironment) -> None:
+    env = dtnd_env
 
     # Verify all daemons are still running
     for node_id, proc in env.daemon_processes.items():
@@ -81,8 +81,8 @@ def test_connection_to_daemons_go(dtnd_go_env: DtnTestEnvironment) -> None:
 
 
 @requires_docker
-def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
-    env = dtnd_go_bde_env
+def test_execution_plan_once(dtnd_bde_env: DtnTestEnvironment) -> None:
+    env = dtnd_bde_env
 
     results_dir = Path("/tmp/test_data/client_results/")
 
@@ -135,8 +135,8 @@ def test_execution_plan_once_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
 
 
 @requires_docker
-def test_execution_plan_twice_named_go(dtnd_go_bde_env: DtnTestEnvironment) -> None:
-    env = dtnd_go_bde_env
+def test_execution_plan_twice_named(dtnd_bde_env: DtnTestEnvironment) -> None:
+    env = dtnd_bde_env
 
     results_dir = Path("/tmp/test_data/client_results/")
 

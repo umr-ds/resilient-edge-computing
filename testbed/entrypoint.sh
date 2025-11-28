@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Daemon selection: "go" (default) or "rust"
+DAEMON="${DAEMON:-go}"
+
+# Validate DAEMON value
+case "$DAEMON" in
+  go|GO)
+    DAEMON="go"
+    DTND_BIN="dtnd-go"
+    CONFIG_PREFIX="dtnd_go"
+    ;;
+  rust|RUST|rs|RS)
+    DAEMON="rust"
+    DTND_BIN="dtnd-rs -c"
+    CONFIG_PREFIX="dtnd_rs"
+    ;;
+  *)
+    echo "Error: Invalid DAEMON value '$DAEMON'. Use 'go' or 'rust'." >&2
+    exit 1
+    ;;
+esac
+
+echo "Starting testbed with $DAEMON daemon ($DTND_BIN)..."
+
 # Cleanup
 cleanup() {
   set +e
@@ -61,25 +84,25 @@ create_namespace executor 10.0.7.4
 
 
 # Start Daemons
-ip netns exec client bash -lc '
-  nohup dtnd-go /root/dtnd_client.toml >>/var/log/dtn/client.log 2>&1 &
-  echo $! >/run/dtn/dtnd_client.pid
-'
+ip netns exec client bash -lc "
+  nohup $DTND_BIN /root/${CONFIG_PREFIX}_client.toml >>/var/log/dtn/client.log 2>&1 &
+  echo \$! >/run/dtn/dtnd_client.pid
+"
 
-ip netns exec broker bash -lc '
-  nohup dtnd-go /root/dtnd_broker.toml >>/var/log/dtn/broker.log 2>&1 &
-  echo $! >/run/dtn/dtnd_broker.pid
-'
+ip netns exec broker bash -lc "
+  nohup $DTND_BIN /root/${CONFIG_PREFIX}_broker.toml >>/var/log/dtn/broker.log 2>&1 &
+  echo \$! >/run/dtn/dtnd_broker.pid
+"
 
-ip netns exec datastore bash -lc '
-  nohup dtnd-go /root/dtnd_datastore.toml >>/var/log/dtn/datastore.log 2>&1 &
-  echo $! >/run/dtn/dtnd_datastore.pid
-'
+ip netns exec datastore bash -lc "
+  nohup $DTND_BIN /root/${CONFIG_PREFIX}_datastore.toml >>/var/log/dtn/datastore.log 2>&1 &
+  echo \$! >/run/dtn/dtnd_datastore.pid
+"
 
-ip netns exec executor bash -lc '
-  nohup dtnd-go /root/dtnd_executor.toml >>/var/log/dtn/executor.log 2>&1 &
-  echo $! >/run/dtn/dtnd_executor.pid
-'
+ip netns exec executor bash -lc "
+  nohup $DTND_BIN /root/${CONFIG_PREFIX}_executor.toml >>/var/log/dtn/executor.log 2>&1 &
+  echo \$! >/run/dtn/dtnd_executor.pid
+"
 
 # Run fish once to initialize config
 fish -c exit

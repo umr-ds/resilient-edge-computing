@@ -5,6 +5,13 @@ RUN git clone https://gitlab.uni-marburg.de/fb12/ag-freisleben/projects/dtn7-go.
     go build -race -o /dtnd-go ./cmd/dtnd
 
 
+FROM rust:1 AS dtnd-rs-builder
+RUN git clone https://gitlab.uni-marburg.de/fb12/ag-freisleben/projects/dtn7-rs.git && \
+    cd dtn7-rs && \
+    git switch rec && \
+    cargo install --locked --bin dtnd --path ./core/dtn7/
+
+
 FROM ubuntu:22.04
 
 # Install basic dependencies
@@ -30,11 +37,17 @@ COPY testbed/dtn.kdl /root/.config/zellij/layouts/dtn.kdl
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 COPY --from=dtnd-go-builder /dtnd-go /usr/local/bin/dtnd-go
+COPY --from=dtnd-rs-builder /usr/local/cargo/bin/dtnd /usr/local/bin/dtnd-rs
 
-COPY testbed/dtnd_client.toml /root/dtnd_client.toml
-COPY testbed/dtnd_broker.toml /root/dtnd_broker.toml
-COPY testbed/dtnd_datastore.toml /root/dtnd_datastore.toml
-COPY testbed/dtnd_executor.toml /root/dtnd_executor.toml
+COPY testbed/dtnd_go_client.toml /root/dtnd_go_client.toml
+COPY testbed/dtnd_go_broker.toml /root/dtnd_go_broker.toml
+COPY testbed/dtnd_go_datastore.toml /root/dtnd_go_datastore.toml
+COPY testbed/dtnd_go_executor.toml /root/dtnd_go_executor.toml
+
+COPY testbed/dtnd_rs_client.toml /root/dtnd_rs_client.toml
+COPY testbed/dtnd_rs_broker.toml /root/dtnd_rs_broker.toml
+COPY testbed/dtnd_rs_datastore.toml /root/dtnd_rs_datastore.toml
+COPY testbed/dtnd_rs_executor.toml /root/dtnd_rs_executor.toml
 
 COPY testbed/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
