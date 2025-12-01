@@ -399,40 +399,42 @@ class Client(Node):
             await asyncio.sleep(10)
 
 
-def main(args: Namespace) -> None:
+async def async_main(args: Namespace) -> None:
     client = Client(
         node_id=args.id,
         dtn_agent_socket=args.socket,
         context_file=args.context_file,
         results_directory=args.results_directory,
     )
-    asyncio.run(client.run())
+    await client.run()
 
     match args.command:
         case "query":
-            asyncio.run(client.job_query(submitter=args.submitter))
+            await client.job_query(submitter=args.submitter)
         case "data":
             match args.data_command:
                 case "get":
-                    asyncio.run(client.data_get(name=args.data_name))
+                    await client.data_get(name=args.data_name)
                 case "put":
-                    asyncio.run(
-                        client.data_put(
-                            name=args.data_name,
-                            data_file=args.data_file,
-                        )
+                    await client.data_put(
+                        name=args.data_name,
+                        data_file=args.data_file,
                     )
         case "exec":
             try:
-                asyncio.run(client.execute_plan(plan_path=args.plan_file))
+                await client.execute_plan(plan_path=args.plan_file)
             except Exception as e:
                 LOG.error(f"Failed to execute plan: {e}", exc_info=True)
         case "check":
-            asyncio.run(client.check_for_bundles())
+            await client.check_for_bundles()
         case "listen":
             try:
-                asyncio.run(client.listen_for_bundles())
+                await client.listen_for_bundles()
             except KeyboardInterrupt:
                 LOG.info("Stopping listener")
         case _:
             LOG.critical(f"Unknown command: {args.command}")
+
+
+def main(args: Namespace) -> None:
+    asyncio.run(async_main(args))
