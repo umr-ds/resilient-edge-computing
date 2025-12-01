@@ -19,6 +19,10 @@ class DummyNode(Node):
     async def run(self) -> None:
         pass
 
+    @override
+    async def _handle_bundle(self, bundle: BundleData) -> list[BundleData]:
+        return []
+
 
 @pytest.mark.asyncio
 @given(

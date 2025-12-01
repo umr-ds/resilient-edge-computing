@@ -54,61 +54,39 @@ class Client(Node):
 
     @override
     async def run(self) -> None:
-        await self._register()
+        LOG.info("Starting client")
+        await super().run()
 
         if self._broker is not None:
             LOG.info("Already associated with broker")
             return
         else:
             LOG.info("Not associated with broker")
-            await self._find_broker()
+            await self._wait_for_broker()
 
-    async def _find_broker(self) -> None:
-        LOG.info("Waiting for broker announcement")
-        while self._broker is None:
-            await asyncio.sleep(10)
-            bundles = await self._get_new_bundles()
-            for bundle in bundles:
-                if BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
-                    reply = await self._handle_discovery(bundle=bundle)
-                    if reply:
-                        try:
-                            LOG.debug("Sending reply")
-                            dtnd_reply = await self._send_bundle(reply[0])
-                            if not dtnd_reply.success:
-                                LOG.error(f"Error sending bundle: {dtnd_reply.error}")
-                        except Exception as err:
-                            LOG.exception("Error sending bundle: %s", err)
+    @override
+    async def stop(self) -> None:
+        """Stop the client, wait for background tasks to finish and notify all waiting tasks."""
+        await super().stop()
 
-        LOG.info("Saving broker info")
-        self._context_data["broker"] = self._broker
-        with self._context_file.open("w") as f:
-            dump(self._context_data, f)
+        async with self._response_cv:
+            self._response_cv.notify_all()
 
-    async def _process_incoming_bundles(self) -> None:
-        """
-        Process all currently available bundles once.
-        """
-        LOG.debug("Processing incoming bundles")
-        try:
-            bundles = await self._get_new_bundles()
-            if bundles:
-                LOG.debug(f"Bundles: {bundles}")
-                for bundle in bundles:
-                    await self._handle_bundle(bundle=bundle)
-            else:
-                LOG.debug("No new bundles")
-        except Exception as err:
-            LOG.exception("Error fetching bundles: %s", err)
+    async def _wait_for_broker(self) -> None:
+        """Wait until the background receive loop discovers and associates with a broker."""
+        LOG.info("Waiting for broker association")
+        while self._running and self._broker is None:
+            await self._interruptible_sleep(1)
 
-    async def _handle_bundle(self, bundle: BundleData) -> None:
-        """
-        Handle an incoming bundle based on its type.
+        if self._broker is not None:
+            LOG.info("Saving broker info")
+            self._context_data["broker"] = self._broker
+            with self._context_file.open("w") as f:
+                dump(self._context_data, f)
 
-        Args:
-            bundle (BundleData): The incoming bundle to handle.
-        """
-        LOG.debug(f"Handling bundle: {bundle}")
+    @override
+    async def _handle_bundle(self, bundle: BundleData) -> list[BundleData]:
+        replies: list[BundleData] = []
 
         if bundle.type == BundleType.JOB_RESULT:
             await self._handle_job_result(bundle=bundle)
@@ -119,10 +97,11 @@ class Client(Node):
         elif bundle.type == BundleType.NDATA_PUT:
             await self._cache_response(bundle=bundle)
         elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
-            # Discovery handled in _find_broker
-            pass
+            replies = await self._handle_discovery(bundle=bundle)
         else:
             LOG.warning(f"Won't handle bundle of type: {bundle.type}")
+
+        return replies
 
     async def _handle_job_result(self, bundle: BundleData) -> None:
         """
@@ -156,36 +135,29 @@ class Client(Node):
             self._pending_responses[bundle.type].append(bundle)
             self._response_cv.notify_all()
 
-    async def wait_reply(self, wait_for: BundleType) -> BundleData:
+    async def wait_reply(self, wait_for: BundleType) -> BundleData | None:
         """
-        Wait for a reply bundle of specific type, checking for new bundles periodically.
+        Wait for a reply bundle of specific type.
 
         Args:
             wait_for (BundleType): The type of bundle to wait for.
         """
         LOG.info(f"Waiting for reply of type {wait_for}")
 
-        while True:
-            await asyncio.sleep(10)
-
-            # Check if we already have the response cached
-            async with self._response_cv:
+        async with self._response_cv:
+            while self._running:
+                # Check if we have the response cached
                 if (
                     wait_for in self._pending_responses
                     and self._pending_responses[wait_for]
                 ):
                     return self._pending_responses[wait_for].pop(0)
 
-            # Process any new bundles
-            await self._process_incoming_bundles()
+                # Wait for notification from the background receive loop
+                await self._response_cv.wait()
 
-            # Check again if response arrived
-            async with self._response_cv:
-                if (
-                    wait_for in self._pending_responses
-                    and self._pending_responses[wait_for]
-                ):
-                    return self._pending_responses[wait_for].pop(0)
+        # Node is stopping
+        return None
 
     async def job_query(self, submitter: str) -> None:
         """
@@ -213,6 +185,11 @@ class Client(Node):
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
         await self._send_message(message=message)
         broker_response = await self.wait_reply(BundleType.JOB_LIST)
+
+        if not broker_response:
+            LOG.warning("The node is stopping, no response received for job query")
+            return
+
         if not broker_response.success:
             LOG.error(
                 "Broker responded with error %s", broker_response.error, exc_info=False
@@ -237,9 +214,13 @@ class Client(Node):
             named_data=name,
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
-        reply = await self._send_message(message=message)
-        print(reply)
+        await self._send_message(message=message)
         store_rply = await self.wait_reply(BundleType.NDATA_GET)
+
+        if not store_rply:
+            LOG.warning("The node is stopping, no response received for data GET")
+            return
+
         if not store_rply.success:
             LOG.error(
                 "DataStore responded with error %s", store_rply.error, exc_info=False
@@ -279,13 +260,13 @@ class Client(Node):
             named_data=name,
         )
         message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
-        reply = await self._send_message(message=message)
+        await self._send_message(message=message)
+        store_rply = await self.wait_reply(BundleType.NDATA_PUT)
 
-        if not reply.success:
-            LOG.error(f"Failed to send data PUT for {name}: {reply.error}")
+        if not store_rply:
+            LOG.warning("The node is stopping, no response received for data PUT")
             return False
 
-        store_rply = await self.wait_reply(BundleType.NDATA_PUT)
         if not store_rply.success:
             if store_rply.error.endswith("already taken"):
                 LOG.warning(f"DataStore already has {name}, skipping PUT")
@@ -385,7 +366,9 @@ class Client(Node):
         """
         LOG.info("Checking for bundles from the daemon")
 
-        await self._process_incoming_bundles()
+        # Give the receive loop a moment to process any incoming bundles
+        await self._interruptible_sleep(0.25)
+        await self.stop()
 
     async def listen_for_bundles(self) -> None:
         """
@@ -393,10 +376,9 @@ class Client(Node):
         This runs indefinitely until interrupted.
         """
         LOG.info("Starting to listen for bundles from the daemon")
-
-        while True:
-            await self._process_incoming_bundles()
-            await asyncio.sleep(10)
+        # Just keep the receive loop alive
+        if self._receive_task:
+            await self._receive_task
 
 
 async def async_main(args: Namespace) -> None:
@@ -408,32 +390,32 @@ async def async_main(args: Namespace) -> None:
     )
     await client.run()
 
-    match args.command:
-        case "query":
-            await client.job_query(submitter=args.submitter)
-        case "data":
-            match args.data_command:
-                case "get":
-                    await client.data_get(name=args.data_name)
-                case "put":
-                    await client.data_put(
-                        name=args.data_name,
-                        data_file=args.data_file,
-                    )
-        case "exec":
-            try:
-                await client.execute_plan(plan_path=args.plan_file)
-            except Exception as e:
-                LOG.error(f"Failed to execute plan: {e}", exc_info=True)
-        case "check":
-            await client.check_for_bundles()
-        case "listen":
-            try:
+    try:
+        match args.command:
+            case "query":
+                await client.job_query(submitter=args.submitter)
+            case "data":
+                match args.data_command:
+                    case "get":
+                        await client.data_get(name=args.data_name)
+                    case "put":
+                        await client.data_put(
+                            name=args.data_name,
+                            data_file=args.data_file,
+                        )
+            case "exec":
+                try:
+                    await client.execute_plan(plan_path=args.plan_file)
+                except Exception as e:
+                    LOG.error(f"Failed to execute plan: {e}", exc_info=True)
+            case "check":
+                await client.check_for_bundles()
+            case "listen":
                 await client.listen_for_bundles()
-            except KeyboardInterrupt:
-                LOG.info("Stopping listener")
-        case _:
-            LOG.critical(f"Unknown command: {args.command}")
+            case _:
+                LOG.critical(f"Unknown command: {args.command}")
+    finally:
+        await client.stop()
 
 
 def main(args: Namespace) -> None:

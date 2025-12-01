@@ -1,4 +1,3 @@
-import asyncio
 from pathlib import Path
 from typing import override
 
@@ -30,44 +29,23 @@ class Datastore(Node):
     @override
     async def run(self) -> None:
         LOG.info("Starting datastore")
-        await self._register()
-        await self._handle_bundles()
+        await super().run()
 
-    async def _handle_bundles(self) -> None:
-        LOG.info("Starting bundle handler")
-        while True:
-            LOG.debug("Bundle handler going to sleep")
-            await asyncio.sleep(10)
+        if self._receive_task:
+            await self._receive_task
 
-            LOG.debug("Running bundle handler")
-            try:
-                LOG.debug("Retrieving bundles")
-                bundles = await self._get_new_bundles()
-                if bundles:
-                    LOG.debug(f"Bundles: {bundles}")
-                    replies: list[BundleData] = []
-                    for bundle in bundles:
-                        bundle_replies = await self._handle_bundle(bundle=bundle)
-                        replies.extend(bundle_replies)
-
-                    if replies:
-                        await self._send_and_check(bundles=replies)
-                else:
-                    LOG.debug("No new bundles")
-            except Exception as err:
-                LOG.exception("Error fetching bundles: %s", err)
-
+    @override
     async def _handle_bundle(self, bundle: BundleData) -> list[BundleData]:
-        LOG.debug(f"Handling bundle: {bundle}")
-        to_send: list[BundleData] = []
+        replies: list[BundleData] = []
 
-        if BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
-            to_send = await self._handle_discovery(bundle=bundle)
         if BundleType.NDATA_PUT <= bundle.type <= BundleType.NDATA_DEL:
-            to_send = await self._handle_data(bundle=bundle)
+            replies = await self._handle_data(bundle=bundle)
+        elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
+            replies = await self._handle_discovery(bundle=bundle)
+        else:
+            LOG.warning(f"Won't handle bundle of type: {bundle.type}")
 
-        LOG.debug(f"Response bundles: {to_send}")
-        return to_send
+        return replies
 
     async def _handle_data(self, bundle: BundleData) -> list[BundleData]:
         LOG.debug("Named data bundle")

@@ -71,10 +71,10 @@ def test_connection_to_daemons(dtnd_env: DtnTestEnvironment) -> None:
         processes=test_processes,
         timeout=30.0,
         required_messages={
-            "broker": ["Connected to dtnd"],
-            "datastore": ["Connected to dtnd"],
-            "executor": ["Connected to dtnd"],
-            "client": ["Connected to dtnd"],
+            "broker": ["Successfully registered with dtnd"],
+            "datastore": ["Successfully registered with dtnd"],
+            "executor": ["Successfully registered with dtnd"],
+            "client": ["Successfully registered with dtnd"],
         },
         terminate_on_success=True,
     )

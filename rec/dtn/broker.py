@@ -11,6 +11,8 @@ from rec.dtn.messages import BundleData, BundleType, NodeType
 from rec.dtn.node import Node
 from rec.util.log import LOG
 
+ANNOUNCEMENT_INTERVAL_SECONDS = 10
+
 
 class Broker(Node):
     _completed_jobs: set[JobInfo]
@@ -46,20 +48,27 @@ class Broker(Node):
 
     @override
     async def run(self) -> None:
-        await self._register()
+        LOG.info("Starting broker")
+        await super().run()
 
         async with asyncio.TaskGroup() as tg:
             tg.create_task(self._announce_yourself())
-            tg.create_task(self._handle_bundles())
             tg.create_task(self._queue_worker())
+
+        await self.stop()
+
+    @override
+    async def stop(self) -> None:
+        """Stop the broker, wait for background tasks to finish and notify all waiting tasks."""
+        await super().stop()
+
+        async with self._queue_cv:
+            self._queue_cv.notify_all()
 
     async def _announce_yourself(self) -> None:
         LOG.info("Starting announcer")
 
-        while True:
-            LOG.debug("Announcer going to sleep")
-            await asyncio.sleep(10)
-
+        while self._running:
             announcement = BundleData(
                 type=BundleType.BROKER_ANNOUNCE,
                 node_type=NodeType.BROKER,
@@ -69,49 +78,29 @@ class Broker(Node):
 
             await self._send_and_check(bundles=[announcement])
 
-    async def _handle_bundles(self) -> None:
-        LOG.info("Starting bundle handler")
-        while True:
-            LOG.debug("Bundle handler going to sleep")
-            await asyncio.sleep(10)
+            LOG.debug("Sleeping before next announcement")
+            await self._interruptible_sleep(ANNOUNCEMENT_INTERVAL_SECONDS)
 
-            LOG.debug("Running bundle handler")
-            try:
-                LOG.debug("Retrieving bundles")
-                bundles = await self._get_new_bundles()
-                if bundles:
-                    LOG.debug(f"Bundles: {bundles}")
-                    replies: list[BundleData] = []
-                    for bundle in bundles:
-                        reply = await self._handle_bundle(bundle=bundle)
-                        if reply is not None:
-                            replies.append(reply)
-                    if replies:
-                        await self._send_and_check(bundles=replies)
-                else:
-                    LOG.debug("No new bundles")
-            except Exception as err:
-                LOG.exception("Error fetching bundles: %s", err)
+        LOG.info("Announcer stopped")
 
-    async def _handle_bundle(self, bundle: BundleData) -> BundleData | None:
-        reply: BundleData | None = None
+    @override
+    async def _handle_bundle(self, bundle: BundleData) -> list[BundleData]:
+        replies: list[BundleData] = []
+
         if bundle.type == BundleType.JOB_SUBMIT:
             await self._handle_job_submit(bundle=bundle)
         elif bundle.type == BundleType.JOB_RESULT:
             await self._handle_job_result(bundle=bundle)
         elif bundle.type == BundleType.JOB_QUERY:
-            reply = await self._handle_job_query(bundle=bundle)
+            replies.append(await self._handle_job_query(bundle=bundle))
         elif bundle.type == BundleType.NDATA_PUT:
             await self._handle_ndata_put(bundle=bundle)
         elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
             replies = await self._handle_discovery(bundle=bundle)
-            # The _handle_discovery override returns at most one reply
-            if replies:
-                reply = replies[0]
         else:
             LOG.warning(f"Won't handle bundle of type: {bundle.type}")
 
-        return reply
+        return replies
 
     async def _handle_job_submit(self, bundle: BundleData) -> None:
         """
@@ -233,7 +222,8 @@ class Broker(Node):
         Worker that processes queued jobs and named data puts when nodes become available.
         """
         LOG.info("Starting queue worker")
-        while True:
+
+        while self._running:
             # Wait for work and nodes to be available
             async with self._queue_cv:
                 await self._queue_cv.wait()
@@ -276,6 +266,8 @@ class Broker(Node):
                     # TODO: Implement proper load balancing
                     datastore = random.choice(available_datastores)
                     await self._forward_ndata(bundle, datastore)
+
+        LOG.info("Queue worker stopped")
 
     async def _forward_ndata(self, bundle: BundleData, datastore: EID) -> None:
         """

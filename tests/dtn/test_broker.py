@@ -30,8 +30,8 @@ async def test_broker_discovery(broker_id: EID, node_id: EID, node_type: int) ->
         destination=BROADCAST_ADDRESS,
         node_type=NodeType.BROKER,
     )
-    reply = await broker._handle_bundle(bundle=bundle)
-    assert reply is None
+    replies = await broker._handle_bundle(bundle=bundle)
+    assert replies == []
     if broker_id != node_id:
         assert node_id in broker._discovered_nodes[NodeType.BROKER]
 
@@ -42,7 +42,9 @@ async def test_broker_discovery(broker_id: EID, node_id: EID, node_type: int) ->
         destination=broker_id,
         node_type=NodeType(node_type),
     )
-    reply = await broker._handle_bundle(bundle=bundle)
+    replies = await broker._handle_bundle(bundle=bundle)
+    assert len(replies) == 1
+    reply = replies[0]
     assert isinstance(reply, BundleData)
     assert reply.type == BundleType.BROKER_ACK
     assert reply.node_type == NodeType.BROKER
@@ -76,8 +78,9 @@ async def test_broker_job_query(
         submitter=client_id,
     )
 
-    response = await broker._handle_bundle(bundle=job_query)
-    assert response is not None
+    replies = await broker._handle_bundle(bundle=job_query)
+    assert len(replies) == 1
+    response = replies[0]
     assert response.type == BundleType.JOB_LIST
     assert response.source == broker_id
     assert response.destination == client_id

@@ -1,4 +1,5 @@
 import asyncio
+import signal
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -24,6 +25,8 @@ from rec.dtn.messages import (
 )
 from rec.util.log import LOG
 
+BUNDLE_POLL_INTERVAL_SECONDS = 10
+
 
 @dataclass
 class Node(ABC):
@@ -32,13 +35,47 @@ class Node(ABC):
     _node_type: NodeType
 
     _state_mutex: RWLock = field(default_factory=RWLock)
+    _stop_event: asyncio.Event = field(default_factory=asyncio.Event)
+
+    _receive_task: asyncio.Task | None = None
 
     _broker_pending: EID | None = None
     _broker: EID | None = None
 
-    @abstractmethod
+    @property
+    def _running(self) -> bool:
+        """Check if the node is still running."""
+        return not self._stop_event.is_set()
+
+    async def stop(self) -> None:
+        """Stop the node and wait for background tasks to finish."""
+        self._stop_event.set()
+
+        if self._receive_task:
+            await self._receive_task
+
+    async def _interruptible_sleep(self, seconds: float) -> None:
+        """
+        Sleep for the specified number of seconds, but wake up early if the node is stopping.
+
+        Args:
+            seconds (float): The number of seconds to sleep.
+        """
+        try:
+            await asyncio.wait_for(self._stop_event.wait(), timeout=seconds)
+        except asyncio.TimeoutError:
+            # We slept the full duration
+            pass
+
     async def run(self) -> None:
-        pass
+        loop = asyncio.get_running_loop()
+        # Call stop() on SIGINT (Ctrl+C)
+        loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(self.stop()))
+
+        # Start background receive loop for handling incoming bundles
+        self._receive_task = asyncio.create_task(self._receive_loop())
+
+        await self._register()
 
     async def _send_messages(self, messages: list[Message]) -> list[Reply]:
         replies: list[Reply] = []
@@ -97,6 +134,8 @@ class Node(ABC):
             LOG.debug("Error registering with dtnd: %s", reply.error)
             return
 
+        LOG.info("Successfully registered with dtnd")
+
     async def _send_bundle(self, bundle: BundleData) -> Reply:
         message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
         return await self._send_message(message=message)
@@ -137,6 +176,66 @@ class Node(ABC):
             LOG.error("dtnd replied with error: %s", reply.error)
 
         return bundles
+
+    @abstractmethod
+    async def _handle_bundle(self, bundle: BundleData) -> list[BundleData]:
+        """
+        Handle an incoming bundle.
+
+        Args:
+            bundle (BundleData): The incoming bundle to handle.
+
+        Returns:
+            list[BundleData]: A list of response bundles to send back.
+        """
+        pass
+
+    async def _handle_bundles(self, bundles: list[BundleData]) -> list[BundleData]:
+        """
+        Handle multiple incoming bundles.
+
+        Args:
+            bundles (list[BundleData]): The incoming bundles to handle.
+
+        Returns:
+            list[BundleData]: A list of response bundles to send back.
+        """
+        replies: list[BundleData] = []
+        for bundle in bundles:
+            replies.extend(await self._handle_bundle(bundle=bundle))
+        return replies
+
+    async def _receive_once(self) -> None:
+        """
+        Receive and handle bundles once.
+        """
+        try:
+            LOG.debug("Retrieving bundles")
+            bundles = await self._get_new_bundles()
+            if bundles:
+                LOG.debug(f"Got {len(bundles)} new bundles")
+                replies = await self._handle_bundles(bundles=bundles)
+
+                if replies:
+                    await self._send_and_check(bundles=replies)
+            else:
+                LOG.debug("No new bundles")
+        except Exception as err:
+            LOG.exception("Error fetching bundles: %s", err)
+
+    async def _receive_loop(self) -> None:
+        """
+        Loop to continuously receive and handle bundles.
+        """
+        LOG.info("Starting receive loop")
+
+        while self._running:
+            await self._receive_once()
+
+            LOG.debug("Sleeping before next poll")
+            await self._interruptible_sleep(BUNDLE_POLL_INTERVAL_SECONDS)
+
+        LOG.info("Receive loop stopped")
 
     async def _handle_discovery(self, bundle: BundleData) -> list[BundleData]:
         """

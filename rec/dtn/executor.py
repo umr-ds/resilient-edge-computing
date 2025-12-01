@@ -31,6 +31,8 @@ from rec.dtn.node import Node
 from rec.dtn.storage import NameTakenError, Storage
 from rec.util.log import LOG
 
+MISSING_DATA_FETCH_INTERVAL_SECONDS = 10
+
 
 class WasmSetupError(RuntimeError):
     """Raised when Wasmtime/WASI setup or instantiation fails."""
@@ -71,47 +73,39 @@ class Executor(Node):
     @override
     async def run(self) -> None:
         LOG.info("Starting executor")
-        await self._register()
-        # Run bundle handler & scheduler concurrently
+        await super().run()
+
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(self._handle_bundles())
             tg.create_task(self._fetch_missing_data())
-            tg.create_task(self._scheduler())
+            tg.create_task(self._job_scheduler())
 
-    async def _handle_bundles(self) -> None:
-        LOG.info("Starting bundle handler")
-        while True:
-            LOG.debug("Bundle handler going to sleep")
-            await asyncio.sleep(10)
+        await self.stop()
 
-            LOG.debug("Running bundle handler")
-            try:
-                LOG.debug("Retrieving bundles")
-                bundles = await self._get_new_bundles()
-                if bundles:
-                    LOG.debug(f"Bundles: {bundles}")
-                    replies: list[BundleData] = []
-                    for bundle in bundles:
-                        bundle_replies = await self._handle_bundle(bundle=bundle)
-                        replies.extend(bundle_replies)
-                    if replies:
-                        await self._send_and_check(bundles=replies)
-                else:
-                    LOG.debug("No new bundles")
-            except Exception as err:
-                LOG.exception("Error fetching bundles: %s", err)
+    @override
+    async def stop(self) -> None:
+        """Stop the executor, wait for background tasks to finish and notify all waiting tasks."""
+        await super().stop()
 
+        async with self._job_ready_cv:
+            self._job_ready_cv.notify_all()
+
+    @override
     async def _handle_bundle(self, bundle: BundleData) -> list[BundleData]:
-        to_send: list[BundleData] = []
+        replies: list[BundleData] = []
 
-        if BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
-            to_send = await self._handle_discovery(bundle=bundle)
         if bundle.type == BundleType.JOB_SUBMIT:
             await self._handle_job(bundle=bundle)
-        if bundle.type == BundleType.NDATA_GET:
+        elif bundle.type == BundleType.NDATA_GET:
             await self._handle_data(bundle=bundle)
+        elif bundle.type == BundleType.NDATA_PUT:
+            # In response to _send_named_results. Can be ignored.
+            pass
+        elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
+            replies = await self._handle_discovery(bundle=bundle)
+        else:
+            LOG.warning(f"Won't handle bundle of type: {bundle.type}")
 
-        return to_send
+        return replies
 
     async def _handle_job(self, bundle: BundleData) -> None:
         LOG.debug(f"Received JobBundle: {bundle}")
@@ -194,10 +188,8 @@ class Executor(Node):
 
     async def _fetch_missing_data(self) -> None:
         LOG.info("Starting missing data fetcher")
-        while True:
-            LOG.debug("Missing data fetcher going to sleep")
-            await asyncio.sleep(20)
 
+        while self._running:
             missing = set()
             async with self._state_mutex.reader_lock:
                 for _, job_info in self._pending_jobs:
@@ -226,12 +218,18 @@ class Executor(Node):
                             "error communicating with dtnd: %s", err, exc_info=True
                         )
 
-    async def _scheduler(self) -> None:
-        LOG.info("Starting scheduler")
-        while True:
+            LOG.debug("Sleeping before next missing data fetch")
+            await self._interruptible_sleep(MISSING_DATA_FETCH_INTERVAL_SECONDS)
+
+        LOG.info("Missing data fetcher stopped")
+
+    async def _job_scheduler(self) -> None:
+        LOG.info("Starting job scheduler")
+
+        while self._running:
             # Wait until at least one job is runnable
             async with self._job_ready_cv:
-                while not await self._has_runnable_job():
+                while self._running and not await self._has_runnable_job():
                     await self._job_ready_cv.wait()
 
             result = await self._pop_next_runnable_job()
@@ -252,6 +250,8 @@ class Executor(Node):
                 # Allow new jobs to be scheduled
                 async with self._job_ready_cv:
                     self._job_ready_cv.notify_all()
+
+        LOG.info("Job scheduler stopped")
 
     async def _send_results(
         self, broker_eid: EID, job_info: JobInfo, results: bytes | None
