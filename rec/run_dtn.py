@@ -16,28 +16,28 @@ from rec.util.log import LOG
 
 def _run_broker(args: Namespace) -> None:
     LOG.info("Running in broker-mode")
-    broker = Broker(node_id=args.id, dtn_agent_socket=args.socket)
-    asyncio.run(broker.run())
+    with Broker(node_id=args.id, dtn_agent_socket=args.socket) as broker:
+        asyncio.run(broker.run())
 
 
 def _run_datastore(args: Namespace) -> None:
     LOG.info("Running in datastore-mode")
-    datastore = Datastore(
+    with Datastore(
         node_id=args.id,
         dtn_agent_socket=args.socket,
         root_directory=args.root_directory,
-    )
-    asyncio.run(datastore.run())
+    ) as datastore:
+        asyncio.run(datastore.run())
 
 
 def _run_executor(args: Namespace) -> None:
     LOG.info("Running in executor-mode")
-    executor = Executor(
+    with Executor(
         node_id=args.id,
         dtn_agent_socket=args.socket,
         root_directory=args.root_directory,
-    )
-    asyncio.run(executor.run())
+    ) as executor:
+        asyncio.run(executor.run())
 
 
 def _run_client(args: Namespace) -> None:

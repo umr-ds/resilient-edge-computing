@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from socket import AF_UNIX, SOCK_STREAM, socket
+from typing import Self
 
 from aiorwlock import RWLock
 
@@ -15,6 +16,7 @@ from rec.dtn.messages import (
     BundleType,
     Fetch,
     FetchReply,
+    InvalidMessageError,
     Message,
     MessageType,
     NodeType,
@@ -42,6 +44,21 @@ class Node(ABC):
     _broker_pending: EID | None = None
     _broker: EID | None = None
 
+    _socket: socket | None = None
+    _socket_lock: RWLock = field(default_factory=RWLock)
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if self._socket is not None:
+            try:
+                self._socket.close()
+            except Exception:
+                pass
+            self._socket = None
+            LOG.debug("Disconnected from dtnd")
+
     @property
     def _running(self) -> bool:
         """Check if the node is still running."""
@@ -54,6 +71,9 @@ class Node(ABC):
         if self._receive_task:
             await self._receive_task
 
+        async with self._socket_lock.writer_lock:
+            await self._close_connection()
+
     async def _interruptible_sleep(self, seconds: float) -> None:
         """
         Sleep for the specified number of seconds, but wake up early if the node is stopping.
@@ -64,7 +84,7 @@ class Node(ABC):
         try:
             await asyncio.wait_for(self._stop_event.wait(), timeout=seconds)
         except asyncio.TimeoutError:
-            # We slept the full duration
+            # Slept the full duration
             pass
 
     async def run(self) -> None:
@@ -77,7 +97,44 @@ class Node(ABC):
 
         await self._register()
 
+    async def _ensure_connected(self) -> None:
+        """
+        Ensures an active connection to dtnd, creates one if needed.
+
+        Note: Caller must hold _socket_lock before calling this method.
+        """
+        if self._socket is None:
+            LOG.info(f"Connecting to dtnd on {self._dtn_agent_socket}")
+            self._socket = socket(AF_UNIX, SOCK_STREAM)
+            self._socket.setblocking(False)
+            loop = asyncio.get_running_loop()
+            await loop.sock_connect(self._socket, str(self._dtn_agent_socket))
+            LOG.debug("Connected to dtnd")
+
+    async def _close_connection(self) -> None:
+        """
+        Closes the connection to dtnd if open.
+
+        Note: Caller must hold _socket_lock before calling this method.
+        """
+        if self._socket is not None:
+            try:
+                self._socket.close()
+            except Exception:
+                pass
+            self._socket = None
+            LOG.debug("Disconnected from dtnd")
+
     async def _send_messages(self, messages: list[Message]) -> list[Reply]:
+        """
+        Sends multiple messages over the socket and receives their replies.
+
+        Args:
+            messages (list[Message]): The messages to send.
+
+        Returns:
+            list[Reply]: The replies received for each message.
+        """
         replies: list[Reply] = []
 
         for message in messages:
@@ -85,39 +142,85 @@ class Node(ABC):
 
         return replies
 
-    async def _send_message(self, message: Message) -> Reply:
+    async def _send_and_receive(self, message: Message) -> Reply:
+        """
+        Sends a message over the socket and receives the reply.
+
+        Note: Caller must hold `_socket_lock` before calling this method.
+        Assumes that `_ensure_connected` has already been called.
+
+        Args:
+            message (Message): The message to send.
+
+        Returns:
+            Reply: The reply received for the message.
+
+        Raises:
+            ConnectionError: If not connected to dtnd.
+            ConnectionResetError: If the connection is closed by dtnd.
+            InvalidMessageError: If the reply is malformed or not a Reply.
+        """
+        if self._socket is None:
+            raise ConnectionError("Not connected to dtnd")
         loop = asyncio.get_running_loop()
-        LOG.info(f"Connecting to dtnd on {self._dtn_agent_socket}")
-        with socket(AF_UNIX, SOCK_STREAM) as s:
-            s.connect(str(self._dtn_agent_socket))
-            LOG.debug("Connected to dtnd")
 
-            ## serialize and send message
-            message_bytes = serialize(message=message)
-            message_length = len(message_bytes)
-            LOG.debug(f"Message length: {message_length}")
-            message_length_bytes = message_length.to_bytes(
-                length=8, byteorder="big", signed=False
+        # Serialize and send message
+        message_bytes = serialize(message=message)
+        message_length = len(message_bytes)
+        LOG.debug(f"Message length: {message_length}")
+        message_length_bytes = message_length.to_bytes(
+            length=8, byteorder="big", signed=False
+        )
+
+        await loop.sock_sendall(self._socket, message_length_bytes)
+        LOG.debug("Sent message length")
+        await loop.sock_sendall(self._socket, message_bytes)
+        LOG.debug("Sent message")
+
+        # Receive and deserialize reply
+        data = await loop.sock_recv(self._socket, 8)
+        if len(data) == 0:
+            raise ConnectionResetError("Connection closed by dtnd")
+        reply_length = int.from_bytes(bytes=data, byteorder="big", signed=False)
+        LOG.debug(f"Reply length: {reply_length}")
+
+        if reply_length <= 0:
+            raise InvalidMessageError(f"Invalid reply length: {reply_length}")
+
+        data = await loop.sock_recv(self._socket, reply_length)
+        reply = deserialize(serialized=data)
+        LOG.debug(f"Received reply: {reply}")
+
+        if not isinstance(reply, Reply):
+            raise InvalidMessageError(
+                f"Expected Reply message, got {type(reply).__name__}"
             )
+        return reply
 
-            await loop.sock_sendall(s, message_length_bytes)
-            LOG.debug("Sent message length")
-            await loop.sock_sendall(s, message_bytes)
-            LOG.debug("Sent message")
+    async def _send_message(self, message: Message) -> Reply:
+        """
+        Sends a message over the socket and receives the reply.
+        Retries once on connection failure.
 
-            # receive and deserialize reply
-            data = await loop.sock_recv(s, 8)
-            reply_length = int.from_bytes(bytes=data, byteorder="big", signed=False)
-            LOG.debug(f"Reply length: {reply_length}")
+        Args:
+            message (Message): The message to send.
 
-            assert reply_length > 0
+        Returns:
+            Reply: The reply received for the message.
+        """
+        async with self._socket_lock.writer_lock:
+            try:
+                await self._ensure_connected()
+                return await self._send_and_receive(message)
 
-            data = await loop.sock_recv(s, reply_length)
-            reply = deserialize(serialized=data)
-            LOG.debug(f"Received reply: {reply}")
+            except (ConnectionError, BrokenPipeError, OSError) as err:
+                # Connection failed, close and retry once
+                LOG.warning(f"Connection error, reconnecting: {err}")
+                await self._close_connection()
 
-            assert isinstance(reply, Reply)
-            return reply
+                # Retry with fresh connection
+                await self._ensure_connected()
+                return await self._send_and_receive(message)
 
     async def _register(self) -> None:
         LOG.info("Performing registration")
@@ -168,7 +271,9 @@ class Node(ABC):
         LOG.debug(f"Sending fetch: {message}")
         reply = await self._send_message(message=message)
 
-        assert isinstance(reply, FetchReply)
+        if not isinstance(reply, FetchReply):
+            LOG.error(f"Expected FetchReply, got {type(reply).__name__}")
+            return bundles
 
         if reply.success:
             bundles = reply.bundles

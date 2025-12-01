@@ -382,40 +382,40 @@ class Client(Node):
 
 
 async def async_main(args: Namespace) -> None:
-    client = Client(
+    with Client(
         node_id=args.id,
         dtn_agent_socket=args.socket,
         context_file=args.context_file,
         results_directory=args.results_directory,
-    )
-    await client.run()
+    ) as client:
+        await client.run()
 
-    try:
-        match args.command:
-            case "query":
-                await client.job_query(submitter=args.submitter)
-            case "data":
-                match args.data_command:
-                    case "get":
-                        await client.data_get(name=args.data_name)
-                    case "put":
-                        await client.data_put(
-                            name=args.data_name,
-                            data_file=args.data_file,
-                        )
-            case "exec":
-                try:
-                    await client.execute_plan(plan_path=args.plan_file)
-                except Exception as e:
-                    LOG.error(f"Failed to execute plan: {e}", exc_info=True)
-            case "check":
-                await client.check_for_bundles()
-            case "listen":
-                await client.listen_for_bundles()
-            case _:
-                LOG.critical(f"Unknown command: {args.command}")
-    finally:
-        await client.stop()
+        try:
+            match args.command:
+                case "query":
+                    await client.job_query(submitter=args.submitter)
+                case "data":
+                    match args.data_command:
+                        case "get":
+                            await client.data_get(name=args.data_name)
+                        case "put":
+                            await client.data_put(
+                                name=args.data_name,
+                                data_file=args.data_file,
+                            )
+                case "exec":
+                    try:
+                        await client.execute_plan(plan_path=args.plan_file)
+                    except Exception as e:
+                        LOG.error(f"Failed to execute plan: {e}", exc_info=True)
+                case "check":
+                    await client.check_for_bundles()
+                case "listen":
+                    await client.listen_for_bundles()
+                case _:
+                    LOG.critical(f"Unknown command: {args.command}")
+        finally:
+            await client.stop()
 
 
 def main(args: Namespace) -> None:
