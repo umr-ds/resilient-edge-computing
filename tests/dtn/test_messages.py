@@ -168,7 +168,7 @@ def randomized_fetch_reply(draw: st.DrawFn) -> FetchReply:
 @st.composite
 def randomized_bundle_create(draw: st.DrawFn) -> BundleCreate:
     return BundleCreate(
-        type=MessageType.CREATE,
+        type=MessageType.BUNDLE_CREATE,
         bundle=draw(randomized_bundle()),
     )
 

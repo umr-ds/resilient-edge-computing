@@ -35,7 +35,7 @@ class MessageType(IntEnum):
     REGISTER = 2
     FETCH = 3
     FETCH_REPLY = 4
-    CREATE = 5
+    BUNDLE_CREATE = 5
 
 
 @dataclass(frozen=True)
@@ -156,7 +156,7 @@ class BundleCreate(Message):
     bundle: BundleData
 
     def __post_init__(self) -> None:
-        if self.type != MessageType.CREATE:
+        if self.type != MessageType.BUNDLE_CREATE:
             raise InvalidMessageError(
                 f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
             )
@@ -265,7 +265,7 @@ MESSAGE_CONSTRUCTORS: dict[MessageType, Callable[[dict], Message]] = {
     MessageType.REGISTER: Register.from_dict,
     MessageType.FETCH: Fetch.from_dict,
     MessageType.FETCH_REPLY: FetchReply.from_dict,
-    MessageType.CREATE: BundleCreate.from_dict,
+    MessageType.BUNDLE_CREATE: BundleCreate.from_dict,
 }
 
 

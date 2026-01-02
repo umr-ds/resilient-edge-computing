@@ -240,7 +240,7 @@ class Node(ABC):
         LOG.info("Successfully registered with dtnd")
 
     async def _send_bundle(self, bundle: BundleData) -> Reply:
-        message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
+        message = BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=bundle)
         return await self._send_message(message=message)
 
     async def _send_bundles(self, bundles: list[BundleData]) -> list[Reply]:

@@ -182,7 +182,7 @@ class Client(Node):
             destination=self._broker,
             submitter=EID(submitter),
         )
-        message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
+        message = BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=query_bundle)
         await self._send_message(message=message)
         broker_response = await self.wait_reply(BundleType.JOB_LIST)
 
@@ -213,7 +213,7 @@ class Client(Node):
             destination=DATASTORE_MULTICAST_ADDRESS,
             named_data=name,
         )
-        message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
+        message = BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=query_bundle)
         await self._send_message(message=message)
         store_rply = await self.wait_reply(BundleType.NDATA_GET)
 
@@ -259,7 +259,7 @@ class Client(Node):
             payload=data,
             named_data=name,
         )
-        message = BundleCreate(type=MessageType.CREATE, bundle=query_bundle)
+        message = BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=query_bundle)
         await self._send_message(message=message)
         store_rply = await self.wait_reply(BundleType.NDATA_PUT)
 
@@ -350,7 +350,7 @@ class Client(Node):
             destination=self._broker,
             payload=job_payload,
         )
-        message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
+        message = BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=bundle)
 
         reply = await self._send_message(message=message)
 

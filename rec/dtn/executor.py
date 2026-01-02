@@ -209,7 +209,7 @@ class Executor(Node):
                     )
                     try:
                         dtnd_response = await self._send_message(
-                            BundleCreate(type=MessageType.CREATE, bundle=request)
+                            BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=request)
                         )
                         if not dtnd_response.success:
                             LOG.error("dtnd sent error: %s", dtnd_response.error)
@@ -278,7 +278,7 @@ class Executor(Node):
                 metadata=job_info,
             ).serialize(),
         )
-        message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
+        message = BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=bundle)
 
         try:
             dtnd_response = await self._send_message(message)
@@ -299,7 +299,7 @@ class Executor(Node):
                 results_data=results,
             ).serialize(),
         )
-        message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
+        message = BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=bundle)
 
         try:
             dtnd_response = await self._send_message(message)
@@ -336,7 +336,7 @@ class Executor(Node):
                 payload=data,
                 named_data=name,
             )
-            message = BundleCreate(type=MessageType.CREATE, bundle=bundle)
+            message = BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=bundle)
 
             try:
                 dtnd_response = await self._send_message(message)
