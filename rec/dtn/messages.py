@@ -34,9 +34,10 @@ class NodeType(IntEnum):
 class MessageType(IntEnum):
     REPLY = 1
     REGISTER = 2
-    FETCH = 3
-    FETCH_REPLY = 4
-    BUNDLE_CREATE = 5
+    BUNDLE_CREATE = 3
+    BUNDLE_PUSH_START = 4
+    BUNDLE_PUSH_STOP = 5
+    BUNDLE_PUSH = 6
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -104,51 +105,6 @@ class Register(Message):
 
 
 @dataclass(frozen=True)
-class Fetch(Message):
-    endpoint_id: EID
-    node_type: NodeType
-
-    def __post_init__(self) -> None:
-        if self.type != MessageType.FETCH:
-            raise InvalidMessageError(
-                f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
-            )
-        if not self.endpoint_id:
-            raise InvalidMessageError("EndpointID must not be dtn:none")
-
-    @override
-    def dictify(self) -> dict:
-        return self.__dict__ | super().dictify()
-
-    @classmethod
-    def from_dict(cls, data) -> Fetch:
-        return cls(**data)
-
-
-@dataclass(frozen=True)
-class FetchReply(Reply):
-    bundles: list[BundleData]
-
-    def __post_init__(self) -> None:
-        if self.type != MessageType.FETCH_REPLY:
-            raise InvalidMessageError(
-                f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
-            )
-
-    @override
-    def dictify(self) -> dict:
-        own_dict = {"bundles": [bundle.dictify() for bundle in self.bundles]}
-        return self.__dict__ | super().dictify() | own_dict
-
-    @classmethod
-    def from_dict(cls, data) -> FetchReply:
-        data["bundles"] = [
-            BundleData.from_dict(bundle_data) for bundle_data in data["bundles"]
-        ]
-        return cls(**data)
-
-
-@dataclass(frozen=True)
 class BundleCreate(Message):
     bundle: BundleData
 
@@ -166,6 +122,72 @@ class BundleCreate(Message):
     @classmethod
     def from_dict(cls, data) -> BundleCreate:
         data["bundle"] = BundleData.from_dict(data["bundle"])
+        return cls(**data)
+
+
+@dataclass(frozen=True)
+class BundlePushStart(Message):
+    endpoint_id: EID
+    node_type: NodeType
+
+    def __post_init__(self) -> None:
+        if self.type != MessageType.BUNDLE_PUSH_START:
+            raise InvalidMessageError(
+                f"Message needs MessageType {MessageType.BUNDLE_PUSH_START}, but has {self.type}"
+            )
+        if not self.endpoint_id:
+            raise InvalidMessageError("EndpointID must not be dtn:none")
+
+    @override
+    def dictify(self) -> dict:
+        return self.__dict__ | super().dictify()
+
+    @classmethod
+    def from_dict(cls, data) -> BundlePushStart:
+        return cls(**data)
+
+
+@dataclass(frozen=True)
+class BundlePushStop(Message):
+    endpoint_id: EID
+
+    def __post_init__(self) -> None:
+        if self.type != MessageType.BUNDLE_PUSH_STOP:
+            raise InvalidMessageError(
+                f"Message needs MessageType {MessageType.BUNDLE_PUSH_STOP}, but has {self.type}"
+            )
+        if not self.endpoint_id:
+            raise InvalidMessageError("EndpointID must not be dtn:none")
+
+    @override
+    def dictify(self) -> dict:
+        return self.__dict__ | super().dictify()
+
+    @classmethod
+    def from_dict(cls, data) -> BundlePushStop:
+        return cls(**data)
+
+
+@dataclass(frozen=True)
+class BundlePush(Message):
+    bundles: list[BundleData]
+
+    def __post_init__(self) -> None:
+        if self.type != MessageType.BUNDLE_PUSH:
+            raise InvalidMessageError(
+                f"Message needs MessageType {MessageType.BUNDLE_PUSH}, but has {self.type}"
+            )
+
+    @override
+    def dictify(self) -> dict:
+        own_dict = {"bundles": [bundle.dictify() for bundle in self.bundles]}
+        return self.__dict__ | super().dictify() | own_dict
+
+    @classmethod
+    def from_dict(cls, data) -> BundlePush:
+        data["bundles"] = [
+            BundleData.from_dict(bundle_data) for bundle_data in data["bundles"]
+        ]
         return cls(**data)
 
 
@@ -259,9 +281,10 @@ def serialize(message: Message) -> bytes:
 MESSAGE_CONSTRUCTORS: dict[MessageType, Callable[[dict], Message]] = {
     MessageType.REPLY: Reply.from_dict,
     MessageType.REGISTER: Register.from_dict,
-    MessageType.FETCH: Fetch.from_dict,
-    MessageType.FETCH_REPLY: FetchReply.from_dict,
     MessageType.BUNDLE_CREATE: BundleCreate.from_dict,
+    MessageType.BUNDLE_PUSH_START: BundlePushStart.from_dict,
+    MessageType.BUNDLE_PUSH_STOP: BundlePushStop.from_dict,
+    MessageType.BUNDLE_PUSH: BundlePush.from_dict,
 }
 
 

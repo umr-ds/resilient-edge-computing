@@ -377,8 +377,7 @@ class Client(Node):
         """
         LOG.info("Starting to listen for bundles from the daemon")
         # Just keep the receive loop alive
-        if self._bundle_receive_task:
-            await self._bundle_receive_task
+        await self._stop_event.wait()
 
 
 async def async_main(args: Namespace) -> None:

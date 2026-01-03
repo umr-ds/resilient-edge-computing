@@ -14,9 +14,10 @@ from rec.dtn.eid import EID
 from rec.dtn.messages import (
     BundleCreate,
     BundleData,
+    BundlePush,
+    BundlePushStart,
+    BundlePushStop,
     BundleType,
-    Fetch,
-    FetchReply,
     InvalidMessageError,
     Message,
     MessageType,
@@ -28,8 +29,6 @@ from rec.dtn.messages import (
 )
 from rec.util.log import LOG
 
-BUNDLE_POLL_INTERVAL_SECONDS = 10
-
 
 @dataclass
 class Node(ABC):
@@ -40,13 +39,14 @@ class Node(ABC):
     _state_mutex: RWLock = field(default_factory=RWLock)
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event)
 
-    _bundle_receive_task: asyncio.Task | None = None
-
     _broker_pending: EID | None = None
     _broker: EID | None = None
 
     _socket: socket | None = None
     _socket_lock: RWLock = field(default_factory=RWLock)
+
+    _bundle_queue: asyncio.Queue[BundlePush] = field(default_factory=asyncio.Queue)
+    _bundle_processing_task: asyncio.Task | None = None
 
     _message_receive_task: asyncio.Task | None = None
     _pending_requests: dict[UUID, asyncio.Future[Reply]] = field(default_factory=dict)
@@ -72,11 +72,16 @@ class Node(ABC):
         """Stop the node and wait for background tasks to finish."""
         self._stop_event.set()
 
-        if self._bundle_receive_task:
-            await self._bundle_receive_task
-
         async with self._socket_lock.writer_lock:
             await self._close_connection()
+
+        if self._bundle_processing_task:
+            self._bundle_processing_task.cancel()
+            try:
+                await self._bundle_processing_task
+            except asyncio.CancelledError:
+                pass
+            self._bundle_processing_task = None
 
     async def _interruptible_sleep(self, seconds: float) -> None:
         """
@@ -96,8 +101,10 @@ class Node(ABC):
         # Call stop() on SIGINT (Ctrl+C)
         loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(self.stop()))
 
-        # Start background bundle receive loop for handling incoming bundles
-        self._bundle_receive_task = asyncio.create_task(self._receive_loop())
+        # Start bundle processing task
+        self._bundle_processing_task = asyncio.create_task(
+            self._bundle_processing_loop()
+        )
 
         await self._register()
 
@@ -117,8 +124,10 @@ class Node(ABC):
 
             # Start background message receive loop
             self._message_receive_task = asyncio.create_task(
-                self._message_receive_loop()
+                self._message_receive_loop(self._socket)
             )
+
+            await self._start_bundle_push()
 
     async def _close_connection(self) -> None:
         """
@@ -126,6 +135,8 @@ class Node(ABC):
 
         Note: Caller must hold _socket_lock before calling this method.
         """
+        await self._stop_bundle_push()
+
         # Cancel message receive task
         if self._message_receive_task is not None:
             if self._message_receive_task is not asyncio.current_task():
@@ -151,6 +162,49 @@ class Node(ABC):
             self._socket = None
             LOG.debug("Disconnected from dtnd")
 
+    async def _start_bundle_push(self) -> None:
+        """
+        Start push-based bundle delivery.
+        To avoid recursion and deadlocks, this method handles the handshake itself.
+
+        Note: Caller must hold _socket_lock before calling this method.
+        """
+        message = BundlePushStart(
+            type=MessageType.BUNDLE_PUSH_START,
+            endpoint_id=self._node_id,
+            node_type=self._node_type,
+        )
+
+        # Create a future for this request
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[Reply] = loop.create_future()
+        self._pending_requests[message.message_id] = future
+
+        await self._send_raw(message)
+
+        reply = await future
+
+        if not reply.success:
+            raise RuntimeError(f"Failed to start push mode: {reply.error}")
+        LOG.info("Push mode enabled")
+
+    async def _stop_bundle_push(self) -> None:
+        """
+        Stop push-based bundle delivery.
+        Since the connection is closing, we just ignore failure and don't require a reply.
+
+        Note: Caller must hold _socket_lock before calling this method.
+        """
+        message = BundlePushStop(
+            type=MessageType.BUNDLE_PUSH_STOP,
+            endpoint_id=self._node_id,
+        )
+        try:
+            await self._send_raw(message)
+        except Exception:
+            pass
+        LOG.info("Push mode disabled")
+
     async def _recv_exact(self, socket: socket, nbytes: int) -> bytes:
         loop = asyncio.get_running_loop()
         data = b""
@@ -161,7 +215,7 @@ class Node(ABC):
             data += packet
         return data
 
-    async def _message_receive_loop(self) -> None:
+    async def _message_receive_loop(self, sock: socket) -> None:
         """
         Background loop to receive any messages from dtnd.
         """
@@ -169,35 +223,16 @@ class Node(ABC):
 
         try:
             while self._running:
-                async with self._socket_lock.reader_lock:
-                    s = self._socket
-                    if s is None:
-                        break
-
-                data = await self._recv_exact(s, 8)
+                data = await self._recv_exact(sock, 8)
                 reply_length = int.from_bytes(bytes=data, byteorder="big", signed=False)
                 LOG.debug(f"Reply length: {reply_length}")
 
                 if reply_length <= 0:
                     raise InvalidMessageError(f"Invalid reply length: {reply_length}")
 
-                data = await self._recv_exact(s, reply_length)
-                reply = deserialize(serialized=data)
-                LOG.debug(f"Received reply: {reply}")
-
-                if not isinstance(reply, Reply):
-                    raise InvalidMessageError(
-                        f"Expected Reply message, got {type(reply).__name__}"
-                    )
-
-                future = self._pending_requests.pop(reply.message_id, None)
-                if future is not None:
-                    if not future.done():
-                        future.set_result(reply)
-                else:
-                    LOG.warning(
-                        f"Received reply for unknown request: {reply.message_id}"
-                    )
+                data = await self._recv_exact(sock, reply_length)
+                message = deserialize(serialized=data)
+                await self._handle_incoming_message(message=message)
 
         except asyncio.CancelledError:
             LOG.debug("Message receive loop cancelled")
@@ -207,6 +242,70 @@ class Node(ABC):
                 await self._close_connection()
         finally:
             LOG.debug("Message receive loop stopped")
+
+    async def _handle_incoming_message(self, message: Message) -> None:
+        """
+        Handle an incoming message from dtnd.
+
+        Args:
+            message (Message): The incoming message to handle.
+        """
+        match message:
+            case Reply() as reply:
+                LOG.debug(f"Received reply: {reply}")
+
+                future = self._pending_requests.pop(reply.message_id, None)
+                if future is None:
+                    LOG.warning(
+                        f"Received reply for unknown request: {reply.message_id}"
+                    )
+                    return
+
+                if not future.done():
+                    future.set_result(reply)
+
+            case BundlePush() as bundle_push:
+                # ACK BundlePush immediately
+                ack = Reply(
+                    type=MessageType.REPLY,
+                    message_id=bundle_push.message_id,
+                    success=True,
+                    error="",
+                )
+                async with self._socket_lock.writer_lock:
+                    await self._send_raw(ack)
+
+                # Queue bundles for processing
+                self._bundle_queue.put_nowait(bundle_push)
+
+    async def _bundle_processing_loop(self) -> None:
+        LOG.debug("Starting bundle processing loop")
+        try:
+            while self._running:
+                bundle_push = await self._bundle_queue.get()
+                await self._process_bundle_push(bundle_push)
+                self._bundle_queue.task_done()
+        except asyncio.CancelledError:
+            LOG.debug("Bundle processing loop cancelled")
+        except Exception as err:
+            LOG.exception("Error in bundle processing loop: %s", err)
+        finally:
+            LOG.debug("Bundle processing loop stopped")
+
+    async def _process_bundle_push(self, bundle_push: BundlePush) -> None:
+        bundles = bundle_push.bundles
+        if not bundles:
+            LOG.warning("Received empty bundle push")
+            return
+
+        LOG.debug(f"Received bundle push with {len(bundles)} bundles")
+
+        try:
+            replies = await self._handle_bundles(bundles=bundles)
+            if replies:
+                await self._send_and_check(bundles=replies)
+        except Exception as err:
+            LOG.exception("Error processing bundle push: %s", err)
 
     async def _send_messages(self, messages: list[Message]) -> list[Reply]:
         """
@@ -326,27 +425,6 @@ class Node(ABC):
         except Exception as err:
             LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
-    async def _get_new_bundles(self) -> list[BundleData]:
-        LOG.debug("Retrieving new bundles")
-        bundles: list[BundleData] = []
-
-        message = Fetch(
-            type=MessageType.FETCH, endpoint_id=self._node_id, node_type=self._node_type
-        )
-        LOG.debug(f"Sending fetch: {message}")
-        reply = await self._send_message(message=message)
-
-        if not isinstance(reply, FetchReply):
-            LOG.error(f"Expected FetchReply, got {type(reply).__name__}")
-            return bundles
-
-        if reply.success:
-            bundles = reply.bundles
-        else:
-            LOG.error("dtnd replied with error: %s", reply.error)
-
-        return bundles
-
     @abstractmethod
     async def _handle_bundle(self, bundle: BundleData) -> list[BundleData]:
         """
@@ -374,38 +452,6 @@ class Node(ABC):
         for bundle in bundles:
             replies.extend(await self._handle_bundle(bundle=bundle))
         return replies
-
-    async def _receive_once(self) -> None:
-        """
-        Receive and handle bundles once.
-        """
-        try:
-            LOG.debug("Retrieving bundles")
-            bundles = await self._get_new_bundles()
-            if bundles:
-                LOG.debug(f"Got {len(bundles)} new bundles")
-                replies = await self._handle_bundles(bundles=bundles)
-
-                if replies:
-                    await self._send_and_check(bundles=replies)
-            else:
-                LOG.debug("No new bundles")
-        except Exception as err:
-            LOG.exception("Error fetching bundles: %s", err)
-
-    async def _receive_loop(self) -> None:
-        """
-        Loop to continuously receive and handle bundles.
-        """
-        LOG.info("Starting receive loop")
-
-        while self._running:
-            await self._receive_once()
-
-            LOG.debug("Sleeping before next poll")
-            await self._interruptible_sleep(BUNDLE_POLL_INTERVAL_SECONDS)
-
-        LOG.info("Receive loop stopped")
 
     async def _handle_discovery(self, bundle: BundleData) -> list[BundleData]:
         """

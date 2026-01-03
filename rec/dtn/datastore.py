@@ -31,8 +31,7 @@ class Datastore(Node):
         LOG.info("Starting datastore")
         await super().run()
 
-        if self._bundle_receive_task:
-            await self._bundle_receive_task
+        await self._stop_event.wait()
 
     @override
     async def _handle_bundle(self, bundle: BundleData) -> list[BundleData]:

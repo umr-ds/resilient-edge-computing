@@ -4,9 +4,10 @@ from hypothesis import strategies as st
 from rec.dtn.messages import (
     BundleCreate,
     BundleData,
+    BundlePush,
+    BundlePushStart,
+    BundlePushStop,
     BundleType,
-    Fetch,
-    FetchReply,
     MessageType,
     NodeType,
     Register,
@@ -140,9 +141,17 @@ def randomized_register(draw: st.DrawFn) -> Register:
 
 
 @st.composite
-def randomized_fetch(draw: st.DrawFn) -> Fetch:
-    return Fetch(
-        type=MessageType.FETCH,
+def randomized_bundle_create(draw: st.DrawFn) -> BundleCreate:
+    return BundleCreate(
+        type=MessageType.BUNDLE_CREATE,
+        bundle=draw(randomized_bundle()),
+    )
+
+
+@st.composite
+def randomized_bundle_push_start(draw: st.DrawFn) -> BundlePushStart:
+    return BundlePushStart(
+        type=MessageType.BUNDLE_PUSH_START,
         endpoint_id=draw(dtn_eid(singleton=draw(st.booleans()), not_none=True)),
         node_type=NodeType(
             draw(st.integers(min_value=NodeType.BROKER, max_value=NodeType.CLIENT))
@@ -151,25 +160,18 @@ def randomized_fetch(draw: st.DrawFn) -> Fetch:
 
 
 @st.composite
-def randomized_fetch_reply(draw: st.DrawFn) -> FetchReply:
-    success = draw(st.booleans())
-    if not success:
-        error = draw(st.text(min_size=1))
-    else:
-        error = ""
-    return FetchReply(
-        type=MessageType.FETCH_REPLY,
-        bundles=draw(st.lists(elements=randomized_bundle())),
-        success=success,
-        error=error,
+def randomized_bundle_push_stop(draw: st.DrawFn) -> BundlePushStop:
+    return BundlePushStop(
+        type=MessageType.BUNDLE_PUSH_STOP,
+        endpoint_id=draw(dtn_eid(singleton=draw(st.booleans()), not_none=True)),
     )
 
 
 @st.composite
-def randomized_bundle_create(draw: st.DrawFn) -> BundleCreate:
-    return BundleCreate(
-        type=MessageType.BUNDLE_CREATE,
-        bundle=draw(randomized_bundle()),
+def randomized_bundle_push(draw: st.DrawFn) -> BundlePush:
+    return BundlePush(
+        type=MessageType.BUNDLE_PUSH,
+        bundles=draw(st.lists(elements=randomized_bundle())),
     )
 
 
@@ -187,22 +189,29 @@ def test_register_serialize(message: Register) -> None:
     assert deserialized == message
 
 
-@given(message=randomized_fetch())
-def test_fetch_serialize(message: Fetch) -> None:
-    serialized = serialize(message)
-    deserialized = deserialize(serialized)
-    assert deserialized == message
-
-
-@given(message=randomized_fetch_reply())
-def test_fetch_reply_serialize(message: FetchReply) -> None:
-    serialized = serialize(message)
-    deserialized = deserialize(serialized)
-    assert deserialized == message
-
-
 @given(message=randomized_bundle_create())
 def test_bundle_create_serialize(message: BundleCreate) -> None:
+    serialized = serialize(message)
+    deserialized = deserialize(serialized)
+    assert deserialized == message
+
+
+@given(message=randomized_bundle_push_start())
+def test_bundle_push_start_serialize(message: BundlePushStart) -> None:
+    serialized = serialize(message)
+    deserialized = deserialize(serialized)
+    assert deserialized == message
+
+
+@given(message=randomized_bundle_push_stop())
+def test_bundle_push_stop_serialize(message: BundlePushStop) -> None:
+    serialized = serialize(message)
+    deserialized = deserialize(serialized)
+    assert deserialized == message
+
+
+@given(message=randomized_bundle_push())
+def test_bundle_push_serialize(message: BundlePush) -> None:
     serialized = serialize(message)
     deserialized = deserialize(serialized)
     assert deserialized == message
