@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import tempfile
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import override
+from uuid import UUID, uuid4
 
 from ormsgpack import packb, unpackb
 
@@ -38,12 +39,15 @@ class MessageType(IntEnum):
     BUNDLE_CREATE = 5
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Message:
     type: MessageType
+    message_id: UUID = field(default_factory=uuid4)
 
     def dictify(self) -> dict:
-        return self.__dict__
+        data = dict(self.__dict__)
+        data["message_id"] = self.message_id.bytes
+        return data
 
     @classmethod
     def from_dict(cls, data) -> Message:
@@ -71,9 +75,7 @@ class Reply(Message):
 
     @override
     def dictify(self) -> dict:
-        parent_dict = super().dictify()
-        own_dict = self.__dict__
-        return parent_dict | own_dict
+        return self.__dict__ | super().dictify()
 
     @classmethod
     def from_dict(cls, data) -> Reply:
@@ -94,9 +96,7 @@ class Register(Message):
 
     @override
     def dictify(self) -> dict:
-        parent_dict = super().dictify()
-        own_dict = self.__dict__
-        return parent_dict | own_dict
+        return self.__dict__ | super().dictify()
 
     @classmethod
     def from_dict(cls, data) -> Register:
@@ -118,9 +118,7 @@ class Fetch(Message):
 
     @override
     def dictify(self) -> dict:
-        parent_dict = super().dictify()
-        own_dict = self.__dict__
-        return parent_dict | own_dict
+        return self.__dict__ | super().dictify()
 
     @classmethod
     def from_dict(cls, data) -> Fetch:
@@ -139,9 +137,8 @@ class FetchReply(Reply):
 
     @override
     def dictify(self) -> dict:
-        parent_dict = super().dictify()
         own_dict = {"bundles": [bundle.dictify() for bundle in self.bundles]}
-        return parent_dict | own_dict
+        return self.__dict__ | super().dictify() | own_dict
 
     @classmethod
     def from_dict(cls, data) -> FetchReply:
@@ -163,9 +160,8 @@ class BundleCreate(Message):
 
     @override
     def dictify(self) -> dict:
-        parent_dict = super().dictify()
         own_dict = {"bundle": self.bundle.dictify()}
-        return parent_dict | own_dict
+        return self.__dict__ | super().dictify() | own_dict
 
     @classmethod
     def from_dict(cls, data) -> BundleCreate:
@@ -283,6 +279,9 @@ def deserialize(serialized: bytes) -> Message:
 
         if msg_type not in MESSAGE_CONSTRUCTORS:
             raise InvalidMessageError(f"No constructor defined for {msg_type}")
+
+        if "message_id" in data_dict:
+            data_dict["message_id"] = UUID(bytes=data_dict["message_id"])
 
         return MESSAGE_CONSTRUCTORS[msg_type](data_dict)
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from socket import AF_UNIX, SOCK_STREAM, socket
 from typing import Self
+from uuid import UUID
 
 from aiorwlock import RWLock
 
@@ -39,13 +40,16 @@ class Node(ABC):
     _state_mutex: RWLock = field(default_factory=RWLock)
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event)
 
-    _receive_task: asyncio.Task | None = None
+    _bundle_receive_task: asyncio.Task | None = None
 
     _broker_pending: EID | None = None
     _broker: EID | None = None
 
     _socket: socket | None = None
     _socket_lock: RWLock = field(default_factory=RWLock)
+
+    _message_receive_task: asyncio.Task | None = None
+    _pending_requests: dict[UUID, asyncio.Future[Reply]] = field(default_factory=dict)
 
     def __enter__(self) -> Self:
         return self
@@ -68,8 +72,8 @@ class Node(ABC):
         """Stop the node and wait for background tasks to finish."""
         self._stop_event.set()
 
-        if self._receive_task:
-            await self._receive_task
+        if self._bundle_receive_task:
+            await self._bundle_receive_task
 
         async with self._socket_lock.writer_lock:
             await self._close_connection()
@@ -92,8 +96,8 @@ class Node(ABC):
         # Call stop() on SIGINT (Ctrl+C)
         loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(self.stop()))
 
-        # Start background receive loop for handling incoming bundles
-        self._receive_task = asyncio.create_task(self._receive_loop())
+        # Start background bundle receive loop for handling incoming bundles
+        self._bundle_receive_task = asyncio.create_task(self._receive_loop())
 
         await self._register()
 
@@ -111,12 +115,34 @@ class Node(ABC):
             await loop.sock_connect(self._socket, str(self._dtn_agent_socket))
             LOG.debug("Connected to dtnd")
 
+            # Start background message receive loop
+            self._message_receive_task = asyncio.create_task(
+                self._message_receive_loop()
+            )
+
     async def _close_connection(self) -> None:
         """
         Closes the connection to dtnd if open.
 
         Note: Caller must hold _socket_lock before calling this method.
         """
+        # Cancel message receive task
+        if self._message_receive_task is not None:
+            if self._message_receive_task is not asyncio.current_task():
+                self._message_receive_task.cancel()
+                try:
+                    await self._message_receive_task
+                except asyncio.CancelledError:
+                    pass
+            self._message_receive_task = None
+
+        # Fail all pending requests
+        for reply_future in self._pending_requests.values():
+            if not reply_future.done():
+                reply_future.set_exception(ConnectionResetError("Connection closed"))
+        self._pending_requests.clear()
+
+        # Close socket
         if self._socket is not None:
             try:
                 self._socket.close()
@@ -124,6 +150,63 @@ class Node(ABC):
                 pass
             self._socket = None
             LOG.debug("Disconnected from dtnd")
+
+    async def _recv_exact(self, socket: socket, nbytes: int) -> bytes:
+        loop = asyncio.get_running_loop()
+        data = b""
+        while len(data) < nbytes:
+            packet = await loop.sock_recv(socket, nbytes - len(data))
+            if not packet:
+                raise ConnectionResetError("Connection closed by dtnd")
+            data += packet
+        return data
+
+    async def _message_receive_loop(self) -> None:
+        """
+        Background loop to receive any messages from dtnd.
+        """
+        LOG.debug("Starting message receive loop")
+
+        try:
+            while self._running:
+                async with self._socket_lock.reader_lock:
+                    s = self._socket
+                    if s is None:
+                        break
+
+                data = await self._recv_exact(s, 8)
+                reply_length = int.from_bytes(bytes=data, byteorder="big", signed=False)
+                LOG.debug(f"Reply length: {reply_length}")
+
+                if reply_length <= 0:
+                    raise InvalidMessageError(f"Invalid reply length: {reply_length}")
+
+                data = await self._recv_exact(s, reply_length)
+                reply = deserialize(serialized=data)
+                LOG.debug(f"Received reply: {reply}")
+
+                if not isinstance(reply, Reply):
+                    raise InvalidMessageError(
+                        f"Expected Reply message, got {type(reply).__name__}"
+                    )
+
+                future = self._pending_requests.pop(reply.message_id, None)
+                if future is not None:
+                    if not future.done():
+                        future.set_result(reply)
+                else:
+                    LOG.warning(
+                        f"Received reply for unknown request: {reply.message_id}"
+                    )
+
+        except asyncio.CancelledError:
+            LOG.debug("Message receive loop cancelled")
+        except Exception as err:
+            LOG.exception("Error in message receive loop: %s", err)
+            async with self._socket_lock.writer_lock:
+                await self._close_connection()
+        finally:
+            LOG.debug("Message receive loop stopped")
 
     async def _send_messages(self, messages: list[Message]) -> list[Reply]:
         """
@@ -142,9 +225,9 @@ class Node(ABC):
 
         return replies
 
-    async def _send_and_receive(self, message: Message) -> Reply:
+    async def _send_raw(self, message: Message) -> None:
         """
-        Sends a message over the socket and receives the reply.
+        Sends a message over the socket.
 
         Note: Caller must hold `_socket_lock` before calling this method.
         Assumes that `_ensure_connected` has already been called.
@@ -152,13 +235,9 @@ class Node(ABC):
         Args:
             message (Message): The message to send.
 
-        Returns:
-            Reply: The reply received for the message.
-
         Raises:
             ConnectionError: If not connected to dtnd.
             ConnectionResetError: If the connection is closed by dtnd.
-            InvalidMessageError: If the reply is malformed or not a Reply.
         """
         if self._socket is None:
             raise ConnectionError("Not connected to dtnd")
@@ -177,26 +256,6 @@ class Node(ABC):
         await loop.sock_sendall(self._socket, message_bytes)
         LOG.debug("Sent message")
 
-        # Receive and deserialize reply
-        data = await loop.sock_recv(self._socket, 8)
-        if len(data) == 0:
-            raise ConnectionResetError("Connection closed by dtnd")
-        reply_length = int.from_bytes(bytes=data, byteorder="big", signed=False)
-        LOG.debug(f"Reply length: {reply_length}")
-
-        if reply_length <= 0:
-            raise InvalidMessageError(f"Invalid reply length: {reply_length}")
-
-        data = await loop.sock_recv(self._socket, reply_length)
-        reply = deserialize(serialized=data)
-        LOG.debug(f"Received reply: {reply}")
-
-        if not isinstance(reply, Reply):
-            raise InvalidMessageError(
-                f"Expected Reply message, got {type(reply).__name__}"
-            )
-        return reply
-
     async def _send_message(self, message: Message) -> Reply:
         """
         Sends a message over the socket and receives the reply.
@@ -208,11 +267,15 @@ class Node(ABC):
         Returns:
             Reply: The reply received for the message.
         """
+        # Create a future for this request
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[Reply] = loop.create_future()
+        self._pending_requests[message.message_id] = future
+
         async with self._socket_lock.writer_lock:
             try:
                 await self._ensure_connected()
-                return await self._send_and_receive(message)
-
+                await self._send_raw(message)
             except (ConnectionError, BrokenPipeError, OSError) as err:
                 # Connection failed, close and retry once
                 LOG.warning(f"Connection error, reconnecting: {err}")
@@ -220,7 +283,9 @@ class Node(ABC):
 
                 # Retry with fresh connection
                 await self._ensure_connected()
-                return await self._send_and_receive(message)
+                await self._send_raw(message)
+
+        return await future
 
     async def _register(self) -> None:
         LOG.info("Performing registration")
