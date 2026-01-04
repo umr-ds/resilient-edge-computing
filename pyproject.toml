@@ -1,13 +1,28 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "rec"
 version = "0.1.0"
 description = "Run jobs in a distributed, resilient local execution network."
 readme = "README.md"
 requires-python = ">= 3.12"
+license = "MIT"
+authors = [
+    { name = "Philipp Jahn", email = "jahnp@students.uni-marburg.de" },
+    { name = "Markus Sommer", email = "msommer@informatik.uni-marburg.de" },
+    { name = "Leon Wimbes", email = "wimbes@students.uni-marburg.de" },
+]
+maintainers = [
+    { name = "Markus Sommer", email = "msommer@informatik.uni-marburg.de" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+]
 dependencies = [
     # REC Core utilities
     ## WASM execution support
@@ -40,30 +55,10 @@ dependencies = [
     ## Misc
     "tomlkit>=0.14.0",
 ]
-authors = [
-    { name = "Philipp Jahn", email = "jahnp@students.uni-marburg.de" },
-    { name = "Markus Sommer", email = "msommer@informatik.uni-marburg.de" },
-    { name = "Leon Wimbes", email = "wimbes@students.uni-marburg.de" },
-]
-maintainers = [
-    { name = "Markus Sommer", email = "msommer@informatik.uni-marburg.de" },
-]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: MIT License",
-
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
-
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-]
 
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
-    "hatchling>=1.29.0",
 ]
 lint = [
     "ruff>=0.15.6",
@@ -77,13 +72,20 @@ test = [
     "hypothesis>=6.151.9",
 ]
 
-[project.scripts]
-rec_rest = "rec.run_rest:main"
-rec_dtn = "rec.run_dtn:main"
-
 [project.urls]
 Repository = "https://github.com/umr-ds/resilient-edge-computing"
 Issues = "https://github.com/umr-ds/resilient-edge-computing/issues"
+
+[build-system]
+requires = ["uv_build>=0.10.10,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+
+[project.scripts]
+rec_rest = "rec.run_rest:main"
+rec_dtn = "rec.run_dtn:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
