@@ -32,6 +32,9 @@ docker compose -f gitlab-runner-compose.yml exec gitlab-runner \
     --token "TOKEN" \
     --executor "docker" \
     --docker-image "python:3.14" \
+    --docker-allowed-images "ghcr.io/astral-sh/uv:*" \
+    --docker-allowed-images "python:*" \
+    --docker-allowed-images "docker:*" \
     --docker-privileged \
     --description "NAME (Privileged Runner)"
 ```

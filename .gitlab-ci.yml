@@ -1,24 +1,43 @@
+variables:
+  UV_VERSION: "0.10.10"
+  PYTHON_VERSION: "3.14"
+  BASE_LAYER: trixie-slim
+  UV_LINK_MODE: copy
+  UV_CACHE_DIR: ".uv-cache"
+
+cache:
+  key:
+    files:
+      - uv.lock
+  paths:
+    - $UV_CACHE_DIR
+
 stages:
-  - lint
-  - unit_test
-pre-commit:
-  stage: lint
-  image: python:3.14
+  - check
+  - test
+
+static-analysis:
+  stage: check
+  image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+  tags:
+    - uv
   script:
-    - pip install --upgrade pip
-    - pip install --group dev .
-    - pip install --group lint .
-    - pre-commit run --all-files
+    - uv sync --group lint --group test --frozen # Test dependencies are needed for ty check
+    - uv run ruff check
+    - uv run ruff format --check
+    - uv run ty check
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "DTN"
-pytest:
-  stage: unit_test
-  image: python:3.14
+
+tests:
+  stage: test
+  image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
   tags:
+    - uv
     - privileged
   services:
-    - name: docker:27-dind
+    - name: docker:29-dind
       alias: docker
   variables:
     DOCKER_HOST: tcp://docker:2375
@@ -33,10 +52,8 @@ pytest:
     - apt-get update
     - apt-get install -y docker-ce-cli docker-compose-plugin
   script:
-    - pip install --upgrade pip
-    - pip install --group dev .
-    - pip install --group test .
-    - pytest
+    - uv sync --group test --frozen
+    - uv run pytest
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "DTN"
