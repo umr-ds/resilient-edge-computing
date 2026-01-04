@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 import re
+from typing import Self
 
 
 class EIDError(ValueError):
@@ -25,7 +24,7 @@ class EID(str):
     #    - https://www.rfc-editor.org/rfc/rfc9171.html#name-the-dtn-uri-scheme
     _NODE_RE = re.compile(r"(^$)|(^[A-Za-z0-9-._~!$&'()*+,;=]+$)")
 
-    def __new__(cls, value: str) -> EID:
+    def __new__(cls, value: str) -> Self:
         norm = cls._normalize(value)
         return super().__new__(cls, norm)
 
@@ -33,7 +32,7 @@ class EID(str):
         return self != EID._DTN_NONE
 
     @classmethod
-    def dtn(cls, node: str, service: str | None = None) -> EID:
+    def dtn(cls, node: str, service: str | None = None) -> Self:
         """
         Create a DTN EndpointID from node and optional service.
         Use `EID.none()` for the `dtn:none` endpoint.
@@ -57,7 +56,7 @@ class EID(str):
         return cls(f"{cls._DTN_PREFIX}{node}/{service}")
 
     @classmethod
-    def ipn(cls, node_number: int, service_number: int) -> EID:
+    def ipn(cls, node_number: int, service_number: int) -> Self:
         """
         Create an IPN EndpointID from node and service numbers.
 
@@ -75,7 +74,7 @@ class EID(str):
         return cls(f"{cls._IPN_PREFIX}{node_number}.{service_number}")
 
     @classmethod
-    def none(cls) -> EID:
+    def none(cls) -> Self:
         """
         Get the singleton `dtn:none` endpoint.
 

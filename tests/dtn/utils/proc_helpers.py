@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import queue
 import subprocess as sp
 import threading

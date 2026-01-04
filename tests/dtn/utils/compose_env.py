@@ -1,11 +1,10 @@
-from __future__ import annotations
-
 import json
 import subprocess as sp
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Self
 
 
 @dataclass
@@ -116,7 +115,7 @@ class ComposeEnvironment:
         )
         return json.loads(result.stdout)
 
-    def __enter__(self) -> ComposeEnvironment:
+    def __enter__(self) -> Self:
         """
         Enter the context manager and set up the Docker Compose environment.
 

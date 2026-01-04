@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import subprocess as sp
 from pathlib import Path
 

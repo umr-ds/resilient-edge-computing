@@ -4,7 +4,7 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import override
+from typing import Self, override
 from uuid import UUID, uuid4
 
 from ormsgpack import packb, unpackb
@@ -51,7 +51,7 @@ class Message:
         return data
 
     @classmethod
-    def from_dict(cls, data) -> Message:
+    def from_dict(cls, data) -> Self:
         return cls(**data)
 
 
@@ -79,7 +79,7 @@ class Reply(Message):
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data) -> Reply:
+    def from_dict(cls, data) -> Self:
         return cls(**data)
 
 
@@ -100,7 +100,7 @@ class Register(Message):
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data) -> Register:
+    def from_dict(cls, data) -> Self:
         return cls(**data)
 
 
@@ -120,7 +120,7 @@ class BundleCreate(Message):
         return self.__dict__ | super().dictify() | own_dict
 
     @classmethod
-    def from_dict(cls, data) -> BundleCreate:
+    def from_dict(cls, data) -> Self:
         data["bundle"] = BundleData.from_dict(data["bundle"])
         return cls(**data)
 
@@ -138,7 +138,7 @@ class BundlePushStart(Message):
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data) -> BundlePushStart:
+    def from_dict(cls, data) -> Self:
         return cls(**data)
 
 
@@ -155,7 +155,7 @@ class BundlePushStop(Message):
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data) -> BundlePushStop:
+    def from_dict(cls, data) -> Self:
         return cls(**data)
 
 
@@ -175,7 +175,7 @@ class BundlePush(Message):
         return self.__dict__ | super().dictify() | own_dict
 
     @classmethod
-    def from_dict(cls, data) -> BundlePush:
+    def from_dict(cls, data) -> Self:
         data["bundles"] = [
             BundleData.from_dict(bundle_data) for bundle_data in data["bundles"]
         ]
@@ -255,7 +255,7 @@ class BundleData:
         return data
 
     @classmethod
-    def from_dict(cls, data: dict) -> BundleData:
+    def from_dict(cls, data: dict) -> Self:
         data["source"] = EID(data["source"])
         data["destination"] = EID(data["destination"])
         if "submitter" in data:

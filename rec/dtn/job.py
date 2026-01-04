@@ -1,9 +1,8 @@
-from __future__ import annotations
-
 import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Self
 from uuid import UUID, uuid4
 
 import psutil
@@ -51,7 +50,7 @@ class Capabilities:
             raise ValueError(f"Values may not be larger than {MSGPACK_MAXINT}")
 
     @classmethod
-    def from_system(cls) -> Capabilities:
+    def from_system(cls) -> Self:
         """
         Create a Capabilities instance from current system resource usage.
 
@@ -80,7 +79,7 @@ class Capabilities:
         return {key: value for key, value in self.__dict__.items() if value}
 
     @classmethod
-    def from_dict(cls, data: dict) -> Capabilities:
+    def from_dict(cls, data: dict) -> Self:
         return cls(**data)
 
     def dumps(self) -> str:
@@ -91,11 +90,11 @@ class Capabilities:
             await f.write(self.dumps())
 
     @classmethod
-    def loads(cls, data: str) -> Capabilities:
+    def loads(cls, data: str) -> Self:
         return cls.from_dict(loads(data).unwrap())
 
     @classmethod
-    async def load(cls, filename: str) -> Capabilities:
+    async def load(cls, filename: str) -> Self:
         async with open(filename, "r") as f:
             data = await f.read()
             return cls.loads(data)
@@ -104,11 +103,11 @@ class Capabilities:
         return packb(self.dictify())
 
     @classmethod
-    def deserialize(cls, serialized: bytes) -> Capabilities:
+    def deserialize(cls, serialized: bytes) -> Self:
         deserialized = unpackb(serialized)
         return cls.from_dict(deserialized)
 
-    def is_capable_of(self, caps: Capabilities) -> bool:
+    def is_capable_of(self, caps: Self) -> bool:
         """
         Check if this system can satisfy the resource requirements of another capability set.
 
@@ -191,7 +190,7 @@ class JobInfo:
         return data
 
     @classmethod
-    def from_dict(cls, data: dict) -> JobInfo:
+    def from_dict(cls, data: dict) -> Self:
         data["job_id"] = UUID(data["job_id"])
         data["capabilities"] = Capabilities.from_dict(data["capabilities"])
         if "submitter" in data and not isinstance(data["submitter"], EID):
@@ -208,12 +207,12 @@ class JobInfo:
             await f.write(self.dumps())
 
     @classmethod
-    def loads(cls, data: str) -> JobInfo:
+    def loads(cls, data: str) -> Self:
         parsed = loads(data).unwrap()
         return cls.from_dict(parsed)
 
     @classmethod
-    async def load(cls, filename: str) -> JobInfo:
+    async def load(cls, filename: str) -> Self:
         async with open(filename, "r") as f:
             data = await f.read()
             return cls.loads(data)
@@ -222,7 +221,7 @@ class JobInfo:
         return packb(self.dictify())
 
     @classmethod
-    def deserialize(cls, serialized: bytes) -> JobInfo:
+    def deserialize(cls, serialized: bytes) -> Self:
         deserialized = unpackb(serialized)
         return cls.from_dict(deserialized)
 
@@ -274,7 +273,7 @@ class Job:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> Job:
+    def from_dict(cls, data: dict) -> Self:
         data["metadata"] = JobInfo.from_dict(data["metadata"])
         return cls(**data)
 
@@ -282,7 +281,7 @@ class Job:
         return packb(self.dictify())
 
     @classmethod
-    def deserialize(cls, serialized: bytes) -> Job:
+    def deserialize(cls, serialized: bytes) -> Self:
         deserialized = unpackb(serialized)
         return cls.from_dict(deserialized)
 
@@ -327,7 +326,7 @@ class JobResult:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> JobResult:
+    def from_dict(cls, data: dict) -> Self:
         data["metadata"] = JobInfo.from_dict(data["metadata"])
         return cls(**data)
 
@@ -335,7 +334,7 @@ class JobResult:
         return packb(self.dictify())
 
     @classmethod
-    def deserialize(cls, serialized: bytes) -> JobResult:
+    def deserialize(cls, serialized: bytes) -> Self:
         deserialized = unpackb(serialized)
         return cls.from_dict(deserialized)
 
@@ -414,7 +413,7 @@ class ExecutionPlan:
     jobs: list[LazyJob]
 
     @classmethod
-    async def from_toml(cls, toml_path: Path) -> ExecutionPlan:
+    async def from_toml(cls, toml_path: Path) -> Self:
         """
         Load an execution plan from a TOML file.
 
