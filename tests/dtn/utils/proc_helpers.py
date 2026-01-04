@@ -3,7 +3,7 @@ import subprocess as sp
 import threading
 import time
 from dataclasses import dataclass
-from typing import IO, Iterable, Mapping
+from typing import IO
 
 
 @dataclass
@@ -43,7 +43,7 @@ class _ProcessState:
     """
 
     proc: sp.Popen[str]
-    reqs: Mapping[str, int]
+    reqs: dict[str, int]
     stdout: str = ""
     stderr: str = ""
     satisfied: bool = False
@@ -51,25 +51,25 @@ class _ProcessState:
 
 
 def _normalize_requirements(
-    required_messages: Iterable[str] | Mapping[str, int],
+    required_messages: list[str] | dict[str, int],
 ) -> dict[str, int]:
     """
     Normalize requirements into a mapping of message -> count.
     Removes any zero-count or negative-count entries.
 
     Args:
-        required_messages: Either an iterable of messages (each must appear once), or a mapping of message -> count.
+        required_messages: Either a list of messages (each must appear once), or a mapping of message -> count.
 
     Returns:
         dict[str, int]: Mapping of message -> expected count.
     """
-    if isinstance(required_messages, Mapping):
+    if isinstance(required_messages, dict):
         return {msg: count for msg, count in required_messages.items() if count > 0}
     return {msg: 1 for msg in required_messages}
 
 
 def _check_requirements(
-    combined_output: str, required_messages: Mapping[str, int]
+    combined_output: str, required_messages: dict[str, int]
 ) -> list[str]:
     """
     Checks if the combined output meets the message count requirements.
@@ -110,9 +110,9 @@ def _stream_reader(
 
 
 def _monitor_processes(
-    processes: Mapping[str, sp.Popen[str]],
+    processes: dict[str, sp.Popen[str]],
     timeout: float,
-    required_messages: Mapping[str, Mapping[str, int]],
+    required_messages: dict[str, dict[str, int]],
     terminate_on_success: bool,
 ) -> dict[str, ProcessOutput]:
     """
@@ -242,7 +242,7 @@ def run_and_expect_single(
     node_id: str,
     proc: sp.Popen[str],
     timeout: float,
-    required_messages: Iterable[str] | Mapping[str, int],
+    required_messages: list[str] | dict[str, int],
     terminate_on_success: bool = False,
 ) -> ProcessOutput:
     """
@@ -253,7 +253,7 @@ def run_and_expect_single(
         node_id: Logical name of the process.
         proc: The process to run.
         timeout: Timeout in seconds.
-        required_messages: Either an iterable of messages (each must appear once), or a mapping of message -> count.
+        required_messages: Either a list of messages (each must appear once), or a mapping of message -> count.
         terminate_on_success: If True, kills the process immediately once required messages are found, without waiting for timeout.
 
     Raises:
@@ -289,9 +289,9 @@ def run_and_expect_single(
 
 
 def run_and_expect_multiple(
-    processes: Mapping[str, sp.Popen[str]],
+    processes: dict[str, sp.Popen[str]],
     timeout: float,
-    required_messages: Mapping[str, Iterable[str] | Mapping[str, int]],
+    required_messages: dict[str, list[str] | dict[str, int]],
     terminate_on_success: bool = False,
 ) -> dict[str, ProcessOutput]:
     """
@@ -301,7 +301,7 @@ def run_and_expect_multiple(
     Args:
         processes: Mapping node_id -> Popen[str].
         timeout: Per-process timeout in seconds.
-        required_messages: Mapping node_id -> (Iterable or Mapping) of required messages.
+        required_messages: Mapping node_id -> (list or dict) of required messages.
         terminate_on_success: If True, kills ALL processes immediately once ALL processes have found their required messages.
 
     Raises:

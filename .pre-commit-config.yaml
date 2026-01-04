@@ -13,3 +13,12 @@ repos:
 
       - id: ruff-format
         name: ruff format
+
+  - repo: local
+    hooks:
+      - id: ty-check
+        name: ty check
+        language: system
+        entry: uv run ty check
+        pass_filenames: false
+        types: [python]

@@ -62,6 +62,9 @@ dev = [
 ]
 lint = [
     "ruff>=0.15.6",
+    # Newer Versions of ty currenty struggle with hypothesis
+    # https://github.com/astral-sh/ty/issues/2759
+    "ty==0.0.14",
 ]
 test = [
     "pytest>=9.0.2",
@@ -91,4 +94,14 @@ pythonpath = ["."]
 [tool.ruff.lint]
 select = [
     "I", # Import-related checks
+]
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"
+invalid-context-manager = "ignore" # aiorwlock doen't implement __aenter__/__aexit__ correctly
+
+[tool.ty.src]
+exclude = [ # Ignore REST related files for now
+    "rec/rest",
+    "rec/util",
 ]
