@@ -44,9 +44,9 @@ class Client(Node):
         if self._context_file.is_file():
             with self._context_file.open("r") as f:
                 self._context_data = load(f)
-                assert (
-                    "broker" in self._context_data
-                ), "context file must contain broker address"
+                assert "broker" in self._context_data, (
+                    "context file must contain broker address"
+                )
                 assert self._context_data["broker"], "broker address must be a value"
                 self._broker = EID(str(self._context_data["broker"]))
         else:

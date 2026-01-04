@@ -43,9 +43,7 @@ class JobInfo(BaseModel):
     zip_results: dict[str, str] = Field(default_factory=lambda: {"/": "/"})
     named_results: dict[str, str] = Field(default_factory=dict)
     capabilities: Capabilities = Capabilities()
-    result_addr: Address = (
-        Address()
-    )  # "" host means store in datastore "this" means send to this node (port still has to be set)
+    result_addr: Address = Address()  # "" host means store in datastore "this" means send to this node (port still has to be set)
     delete: bool = True
 
 

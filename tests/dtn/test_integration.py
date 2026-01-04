@@ -147,9 +147,9 @@ def test_execution_plan_once(dtnd_bde_env: DtnTestEnvironment) -> None:
     # Check that the results file exists in the client results directory
     exec_result = env.compose_env.exec("client-ns", f"ls {results_dir}")
     result_files = [f for f in exec_result.stdout.split() if f.endswith("_result.zip")]
-    assert (
-        len(result_files) == 1
-    ), f"Expected 1 job result file, found {len(result_files)} in client results: {exec_result.stdout}"
+    assert len(result_files) == 1, (
+        f"Expected 1 job result file, found {len(result_files)} in client results: {exec_result.stdout}"
+    )
 
 
 @requires_docker
@@ -202,6 +202,6 @@ def test_execution_plan_twice_named(dtnd_bde_env: DtnTestEnvironment) -> None:
     # Check that the results file exists in the client results directory
     exec_result = env.compose_env.exec("client-ns", f"ls {results_dir}")
     result_files = [f for f in exec_result.stdout.split() if f.endswith("_result.zip")]
-    assert (
-        len(result_files) == 2
-    ), f"Expected 2 job result files, found {len(result_files)} in client results: {exec_result.stdout}"
+    assert len(result_files) == 2, (
+        f"Expected 2 job result files, found {len(result_files)} in client results: {exec_result.stdout}"
+    )

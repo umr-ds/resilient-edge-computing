@@ -28,7 +28,6 @@ class DataBroker:
         self.results_lock = RWLockWrite()
 
     def add_endpoints(self, fastapi_app: FastAPI) -> None:
-
         @fastapi_app.put("/data/{name:path}")
         def store_data(name: str, data: UploadFile) -> None:
             LOG.debug(f"Storing data {name}")

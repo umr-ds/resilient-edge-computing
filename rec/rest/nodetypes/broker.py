@@ -11,7 +11,6 @@ from rec.rest.nodetypes.node import Node
 
 
 class Broker(Node):
-
     def register_executor(self, hosts: list[str], executor: Executor) -> bool:
         data = f'{{"hosts": {json.dumps(hosts)}, "executor": {executor.model_dump_json()}}}'
         res = self.put("/executors/register", data=data)

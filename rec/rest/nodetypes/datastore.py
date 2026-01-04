@@ -9,7 +9,6 @@ from rec.rest.nodetypes.node import Node
 
 
 class Datastore(Node):
-
     def store_data(self, file: IO[bytes], name: str) -> bool:
         res = self.put(f"/data/{name}", files={"data": file})
         return res is not None and res.ok
