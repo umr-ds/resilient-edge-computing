@@ -12,7 +12,7 @@ RUN git clone https://gitlab.uni-marburg.de/fb12/ag-freisleben/projects/dtn7-rs.
     cargo install --locked --bin dtnd --path ./core/dtn7/
 
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 # Install basic dependencies
 RUN apt-get update && \
