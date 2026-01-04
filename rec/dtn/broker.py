@@ -76,7 +76,7 @@ class Broker(Node):
                 destination=BROADCAST_ADDRESS,
             )
 
-            await self._send_and_check(bundles=[announcement])
+            await self._send_bundle_and_check(bundle=announcement)
 
             LOG.debug("Sleeping before next announcement")
             await self._interruptible_sleep(ANNOUNCEMENT_INTERVAL_SECONDS)
@@ -288,7 +288,7 @@ class Broker(Node):
             named_data=bundle.named_data,
         )
 
-        await self._send_and_check(bundles=[forward_bundle])
+        await self._send_bundle_and_check(bundle=forward_bundle)
 
     async def _schedule_job(self, job: Job, executor: EID) -> None:
         """
@@ -307,4 +307,4 @@ class Broker(Node):
             payload=job.serialize(),
         )
 
-        await self._send_and_check(bundles=[job_submission])
+        await self._send_bundle_and_check(bundle=job_submission)

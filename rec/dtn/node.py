@@ -303,26 +303,9 @@ class Node(ABC):
         try:
             replies = await self._handle_bundles(bundles=bundles)
             if replies:
-                await self._send_and_check(bundles=replies)
+                await self._send_bundles_and_check(bundles=replies)
         except Exception as err:
             LOG.exception("Error processing bundle push: %s", err)
-
-    async def _send_messages(self, messages: list[Message]) -> list[Reply]:
-        """
-        Sends multiple messages over the socket and receives their replies.
-
-        Args:
-            messages (list[Message]): The messages to send.
-
-        Returns:
-            list[Reply]: The replies received for each message.
-        """
-        replies: list[Reply] = []
-
-        for message in messages:
-            replies.append(await self._send_message(message=message))
-
-        return replies
 
     async def _send_raw(self, message: Message) -> None:
         """
@@ -407,6 +390,15 @@ class Node(ABC):
         message = BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=bundle)
         return await self._send_message(message=message)
 
+    async def _send_bundle_and_check(self, bundle: BundleData) -> None:
+        try:
+            LOG.debug("Sending bundle")
+            dtnd_response = await self._send_bundle(bundle=bundle)
+            if not dtnd_response.success:
+                LOG.exception("dtnd sent error: %s", dtnd_response.error)
+        except Exception as err:
+            LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
+
     async def _send_bundles(self, bundles: list[BundleData]) -> list[Reply]:
         replies: list[Reply] = []
 
@@ -415,7 +407,7 @@ class Node(ABC):
 
         return replies
 
-    async def _send_and_check(self, bundles: list[BundleData]) -> None:
+    async def _send_bundles_and_check(self, bundles: list[BundleData]) -> None:
         try:
             LOG.debug("Sending bundles")
             dtnd_responses = await self._send_bundles(bundles=bundles)
