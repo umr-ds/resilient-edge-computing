@@ -60,7 +60,7 @@ pytest:
   tags:
     - privileged # This matches the runner tag
   services:
-    - name: docker:27-dind
+    - name: docker:29-dind
       alias: docker
   variables:
     DOCKER_HOST: tcp://docker:2375

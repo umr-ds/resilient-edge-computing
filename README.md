@@ -6,7 +6,7 @@
 
 ### REC
 
-Either create a `virtualenv` and install directly via `pip`, or use `uv`.
+Either create a `virtualenv` and install directly via `uv`, or use `pip`.
 If you are planning to modify the `REC` code, it would be useful to do an editable install.
 
 ```shell
@@ -14,9 +14,9 @@ git clone git@gitlab.uni-marburg.de:fb12/ag-freisleben/projects/resilient-edge-c
 
 cd resilient-edge-computing
 
+uv sync --all-groups
+# or, using pip
 pip install -e .
-# or, using uv
-uv sync
 ```
 
 ### DTN
@@ -426,47 +426,42 @@ If you want to participate in development, there are some additional steps:
 To install these, run:
 
 ```shell
+uv sync --all-groups
+# or, using pip
 pip install --group dev .
 pip install --group lint .
-# or, using uv
-uv sync --all-groups
+pip install --group test .
 ```
 
-### Setup pre-commit
+### Setup prek pre-commit hooks
 
-[pre-commit](https://pre-commit.com/) is a utility which runs a number of tasks (in our case linting and input sorting) before each commit.
-If you have installed the development dependencies as mentioned above, then `pre-commit` should already be installed, but you need to set it up to run:
+[prek](https://prek.j178.dev/) is a [pre-commit](https://pre-commit.com/) compatible utility which runs a number of tasks (in our case linting and input sorting) before each commit.
+If you have installed the development dependencies as mentioned above, then `prek` should already be installed, but you need to set it up to run:
 
 ```shell
-pre-commit install
-# or, using uv
-uv run pre-commit install
+prek install
 ```
 
 If you don't lint your files before pushing, then the CI pipeline will fail your commits!
 
 ### Linting
 
-To make sure that `pre-commit` does not fail your commit, you can manually run the linters before committing:
+To make sure that `prek` pre-commit hooks do not fail your commit, you can manually run the linters before committing:
 
 ```shell
-black **/**/*.py
-isort --profile black .
-# or, using uv
-uv run black **/**/*.py
-uv run isort --profile black .
+ruff check --fix
+ruff format
+ty check
 ```
 
 ### Tests
 
-Please make sure to write unit tests whenever feasible.
+Please make sure to write unit or integration tests whenever feasible.
 Tests are stored in the `tests` directory.
-To run all tests, just run pytest in the project root:
+To run all tests, just run `pytest` in the project root:
 
 ```shell
 pytest
-# or, using uv
-uv run pytest
 ```
 
 If tests are failing, then the CI pipeline will fail your commits!
