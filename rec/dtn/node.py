@@ -10,7 +10,7 @@ from uuid import UUID
 
 from aiorwlock import RWLock
 
-from rec.dtn.eid import EID
+from rec.dtn.eid import EID, get_multicast_address
 from rec.dtn.messages import (
     BundleCreate,
     BundleData,
@@ -169,11 +169,7 @@ class Node(ABC):
 
         Note: Caller must hold _socket_lock before calling this method.
         """
-        message = BundlePushStart(
-            type=MessageType.BUNDLE_PUSH_START,
-            endpoint_id=self._node_id,
-            node_type=self._node_type,
-        )
+        message = BundlePushStart(type=MessageType.BUNDLE_PUSH_START)
 
         # Create a future for this request
         loop = asyncio.get_running_loop()
@@ -195,10 +191,7 @@ class Node(ABC):
 
         Note: Caller must hold _socket_lock before calling this method.
         """
-        message = BundlePushStop(
-            type=MessageType.BUNDLE_PUSH_STOP,
-            endpoint_id=self._node_id,
-        )
+        message = BundlePushStop(type=MessageType.BUNDLE_PUSH_STOP)
         try:
             await self._send_raw(message)
         except Exception:
@@ -369,9 +362,10 @@ class Node(ABC):
 
         return await future
 
-    async def _register(self) -> None:
-        LOG.info("Performing registration")
-        message = Register(type=MessageType.REGISTER, endpoint_id=self._node_id)
+    async def _register_eid(self, eid: EID) -> None:
+        LOG.info(f"Registering endpoint ID {eid}")
+
+        message = Register(type=MessageType.REGISTER, endpoint_id=eid)
         LOG.debug(f"Sending registration message: {message}")
 
         try:
@@ -381,10 +375,21 @@ class Node(ABC):
             sys.exit(1)
 
         if not reply.success:
-            LOG.debug("Error registering with dtnd: %s", reply.error)
+            LOG.debug(f"Error registering {eid} with dtnd: {reply.error}")
             return
 
-        LOG.info("Successfully registered with dtnd")
+        LOG.info(f"Successfully registered endpoint ID {eid} with dtnd")
+
+    async def _register(self) -> None:
+        LOG.info("Performing registration")
+
+        # Register unicast endpoint
+        await self._register_eid(self._node_id)
+
+        # Register multicast endpoint
+        multicast_eid = get_multicast_address(self._node_type)
+        if multicast_eid is not None:
+            await self._register_eid(multicast_eid)
 
     async def _send_bundle(self, bundle: BundleData) -> Reply:
         message = BundleCreate(type=MessageType.BUNDLE_CREATE, bundle=bundle)

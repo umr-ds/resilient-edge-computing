@@ -127,16 +127,11 @@ class BundleCreate(Message):
 
 @dataclass(frozen=True)
 class BundlePushStart(Message):
-    endpoint_id: EID
-    node_type: NodeType
-
     def __post_init__(self) -> None:
         if self.type != MessageType.BUNDLE_PUSH_START:
             raise InvalidMessageError(
                 f"Message needs MessageType {MessageType.BUNDLE_PUSH_START}, but has {self.type}"
             )
-        if not self.endpoint_id:
-            raise InvalidMessageError("EndpointID must not be dtn:none")
 
     @override
     def dictify(self) -> dict:
@@ -149,15 +144,11 @@ class BundlePushStart(Message):
 
 @dataclass(frozen=True)
 class BundlePushStop(Message):
-    endpoint_id: EID
-
     def __post_init__(self) -> None:
         if self.type != MessageType.BUNDLE_PUSH_STOP:
             raise InvalidMessageError(
                 f"Message needs MessageType {MessageType.BUNDLE_PUSH_STOP}, but has {self.type}"
             )
-        if not self.endpoint_id:
-            raise InvalidMessageError("EndpointID must not be dtn:none")
 
     @override
     def dictify(self) -> dict:

@@ -3,6 +3,12 @@ from __future__ import annotations
 import subprocess as sp
 from pathlib import Path
 
+from rec.dtn.eid import (
+    BROKER_MULTICAST_ADDRESS,
+    CLIENT_MULTICAST_ADDRESS,
+    DATASTORE_MULTICAST_ADDRESS,
+    EXECUTOR_MULTICAST_ADDRESS,
+)
 from tests.dtn.utils.integration_helpers import DtnTestEnvironment, requires_docker
 from tests.dtn.utils.proc_helpers import run_and_expect_multiple, run_and_expect_single
 
@@ -71,10 +77,22 @@ def test_connection_to_daemons(dtnd_env: DtnTestEnvironment) -> None:
         processes=test_processes,
         timeout=30.0,
         required_messages={
-            "broker": ["Successfully registered with dtnd"],
-            "datastore": ["Successfully registered with dtnd"],
-            "executor": ["Successfully registered with dtnd"],
-            "client": ["Successfully registered with dtnd"],
+            "broker": [
+                f"Successfully registered endpoint ID {BROKER_MULTICAST_ADDRESS} with dtnd",
+                "Successfully registered endpoint ID dtn://broker/ with dtnd",
+            ],
+            "datastore": [
+                f"Successfully registered endpoint ID {DATASTORE_MULTICAST_ADDRESS} with dtnd",
+                "Successfully registered endpoint ID dtn://datastore/ with dtnd",
+            ],
+            "executor": [
+                f"Successfully registered endpoint ID {EXECUTOR_MULTICAST_ADDRESS} with dtnd",
+                "Successfully registered endpoint ID dtn://executor/ with dtnd",
+            ],
+            "client": [
+                f"Successfully registered endpoint ID {CLIENT_MULTICAST_ADDRESS} with dtnd",
+                "Successfully registered endpoint ID dtn://client/ with dtnd",
+            ],
         },
         terminate_on_success=True,
     )

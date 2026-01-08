@@ -149,25 +149,6 @@ def randomized_bundle_create(draw: st.DrawFn) -> BundleCreate:
 
 
 @st.composite
-def randomized_bundle_push_start(draw: st.DrawFn) -> BundlePushStart:
-    return BundlePushStart(
-        type=MessageType.BUNDLE_PUSH_START,
-        endpoint_id=draw(dtn_eid(singleton=draw(st.booleans()), not_none=True)),
-        node_type=NodeType(
-            draw(st.integers(min_value=NodeType.BROKER, max_value=NodeType.CLIENT))
-        ),
-    )
-
-
-@st.composite
-def randomized_bundle_push_stop(draw: st.DrawFn) -> BundlePushStop:
-    return BundlePushStop(
-        type=MessageType.BUNDLE_PUSH_STOP,
-        endpoint_id=draw(dtn_eid(singleton=draw(st.booleans()), not_none=True)),
-    )
-
-
-@st.composite
 def randomized_bundle_push(draw: st.DrawFn) -> BundlePush:
     return BundlePush(
         type=MessageType.BUNDLE_PUSH,
@@ -196,15 +177,15 @@ def test_bundle_create_serialize(message: BundleCreate) -> None:
     assert deserialized == message
 
 
-@given(message=randomized_bundle_push_start())
-def test_bundle_push_start_serialize(message: BundlePushStart) -> None:
+def test_bundle_push_start_serialize() -> None:
+    message = BundlePushStart(type=MessageType.BUNDLE_PUSH_START)
     serialized = serialize(message)
     deserialized = deserialize(serialized)
     assert deserialized == message
 
 
-@given(message=randomized_bundle_push_stop())
-def test_bundle_push_stop_serialize(message: BundlePushStop) -> None:
+def test_bundle_push_stop_serialize() -> None:
+    message = BundlePushStop(type=MessageType.BUNDLE_PUSH_STOP)
     serialized = serialize(message)
     deserialized = deserialize(serialized)
     assert deserialized == message

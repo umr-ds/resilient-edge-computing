@@ -163,3 +163,28 @@ BROKER_MULTICAST_ADDRESS = EID.dtn("rec.broker", "~")
 DATASTORE_MULTICAST_ADDRESS = EID.dtn("rec.store", "~")
 EXECUTOR_MULTICAST_ADDRESS = EID.dtn("rec.executor", "~")
 CLIENT_MULTICAST_ADDRESS = EID.dtn("rec.client", "~")
+
+
+def get_multicast_address(node_type: int) -> EID | None:
+    """
+    Get the multicast EID for a given node type.
+
+    Args:
+        node_type (int): The node type as defined in NodeType enum.
+
+    Returns:
+        EID | None: The corresponding multicast EID, or None if not applicable.
+    """
+    from rec.dtn.messages import NodeType
+
+    match node_type:
+        case NodeType.BROKER:
+            return BROKER_MULTICAST_ADDRESS
+        case NodeType.EXECUTOR:
+            return EXECUTOR_MULTICAST_ADDRESS
+        case NodeType.DATASTORE:
+            return DATASTORE_MULTICAST_ADDRESS
+        case NodeType.CLIENT:
+            return CLIENT_MULTICAST_ADDRESS
+        case _:
+            return None
