@@ -38,6 +38,7 @@ dependencies = [
     "psutil>=7.2.2",
     # Misc
     "tomlkit>=0.14.0",
+    "vermin>=1.8.0",
 ]
 
 [dependency-groups]

@@ -515,14 +515,14 @@ class TestExecutorRunJob:
 
             # Check output directory contents
             assert "output/stdout.log" in files
-            stdout_content = zf.read("output/stdout.log").decode()
+            stdout_content = str(zf.read("output/stdout.log"), "utf-8")
             assert "ARGS=a,b,c" in stdout_content
             assert "ENV_FOO=bar" in stdout_content
             assert "STDIN=line1\\nline2" in stdout_content
             assert "DATA_READ=hello-from-host" in stdout_content
 
             assert "output/stderr.log" in files
-            stderr_content = zf.read("output/stderr.log").decode()
+            stderr_content = str(zf.read("output/stderr.log"), "utf-8")
             assert "TO_STDERR" in stderr_content
 
         # Verify named results were collected
@@ -531,7 +531,7 @@ class TestExecutorRunJob:
         assert "output_archive" in named_results
 
         # Check the WASM output file
-        assert named_results["wasm_output_file"].decode() == "hello-from-wasi"
+        assert str(named_results["wasm_output_file"], "utf-8") == "hello-from-wasi"
 
         # Check output directory contents
         output_zip_data = named_results["output_archive"]
@@ -540,14 +540,14 @@ class TestExecutorRunJob:
             assert len(files) == 2
 
             assert "output/stdout.log" in files
-            stdout_content = zf.read("output/stdout.log").decode()
+            stdout_content = str(zf.read("output/stdout.log"), "utf-8")
             assert "ARGS=a,b,c" in stdout_content
             assert "ENV_FOO=bar" in stdout_content
             assert "STDIN=line1\\nline2" in stdout_content
             assert "DATA_READ=hello-from-host" in stdout_content
 
             assert "output/stderr.log" in files
-            stderr_content = zf.read("output/stderr.log").decode()
+            stderr_content = str(zf.read("output/stderr.log"), "utf-8")
             assert "TO_STDERR" in stderr_content
 
         # Check that the job directory was cleaned up

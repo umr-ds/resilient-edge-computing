@@ -360,6 +360,7 @@ dependencies = [
     { name = "ormsgpack" },
     { name = "psutil" },
     { name = "tomlkit" },
+    { name = "vermin" },
     { name = "wasmtime" },
 ]
 
@@ -382,6 +383,7 @@ requires-dist = [
     { name = "ormsgpack", specifier = ">=1.12.2" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "tomlkit", specifier = ">=0.14.0" },
+    { name = "vermin", specifier = ">=1.8.0" },
     { name = "wasmtime", specifier = ">=42.0.0" },
 ]
 
@@ -553,6 +555,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ac/75/796436bb9165ec1a72d2b8a02b940ccaba078d37dbb1a00322b76e98795d/vermils-0.3.6.tar.gz", hash = "sha256:c9683d01cd8a8fb558a2c16074771c132ac6541de4d9ed82c144b3bcd22b69dc", size = 29546, upload-time = "2024-02-19T17:56:09.005Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/77/a4/0260a66abf2f4f61e54f298f8d947018e332aa5b1194cfdb8371d1befd69/vermils-0.3.6-py3-none-any.whl", hash = "sha256:19b3592d4cb0b18bef0c477e92fdd1d0d51373565ef2c6cfe0d7c580bfb52180", size = 36157, upload-time = "2024-02-19T17:56:05.67Z" },
+]
+
+[[package]]
+name = "vermin"
+version = "1.8.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/7b/2c1b403f2a844e1acb36694fc336e323df742f7f752edb4188311ad43f9e/vermin-1.8.0.tar.gz", hash = "sha256:3621955ac2a2950175c5b4a9b2fc3bd24bd416da0388893c9eb6971264e4ca1f", size = 99913, upload-time = "2025-11-20T17:29:31.509Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e6/fd/6d2167767488e162efd01300a679c7f7d913dbb65baa0b15760ebb369854/vermin-1.8.0-py3-none-any.whl", hash = "sha256:6f2b98ad697a16ed3442e81a0f0baabfc38c185b78aaab1b1fecd87bdd6640b8", size = 98030, upload-time = "2025-11-20T17:29:29.931Z" },
 ]
 
 [[package]]
