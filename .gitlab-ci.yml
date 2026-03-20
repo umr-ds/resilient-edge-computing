@@ -16,19 +16,41 @@ stages:
   - check
   - test
 
-static-analysis:
+format:
   stage: check
   image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
   tags:
     - uv
   script:
-    - uv sync --group lint --group test --frozen # Test dependencies are needed for ty check
-    - uv run ruff check
+    - uv sync --group dev --frozen
     - uv run ruff format --check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+lint:
+  stage: check
+  image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+  tags:
+    - uv
+  script:
+    - uv sync --group dev --frozen
+    - uv run ruff check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+type-check:
+  stage: check
+  image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+  tags:
+    - uv
+  script:
+    - uv sync --group dev --frozen
     - uv run ty check
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "DTN"
+    - if: $CI_COMMIT_BRANCH == "main"
 
 tests:
   stage: test
@@ -56,4 +78,4 @@ tests:
     - uv run pytest
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "DTN"
+    - if: $CI_COMMIT_BRANCH == "main"
