@@ -97,7 +97,6 @@ select = [
 ]
 
 [tool.ty.rules]
-unused-ignore-comment = "warn"
 invalid-context-manager = "ignore" # aiorwlock doen't implement __aenter__/__aexit__ correctly
 
 [tool.ty.src]
