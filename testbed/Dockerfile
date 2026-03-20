@@ -62,7 +62,7 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --no-install-project
 
 COPY rec/ ./rec/
-COPY tests/dtn/artifacts/ ./artifacts/
+COPY tests/artifacts/ ./artifacts/
 
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

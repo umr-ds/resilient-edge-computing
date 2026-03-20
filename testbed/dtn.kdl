@@ -11,7 +11,7 @@ layout {
         name "Broker"
         cwd "/app"
         command "fish"
-        args "-c" "uv run rec_dtn --id dtn://broker/ --socket /tmp/broker.socket broker"
+        args "-c" "uv run rec --id dtn://broker/ --socket /tmp/broker.socket broker"
       }
     }
     pane split_direction="horizontal" {
@@ -19,13 +19,13 @@ layout {
         name "Datastore"
         cwd "/app"
         command "fish"
-        args "-c" "uv run rec_dtn --id dtn://datastore/ --socket /tmp/datastore.socket datastore /tmp/testbed_data/datastore_root"
+        args "-c" "uv run rec --id dtn://datastore/ --socket /tmp/datastore.socket datastore /tmp/testbed_data/datastore_root"
       }
       pane {
         name "Executor"
         cwd "/app"
         command "fish"
-        args "-c" "uv run rec_dtn --id dtn://executor/ --socket /tmp/executor.socket executor /tmp/testbed_data/executor_root"
+        args "-c" "uv run rec --id dtn://executor/ --socket /tmp/executor.socket executor /tmp/testbed_data/executor_root"
       }
     }
   }

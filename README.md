@@ -138,8 +138,8 @@ dtnd -c config.toml
 ## Usage
 
 Make sure `dtnd` is running (see above).
-The entry-point is `rec/run_dtn.py`, which is pointed to by the `rec_dtn` command.
-For arguments, etc., see `rec_dtn --help` and its subcommands.
+The entry-point is `rec/run.py`, which is pointed to by the `rec` command.
+For arguments, etc., see `rec --help` and its subcommands.
 
 ### Start network
 
@@ -148,7 +148,7 @@ To start your own small test-network, use the following steps:
 1. Start a `broker`. There must be at least one broker running before the other nodes can do anything.
 
    ```shell
-   rec_dtn v -s <path to socket> -i dtn://broker_1/ broker
+   rec v -s <path to socket> -i dtn://broker_1/ broker
    ```
 
    This starts a broker with the node id `dtn://broker_1`.
@@ -157,7 +157,7 @@ To start your own small test-network, use the following steps:
 2. Start a `datastore`
 
    ```shell
-   rec_dtn -v -s <path to socket> -i dtn://datastore_1/ datastore <path to store directory>
+   rec -v -s <path to socket> -i dtn://datastore_1/ datastore <path to store directory>
    ```
 
    This starts a datastore with the node id `dtn://datastore_1`.
@@ -167,11 +167,11 @@ To start your own small test-network, use the following steps:
 
 ### Interact with the network
 
-You can interact with the network via the `rec_dtn client` command.
+You can interact with the network via the `rec client` command.
 Here are some examples:
 
 ```shell
-rec_dtn -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> data test/data put <path to file>
+rec -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> data test/data put <path to file>
 ```
 
 This starts a client with the node id `dtn://client_1/`.
@@ -182,7 +182,7 @@ We use the `client` command, and its `data` subcommand.
 We are using the data-name `test/data`, we are using the `put` action to submit data to the store, and lastly, we are sending the contents of `<path to file>` (this needs to point to an existing file, of course).
 
 ```shell
-rec_dtn -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> data test/data get
+rec -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> data test/data get
 ```
 
 This starts a client with the node id `dtn://client_1/`.
@@ -204,7 +204,7 @@ Execution plans are TOML files that define batch job executions. They allow you 
 To execute an execution plan:
 
 ```shell
-rec_dtn -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> exec <path to execution plan>
+rec -v -s <path to socket> -i dtn://client_1/ client -r <path to results directory> exec <path to execution plan>
 ```
 
 #### Execution Plan Format
@@ -405,15 +405,15 @@ The only thing you need to do is to start a client node in the top-left Zellij p
 For example:
 
 ```shell
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results query dtn://client/
+uv run rec --id dtn://client/ --socket /tmp/client.socket client -r /results query dtn://client/
 # or any of the other client commands, e.g. to execute an execution plan:
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_once.toml
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_twice.toml
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_twice_named.toml
+uv run rec --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_once.toml
+uv run rec --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_twice.toml
+uv run rec --id dtn://client/ --socket /tmp/client.socket client -r /results exec artifacts/execution_plans/execution_plan_twice_named.toml
 # To retrieve result bundles, you can either check once:
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results check
+uv run rec --id dtn://client/ --socket /tmp/client.socket client -r /results check
 # or continuously listen for new bundles:
-uv run rec_dtn --id dtn://client/ --socket /tmp/client.socket client -r /results listen
+uv run rec --id dtn://client/ --socket /tmp/client.socket client -r /results listen
 ```
 
 ## Development

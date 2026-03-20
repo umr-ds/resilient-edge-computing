@@ -24,35 +24,17 @@ classifiers = [
     "Intended Audience :: Science/Research",
 ]
 dependencies = [
-    # REC Core utilities
-    ## WASM execution support
+    # WASM execution support
     "wasmtime>=42.0.0",
-
-    # REC REST API
-    ## Web framework and server
-    "fastapi>=0.135.1",
-    "uvicorn>=0.41.0",
-    ## API features
-    "fastapi-pagination>=0.15.10",
-    "python-multipart>=0.0.22",
-    "pydantic>=2.12.5",
-    ## HTTP client
-    "requests>=2.32.5",
-    ## Service discovery
-    "zeroconf>=0.148.0",
-    ## System monitoring
-    "psutil>=7.2.2",
-    ## Concurrency control
-    "readerwriterlock>=1.0.9",
-
-    # REC DTN
-    ## Message serialization
+    # Message serialization
     "ormsgpack>=1.12.2",
-    ## Datastore
+    # Datastore
     "async-tinydb>=1.7.3",
     "aiofiles>=25.1.0",
     "aiorwlock>=1.5.1",
-    ## Misc
+    # System monitoring
+    "psutil>=7.2.2",
+    # Misc
     "tomlkit>=0.14.0",
 ]
 
@@ -85,8 +67,7 @@ build-backend = "uv_build"
 module-root = ""
 
 [project.scripts]
-rec_rest = "rec.run_rest:main"
-rec_dtn = "rec.run_dtn:main"
+rec = "rec.run:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -98,9 +79,3 @@ select = [
 
 [tool.ty.rules]
 invalid-context-manager = "ignore" # aiorwlock doen't implement __aenter__/__aexit__ correctly
-
-[tool.ty.src]
-exclude = [ # Ignore REST related files for now
-    "rec/rest",
-    "rec/util",
-]
