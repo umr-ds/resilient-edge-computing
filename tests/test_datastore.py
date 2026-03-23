@@ -1,4 +1,5 @@
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 from hypothesis import assume, given
@@ -8,7 +9,7 @@ from rec.datastore import Datastore
 from rec.eid import BROADCAST_ADDRESS, EID
 from rec.messages import BundleData, BundleType
 from rec.node import NodeType
-from tests.utils.helpers import TmpDirectory, dtn_eid, hierarchical_data
+from tests.utils.helpers import dtn_eid, hierarchical_data
 
 
 @pytest.mark.asyncio
@@ -17,11 +18,12 @@ from tests.utils.helpers import TmpDirectory, dtn_eid, hierarchical_data
     broker_id=dtn_eid(not_none=True),
 )
 async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
-    with TmpDirectory(prefix="/tmp") as root_dir:
+    with TemporaryDirectory(delete=True) as root_dir:
+        root_path = Path(root_dir)
         dstore = Datastore(
             node_id=node_id,
             dtn_agent_socket=Path("/tmp/dtn_agent.sock"),
-            root_directory=root_dir,
+            root_directory=root_path,
         )
 
         # broker announcement
@@ -67,9 +69,10 @@ async def test_store_load_single(
     node_id: EID, other_node_id: EID, data_name: str, false_data_name: str, data: bytes
 ) -> None:
     assume(not data_name.startswith(false_data_name))
-    with TmpDirectory(prefix="/tmp") as root_dir:
+    with TemporaryDirectory(delete=True) as root_dir:
+        root_path = Path(root_dir)
         dstore = Datastore(
-            node_id=node_id, dtn_agent_socket=Path(), root_directory=root_dir
+            node_id=node_id, dtn_agent_socket=Path(), root_directory=root_path
         )
 
         # store data in datastore
@@ -130,9 +133,10 @@ async def test_store_load_hierarchical(
     node_id: EID, other_node_id: EID, data: tuple[str, list[tuple[str, bytes]]]
 ) -> None:
     data_dict = {name: datum for name, datum in data[1]}
-    with TmpDirectory(prefix="/tmp") as root_dir:
+    with TemporaryDirectory(delete=True) as root_dir:
+        root_path = Path(root_dir)
         dstore = Datastore(
-            node_id=node_id, dtn_agent_socket=Path(), root_directory=root_dir
+            node_id=node_id, dtn_agent_socket=Path(), root_directory=root_path
         )
 
         # store data in datastore

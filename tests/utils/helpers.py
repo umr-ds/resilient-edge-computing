@@ -1,27 +1,8 @@
-from dataclasses import dataclass
-from pathlib import Path
-from shutil import rmtree
-from uuid import uuid4
-
 from hypothesis import strategies as st
 
 from rec.eid import EID
 from rec.job import Capabilities, JobInfo
 from rec.messages import MSGPACK_MAXINT
-
-
-@dataclass
-class TmpDirectory:
-    prefix: str
-
-    def __enter__(self) -> Path:
-        path = Path(f"{self.prefix}/{uuid4()}")
-        self.path = path
-        path.mkdir(parents=True)
-        return path
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        rmtree(self.path)
 
 
 @st.composite

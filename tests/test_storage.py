@@ -1,15 +1,19 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from rec.storage import Storage
-from tests.utils.helpers import TmpDirectory, hierarchical_data
+from tests.utils.helpers import hierarchical_data
 
 
 @pytest.mark.asyncio
 @given(data_name=st.text(), data=st.binary())
 async def test_store(data_name: str, data: bytes) -> None:
-    with TmpDirectory(prefix="/tmp") as tmp_path:
+    with TemporaryDirectory(delete=True) as tmp_dir:
+        tmp_path = Path(tmp_dir)
         storage = Storage(
             db_path=tmp_path / "database.db", blob_directory=tmp_path / "blobs"
         )
@@ -21,7 +25,8 @@ async def test_store(data_name: str, data: bytes) -> None:
 @given(data_name=st.text(), other_name=st.text(), data=st.binary())
 async def test_store_dedup(data_name: str, other_name: str, data: bytes) -> None:
     assume(data_name != other_name)
-    with TmpDirectory(prefix="/tmp") as tmp_path:
+    with TemporaryDirectory(delete=True) as tmp_dir:
+        tmp_path = Path(tmp_dir)
         blobs_path = tmp_path / "blobs"
         storage = Storage(db_path=tmp_path / "database.db", blob_directory=blobs_path)
 
@@ -34,7 +39,8 @@ async def test_store_dedup(data_name: str, other_name: str, data: bytes) -> None
 @pytest.mark.asyncio
 @given(data_name=st.text(), data=st.binary())
 async def test_store_retrieve(data_name: str, data: bytes) -> None:
-    with TmpDirectory(prefix="/tmp") as tmp_path:
+    with TemporaryDirectory(delete=True) as tmp_dir:
+        tmp_path = Path(tmp_dir)
         storage = Storage(
             db_path=tmp_path / "database.db", blob_directory=tmp_path / "blobs"
         )
@@ -49,7 +55,8 @@ async def test_store_retrieve(data_name: str, data: bytes) -> None:
 @pytest.mark.asyncio
 @given(data_name=st.text())
 async def test_retrieve_empty_storage(data_name: str) -> None:
-    with TmpDirectory(prefix="/tmp") as tmp_path:
+    with TemporaryDirectory(delete=True) as tmp_dir:
+        tmp_path = Path(tmp_dir)
         storage = Storage(
             db_path=tmp_path / "database.db", blob_directory=tmp_path / "blobs"
         )
@@ -65,7 +72,8 @@ async def test_wrong_lookup_name(
     data_name: str, other_data_name: str, data: bytes
 ) -> None:
     assume(not data_name.startswith(other_data_name))
-    with TmpDirectory(prefix="/tmp") as tmp_path:
+    with TemporaryDirectory(delete=True) as tmp_dir:
+        tmp_path = Path(tmp_dir)
         storage = Storage(
             db_path=tmp_path / "database.db", blob_directory=tmp_path / "blobs"
         )
@@ -79,7 +87,8 @@ async def test_wrong_lookup_name(
 @pytest.mark.asyncio
 @given(data=hierarchical_data())
 async def test_prefixing(data: tuple[str, list[tuple[str, bytes]]]) -> None:
-    with TmpDirectory(prefix="/tmp") as tmp_path:
+    with TemporaryDirectory(delete=True) as tmp_dir:
+        tmp_path = Path(tmp_dir)
         storage = Storage(
             db_path=tmp_path / "database.db", blob_directory=tmp_path / "blobs"
         )
@@ -98,7 +107,8 @@ async def test_prefixing(data: tuple[str, list[tuple[str, bytes]]]) -> None:
 @pytest.mark.asyncio
 @given(names=st.sets(st.text()), required=st.sets(st.text()))
 async def test_find_missing(names: set[str], required: set[str]) -> None:
-    with TmpDirectory(prefix="/tmp") as tmp_path:
+    with TemporaryDirectory(delete=True) as tmp_dir:
+        tmp_path = Path(tmp_dir)
         storage = Storage(
             db_path=tmp_path / "database.db", blob_directory=tmp_path / "blobs"
         )
@@ -114,7 +124,8 @@ async def test_find_missing(names: set[str], required: set[str]) -> None:
 @pytest.mark.asyncio
 @given(data_name=st.text(), data=st.binary())
 async def test_copy_to_file(data_name: str, data: bytes) -> None:
-    with TmpDirectory(prefix="/tmp") as tmp_path:
+    with TemporaryDirectory(delete=True) as tmp_dir:
+        tmp_path = Path(tmp_dir)
         storage = Storage(
             db_path=tmp_path / "database.db", blob_directory=tmp_path / "blobs"
         )

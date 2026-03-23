@@ -2,6 +2,7 @@ import io
 import zipfile
 from dataclasses import replace
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -13,7 +14,7 @@ from rec.executor import Executor, WasmTrapError, _run_wasi_module
 from rec.job import Capabilities, Job, JobInfo
 from rec.messages import BundleData, BundleType, NodeType
 from rec.storage import NoSuchNameError
-from tests.utils.helpers import TmpDirectory, dtn_eid
+from tests.utils.helpers import dtn_eid
 
 HERE = Path(__file__).resolve().parent
 WASM = HERE / "artifacts" / "wasi-smoke.wasm"
@@ -106,9 +107,10 @@ def sample_job(wasm_path: Path) -> Job:
 @pytest.mark.asyncio
 @given(node_id=dtn_eid(not_none=True), broker_id=dtn_eid(not_none=True))
 async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
-    with TmpDirectory(prefix="/tmp") as root_dir:
+    with TemporaryDirectory(delete=True) as root_dir:
+        root_path = Path(root_dir)
         executor = Executor(
-            node_id=node_id, dtn_agent_socket=Path(), root_directory=root_dir
+            node_id=node_id, dtn_agent_socket=Path(), root_directory=root_path
         )
 
         # broker announcement
