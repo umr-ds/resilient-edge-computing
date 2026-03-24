@@ -1,9 +1,20 @@
 import re
 from typing import Self
 
+from rec.errors import (
+    InvalidDtnNodeError,
+    InvalidDtnNoneAliasError,
+    InvalidDtnServiceError,
+    InvalidIpnNodeError,
+    InvalidIpnNumbersError,
+    InvalidIpnSchemeSeparatorError,
+    InvalidIpnServiceError,
+    InvalidIpnStructureError,
+    MissingDtnNodeError,
+    UnknownEIDSchemeError,
+)
 
-class EIDError(ValueError):
-    """Raised when an Endpoint ID is invalid."""
+IPN_PARTS = 2
 
 
 class EID(str):
@@ -43,16 +54,20 @@ class EID(str):
 
         Returns:
             EID: The constructed DTN EndpointID.
+
+        Raises:
+            InvalidDtnNodeError: If the node name is invalid.
+            InvalidDtnServiceError: If the service name is invalid.
         """
         if service == "":
             service = None
 
         if not cls._NODE_RE.match(node):
-            raise EIDError(f"invalid DTN node '{node}'")
+            raise InvalidDtnNodeError(node)
         if service is None:
             return cls(f"{cls._DTN_PREFIX}{node}/")
         if not service.isascii():
-            raise EIDError(f"invalid DTN service '{service}'")
+            raise InvalidDtnServiceError(service)
         return cls(f"{cls._DTN_PREFIX}{node}/{service}")
 
     @classmethod
@@ -66,11 +81,15 @@ class EID(str):
 
         Returns:
             EID: The constructed IPN EndpointID.
+
+        Raises:
+            InvalidIpnNodeError: If the node number is invalid.
+            InvalidIpnServiceError: If the service number is invalid.
         """
         if node_number < 1:
-            raise EIDError("IPN node must be >= 1")
+            raise InvalidIpnNodeError(node_number)
         if service_number < 0:
-            raise EIDError("IPN service must be >= 0")
+            raise InvalidIpnServiceError(service_number)
         return cls(f"{cls._IPN_PREFIX}{node_number}.{service_number}")
 
     @classmethod
@@ -115,46 +134,54 @@ class EID(str):
             return eid
 
         if eid.startswith(cls._DTN_PREFIX):
-            ssp = eid[len(cls._DTN_PREFIX) :]
-            if ssp == "none":
-                raise EIDError("invalid DTN host: use 'dtn:none', not 'dtn://none'")
-            if not ssp:
-                raise EIDError("invalid DTN EID: missing node")
-
-            # split once after node
-            if "/" in ssp:
-                node, service = ssp.split("/", 1)
-            else:
-                node, service = ssp, ""
-
-            if not cls._NODE_RE.match(node):
-                raise EIDError(f"invalid DTN node '{node}'")
-            if not service:
-                return f"{cls._DTN_PREFIX}{node}/"
-
-            if not service.isascii():
-                raise EIDError(f"invalid DTN service '{service}'")
-            return f"{cls._DTN_PREFIX}{node}/{service}"
+            return cls._normalize_dtn(eid=eid)
 
         if eid.startswith(cls._IPN_PREFIX):
-            rest = eid[len(cls._IPN_PREFIX) :]
-            if rest.startswith("//"):
-                raise EIDError("invalid IPN EID: must be 'ipn:N.S', not 'ipn://N.S'")
-            parts = rest.split(".")
-            if len(parts) != 2:
-                raise EIDError("invalid IPN EID: need exactly one dot (node.service)")
-            try:
-                node_i = int(parts[0], 10)
-                svc_i = int(parts[1], 10)
-            except ValueError as e:
-                raise EIDError(f"invalid IPN numbers: {e}")
-            if node_i < 1:
-                raise EIDError("IPN node must be >= 1")
-            if svc_i < 0:
-                raise EIDError("IPN service must be >= 0")
-            return f"{cls._IPN_PREFIX}{node_i}.{svc_i}"
+            return cls._normalize_ipn(eid=eid)
 
-        raise EIDError("unknown scheme (expected 'dtn:' or 'ipn:')")
+        raise UnknownEIDSchemeError
+
+    @classmethod
+    def _normalize_dtn(cls, eid: str) -> str:
+        ssp = eid[len(cls._DTN_PREFIX) :]
+        if ssp == "none":
+            raise InvalidDtnNoneAliasError
+        if not ssp:
+            raise MissingDtnNodeError
+
+        # split once after node
+        if "/" in ssp:
+            node, service = ssp.split("/", 1)
+        else:
+            node, service = ssp, ""
+
+        if not cls._NODE_RE.match(node):
+            raise InvalidDtnNodeError(node)
+        if not service:
+            return f"{cls._DTN_PREFIX}{node}/"
+
+        if not service.isascii():
+            raise InvalidDtnServiceError(service)
+        return f"{cls._DTN_PREFIX}{node}/{service}"
+
+    @classmethod
+    def _normalize_ipn(cls, eid: str) -> str:
+        rest = eid[len(cls._IPN_PREFIX) :]
+        if rest.startswith("//"):
+            raise InvalidIpnSchemeSeparatorError
+        parts = rest.split(".")
+        if len(parts) != IPN_PARTS:
+            raise InvalidIpnStructureError
+        try:
+            node_i = int(parts[0], 10)
+            svc_i = int(parts[1], 10)
+        except ValueError as e:
+            raise InvalidIpnNumbersError(parts[0], parts[1]) from e
+        if node_i < 1:
+            raise InvalidIpnNodeError(node_i)
+        if svc_i < 0:
+            raise InvalidIpnServiceError(svc_i)
+        return f"{cls._IPN_PREFIX}{node_i}.{svc_i}"
 
 
 BROADCAST_ADDRESS = EID.dtn("rec.all", "~")

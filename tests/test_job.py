@@ -132,14 +132,14 @@ class TestCapabilities:
         loaded = Capabilities.loads(job_caps_toml)
         assert job_caps == loaded
 
-    def test_capabilities_defaults(self):
+    def test_capabilities_defaults(self) -> None:
         caps = Capabilities()
         assert caps.cpu_cores == 1
         assert caps.free_cpu_capacity == 0
         assert caps.free_memory == 0
         assert caps.free_disk_space == 0
 
-    def test_capabilities_custom_values(self):
+    def test_capabilities_custom_values(self) -> None:
         caps = Capabilities(
             cpu_cores=4,
             free_cpu_capacity=300,
@@ -156,8 +156,12 @@ class TestCapabilities:
     @patch("psutil.virtual_memory")
     @patch("shutil.disk_usage")
     def test_from_system_basic(
-        self, mock_disk_usage, mock_virtual_memory, mock_cpu_percent, mock_cpu_count
-    ):
+        self,
+        mock_disk_usage: MagicMock,
+        mock_virtual_memory: MagicMock,
+        mock_cpu_percent: MagicMock,
+        mock_cpu_count: MagicMock,
+    ) -> None:
         mock_cpu_count.return_value = 4
         mock_cpu_percent.return_value = 25.0
         mock_virtual_memory.return_value = MagicMock(available=8 * 1024 * 1024 * 1024)
@@ -172,32 +176,34 @@ class TestCapabilities:
 
     def test_is_capable_of_sufficient_resources(
         self, system_caps_sufficient: Capabilities, job_caps: Capabilities
-    ):
+    ) -> None:
         assert system_caps_sufficient.is_capable_of(job_caps)
 
     def test_is_capable_of_insufficient_cpu_cores(
         self, system_caps_insufficient_cpu_cores: Capabilities, job_caps: Capabilities
-    ):
+    ) -> None:
         assert not system_caps_insufficient_cpu_cores.is_capable_of(job_caps)
 
     def test_is_capable_of_insufficient_cpu_capacity(
         self,
         system_caps_insufficient_cpu_capacity: Capabilities,
         job_caps: Capabilities,
-    ):
+    ) -> None:
         assert not system_caps_insufficient_cpu_capacity.is_capable_of(job_caps)
 
     def test_is_capable_of_insufficient_memory(
         self, system_caps_insufficient_memory: Capabilities, job_caps: Capabilities
-    ):
+    ) -> None:
         assert not system_caps_insufficient_memory.is_capable_of(job_caps)
 
     def test_is_capable_of_insufficient_disk_space(
         self, system_caps_insufficient_disk_space: Capabilities, job_caps: Capabilities
-    ):
+    ) -> None:
         assert not system_caps_insufficient_disk_space.is_capable_of(job_caps)
 
-    def test_is_capable_of_exact_match(self, system_caps_sufficient: Capabilities):
+    def test_is_capable_of_exact_match(
+        self, system_caps_sufficient: Capabilities
+    ) -> None:
         assert system_caps_sufficient.is_capable_of(system_caps_sufficient)
 
 
@@ -210,26 +216,26 @@ class TestJobInfo:
         loaded = JobInfo.loads(full_job_info_toml)
         assert full_job_info == loaded
 
-    def test_required_named_data_basic(self, full_job_info: JobInfo):
+    def test_required_named_data_basic(self, full_job_info: JobInfo) -> None:
         required = full_job_info.required_named_data()
         expected = {"wasm-module", "stdin", "input", "config"}
         assert required == expected
 
-    def test_required_named_data_no_stdin(self, full_job_info: JobInfo):
+    def test_required_named_data_no_stdin(self, full_job_info: JobInfo) -> None:
         job = replace(full_job_info, stdin_file=None)
 
         required = job.required_named_data()
         expected = {"wasm-module", "input", "config"}
         assert required == expected
 
-    def test_required_named_data_no_data_files(self, full_job_info: JobInfo):
+    def test_required_named_data_no_data_files(self, full_job_info: JobInfo) -> None:
         job = replace(full_job_info, data={})
 
         required = job.required_named_data()
         expected = {"wasm-module", "stdin"}
         assert required == expected
 
-    def test_required_named_data_minimal(self, full_job_info: JobInfo):
+    def test_required_named_data_minimal(self, full_job_info: JobInfo) -> None:
         job = replace(
             full_job_info,
             wasm_module="wasm-module",
@@ -241,7 +247,7 @@ class TestJobInfo:
         expected = {"wasm-module"}
         assert required == expected
 
-    def test_required_named_data_duplicates(self, full_job_info: JobInfo):
+    def test_required_named_data_duplicates(self, full_job_info: JobInfo) -> None:
         job = replace(
             full_job_info,
             wasm_module="shared",
@@ -259,7 +265,7 @@ class TestJobInfo:
 
 
 class TestJob:
-    def test_has_all_data(self, full_job_info: JobInfo):
+    def test_has_all_data(self, full_job_info: JobInfo) -> None:
         job = Job(
             metadata=full_job_info,
             data={
@@ -273,7 +279,7 @@ class TestJob:
         assert job.has_all_data() is True
         assert job.missing_data() == set()
 
-    def test_has_all_data_missing(self, full_job_info: JobInfo):
+    def test_has_all_data_missing(self, full_job_info: JobInfo) -> None:
         job = Job(
             metadata=full_job_info,
             data={},
@@ -282,7 +288,7 @@ class TestJob:
         assert job.has_all_data() is False
         assert job.missing_data() == {"wasm-module", "stdin", "input", "config"}
 
-    def test_has_extra_data(self, full_job_info: JobInfo):
+    def test_has_extra_data(self, full_job_info: JobInfo) -> None:
         job = Job(
             metadata=full_job_info,
             data={

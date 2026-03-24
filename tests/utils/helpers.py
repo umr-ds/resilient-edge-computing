@@ -6,7 +6,7 @@ from rec.messages import MSGPACK_MAXINT
 
 
 @st.composite
-def _dtn_eid(draw: st.DrawFn, singleton=True) -> EID:
+def _dtn_eid(draw: st.DrawFn, singleton: bool = True) -> EID:
     node: str = draw(
         st.text(
             alphabet=st.characters(
@@ -41,11 +41,11 @@ def _dtn_eid(draw: st.DrawFn, singleton=True) -> EID:
 
 
 @st.composite
-def dtn_eid(draw: st.DrawFn, singleton=True, not_none=False) -> EID:
+def dtn_eid(draw: st.DrawFn, singleton: bool = True, not_none: bool = False) -> EID:
     if not_none:
         return draw(_dtn_eid(singleton=singleton))
-    else:
-        return draw(st.one_of(_dtn_eid(singleton=singleton), st.just(EID.none())))
+
+    return draw(st.one_of(_dtn_eid(singleton=singleton), st.just(EID.none())))
 
 
 @st.composite
@@ -63,20 +63,20 @@ def hierarchical_data(draw: st.DrawFn) -> tuple[str, list[tuple[str, bytes]]]:
 
 @st.composite
 def randomized_capabilities(draw: st.DrawFn) -> Capabilities:
-    capabilities = Capabilities(
+    return Capabilities(
         cpu_cores=draw(st.integers(min_value=1, max_value=MSGPACK_MAXINT)),
         free_cpu_capacity=draw(st.integers(min_value=0, max_value=MSGPACK_MAXINT)),
         free_memory=draw(st.integers(min_value=0, max_value=MSGPACK_MAXINT)),
         free_disk_space=draw(st.integers(min_value=0, max_value=MSGPACK_MAXINT)),
     )
-    return capabilities
 
 
 @st.composite
 def randomized_job_info(draw: st.DrawFn, submitter: EID | None = None) -> JobInfo:
     if submitter is None:
         submitter = draw(dtn_eid())
-    job_info = JobInfo(
+
+    return JobInfo(
         job_id=draw(st.uuids()),
         submitter=submitter,
         wasm_module=draw(st.text(min_size=1)),
@@ -92,4 +92,3 @@ def randomized_job_info(draw: st.DrawFn, submitter: EID | None = None) -> JobInf
         named_results=draw(st.dictionaries(keys=st.text(), values=st.text())),
         results_receiver=draw(dtn_eid()),
     )
-    return job_info

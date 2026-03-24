@@ -6,6 +6,21 @@ from dataclasses import dataclass
 from typing import IO
 
 
+class MissingRequiredMessagesError(AssertionError):
+    """Raised when one or more required messages are missing from process output."""
+
+    def __init__(
+        self,
+        node_id: str,
+        failures: list[str],
+        stdout: str,
+        stderr: str,
+    ) -> None:
+        super().__init__(
+            f"{node_id} missing messages: {', '.join(failures)}; stdout: {stdout[:500]}, stderr: {stderr[:500]}"
+        )
+
+
 @dataclass
 class ProcessOutput:
     """
@@ -65,7 +80,7 @@ def _normalize_requirements(
     """
     if isinstance(required_messages, dict):
         return {msg: count for msg, count in required_messages.items() if count > 0}
-    return {msg: 1 for msg in required_messages}
+    return dict.fromkeys(required_messages, 1)
 
 
 def _check_requirements(
@@ -168,9 +183,10 @@ def _monitor_processes(
     try:
         while True:
             # Success Check
-            if terminate_on_success:
-                if all(state.satisfied for state in proc_states.values()):
-                    break
+            if terminate_on_success and all(
+                state.satisfied for state in proc_states.values()
+            ):
+                break
 
             # Timeout Check
             if time.monotonic() - start > timeout:
@@ -178,11 +194,13 @@ def _monitor_processes(
                 break
 
             # Exit Check
-            if not terminate_on_success:
-                if all(state.proc.poll() is not None for state in proc_states.values()):
-                    # Processes have exited, but we may still have output to read
-                    if event_queue.empty():
-                        break
+            # Processes have exited, but we may still have output to read
+            if (
+                not terminate_on_success
+                and all(state.proc.poll() is not None for state in proc_states.values())
+                and event_queue.empty()
+            ):
+                break
 
             # Fetch Data
             try:
@@ -257,7 +275,7 @@ def run_and_expect_single(
         terminate_on_success: If True, kills the process immediately once required messages are found, without waiting for timeout.
 
     Raises:
-        AssertionError with details if any message requirement is not met.
+        MissingRequiredMessagesError: If any message requirement is not met.
 
     Returns:
         ProcessOutput: The result of the process run.
@@ -280,9 +298,11 @@ def run_and_expect_single(
     )
 
     if failures:
-        raise AssertionError(
-            f"{node_id} missing messages: {', '.join(failures)}. "
-            f"stdout: {output.stdout[:500]}, stderr: {output.stderr[:500]}"
+        raise MissingRequiredMessagesError(
+            node_id=node_id,
+            failures=failures,
+            stdout=output.stdout,
+            stderr=output.stderr,
         )
 
     return output
@@ -305,7 +325,7 @@ def run_and_expect_multiple(
         terminate_on_success: If True, kills ALL processes immediately once ALL processes have found their required messages.
 
     Raises:
-        AssertionError with details if any message requirement is not met.
+        MissingRequiredMessagesError: If any message requirement is not met.
 
     Returns:
         Mapping node_id -> ProcessOutput.
@@ -332,9 +352,11 @@ def run_and_expect_multiple(
             required_messages=normalized_reqs.get(node_id, {}),
         )
         if failures:
-            raise AssertionError(
-                f"{node_id} missing messages: {', '.join(failures)}. "
-                f"stdout: {output.stdout[:500]}, stderr: {output.stderr[:500]}"
+            raise MissingRequiredMessagesError(
+                node_id=node_id,
+                failures=failures,
+                stdout=output.stdout,
+                stderr=output.stderr,
             )
 
     return outputs

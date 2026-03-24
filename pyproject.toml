@@ -71,10 +71,100 @@ rec = "rec.run:main"
 [tool.pytest.ini_options]
 pythonpath = ["."]
 
+[tool.ruff]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+line-length = 88
+indent-width = 4
+
+target-version = "py312"
+
 [tool.ruff.lint]
 select = [
-    "I", # Import-related checks
+    "A",
+    "ANN",
+    "ARG",
+    "ASYNC",
+    "B",
+    "BLE",
+    "C4",
+    "DTZ",
+    "E",
+    "EM",
+    "EXE",
+    "F",
+    "FA",
+    "FBT",
+    "FLY",
+    "FURB",
+    "I",
+    "ISC",
+    "LOG",
+    "N",
+    "PGH",
+    "PIE",
+    "PLC",
+    "PLE",
+    "PLR",
+    "PLW",
+    "PT",
+    "PTH",
+    "RET",
+    "RSE",
+    "RUF",
+    "S",
+    "SIM",
+    "SLOT",
+    "TID",
+    "TRY",
+    "UP",
+    "W",
+    "YTT",
 ]
+ignore = [
+    "ASYNC240", # we use aiofiles for asynchronous I/O.
+    "E501", # we no longer live in a world of 80 character terminals.
+    "S311", # we don't do cryptography
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**.py" = [
+    "ANN002",
+    "ANN003",
+    "FBT",
+    "PLR2004",
+    "PLR0912",
+    "PLR0915",
+    "S",
+] # Tests are just a bit special...
+"rec/eid.py" = ["PLC0415"] # avoiding circular import
 
 [tool.ty.rules]
 invalid-context-manager = "ignore" # aiorwlock doen't implement __aenter__/__aexit__ correctly

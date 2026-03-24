@@ -1,16 +1,29 @@
 import asyncio
+import contextlib
 import signal
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from socket import AF_UNIX, SOCK_STREAM, socket
+from types import TracebackType
 from typing import Self
 from uuid import UUID
 
 from aiorwlock import RWLock
 
 from rec.eid import EID, get_multicast_address
+from rec.errors import (
+    BundlePushStartFailedError,
+    DtndConnectionClosedError,
+    DtndSocketNotFoundError,
+    DtndSocketOperationError,
+    InvalidReplyLengthError,
+    MessageError,
+    NodeConnectionError,
+    NotConnectedToDtndError,
+    RecError,
+)
 from rec.log import LOG
 from rec.messages import (
     BundleCreate,
@@ -19,7 +32,6 @@ from rec.messages import (
     BundlePushStart,
     BundlePushStop,
     BundleType,
-    InvalidMessageError,
     Message,
     MessageType,
     NodeType,
@@ -54,12 +66,15 @@ class Node(ABC):
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        type_: type[BaseException] | None,
+        value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         if self._socket is not None:
-            try:
+            with contextlib.suppress(OSError):
                 self._socket.close()
-            except Exception:
-                pass
             self._socket = None
             LOG.debug("Disconnected from dtnd")
 
@@ -77,10 +92,8 @@ class Node(ABC):
 
         if self._bundle_processing_task:
             self._bundle_processing_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._bundle_processing_task
-            except asyncio.CancelledError:
-                pass
             self._bundle_processing_task = None
 
     async def _interruptible_sleep(self, seconds: float) -> None:
@@ -90,11 +103,8 @@ class Node(ABC):
         Args:
             seconds (float): The number of seconds to sleep.
         """
-        try:
+        with contextlib.suppress(TimeoutError):  # Slept the full duration
             await asyncio.wait_for(self._stop_event.wait(), timeout=seconds)
-        except asyncio.TimeoutError:
-            # Slept the full duration
-            pass
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
@@ -116,10 +126,19 @@ class Node(ABC):
         """
         if self._socket is None:
             LOG.info(f"Connecting to dtnd on {self._dtn_agent_socket}")
-            self._socket = socket(AF_UNIX, SOCK_STREAM)
-            self._socket.setblocking(False)
+            new_socket = socket(AF_UNIX, SOCK_STREAM)
+            new_socket.setblocking(False)  # noqa: FBT003 # positional argument only
             loop = asyncio.get_running_loop()
-            await loop.sock_connect(self._socket, str(self._dtn_agent_socket))
+            try:
+                await loop.sock_connect(new_socket, str(self._dtn_agent_socket))
+            except FileNotFoundError as err:
+                new_socket.close()
+                raise DtndSocketNotFoundError(self._dtn_agent_socket) from err
+            except OSError as err:
+                new_socket.close()
+                raise DtndSocketOperationError.for_connect() from err
+
+            self._socket = new_socket
             LOG.debug("Connected to dtnd")
 
             # Start background message receive loop
@@ -141,10 +160,8 @@ class Node(ABC):
         if self._message_receive_task is not None:
             if self._message_receive_task is not asyncio.current_task():
                 self._message_receive_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await self._message_receive_task
-                except asyncio.CancelledError:
-                    pass
             self._message_receive_task = None
 
         # Fail all pending requests
@@ -155,10 +172,8 @@ class Node(ABC):
 
         # Close socket
         if self._socket is not None:
-            try:
+            with contextlib.suppress(OSError):
                 self._socket.close()
-            except Exception:
-                pass
             self._socket = None
             LOG.debug("Disconnected from dtnd")
 
@@ -181,7 +196,7 @@ class Node(ABC):
         reply = await future
 
         if not reply.success:
-            raise RuntimeError(f"Failed to start push mode: {reply.error}")
+            raise BundlePushStartFailedError(reply.error)
         LOG.info("Push mode enabled")
 
     async def _stop_bundle_push(self) -> None:
@@ -192,21 +207,29 @@ class Node(ABC):
         Note: Caller must hold _socket_lock before calling this method.
         """
         message = BundlePushStop(type=MessageType.BUNDLE_PUSH_STOP)
-        try:
+        with contextlib.suppress(NodeConnectionError):
             await self._send_raw(message)
-        except Exception:
-            pass
         LOG.info("Push mode disabled")
 
     async def _recv_exact(self, socket: socket, nbytes: int) -> bytes:
         loop = asyncio.get_running_loop()
         data = b""
         while len(data) < nbytes:
-            packet = await loop.sock_recv(socket, nbytes - len(data))
+            try:
+                packet = await loop.sock_recv(socket, nbytes - len(data))
+            except OSError as err:
+                raise DtndSocketOperationError.for_receive() from err
             if not packet:
-                raise ConnectionResetError("Connection closed by dtnd")
+                raise DtndConnectionClosedError
             data += packet
         return data
+
+    @staticmethod
+    def _parse_reply_length(length_bytes: bytes) -> int:
+        reply_length = int.from_bytes(bytes=length_bytes, byteorder="big", signed=False)
+        if reply_length <= 0:
+            raise InvalidReplyLengthError(reply_length)
+        return reply_length
 
     async def _message_receive_loop(self, sock: socket) -> None:
         """
@@ -217,11 +240,8 @@ class Node(ABC):
         try:
             while self._running:
                 data = await self._recv_exact(sock, 8)
-                reply_length = int.from_bytes(bytes=data, byteorder="big", signed=False)
+                reply_length = self._parse_reply_length(data)
                 LOG.debug(f"Reply length: {reply_length}")
-
-                if reply_length <= 0:
-                    raise InvalidMessageError(f"Invalid reply length: {reply_length}")
 
                 data = await self._recv_exact(sock, reply_length)
                 message = deserialize(serialized=data)
@@ -229,7 +249,7 @@ class Node(ABC):
 
         except asyncio.CancelledError:
             LOG.debug("Message receive loop cancelled")
-        except Exception as err:
+        except (MessageError, NodeConnectionError) as err:
             LOG.exception("Error in message receive loop: %s", err)
             async with self._socket_lock.writer_lock:
                 await self._close_connection()
@@ -280,7 +300,7 @@ class Node(ABC):
                 self._bundle_queue.task_done()
         except asyncio.CancelledError:
             LOG.debug("Bundle processing loop cancelled")
-        except Exception as err:
+        except (OSError, RecError, TypeError, ValueError) as err:
             LOG.exception("Error in bundle processing loop: %s", err)
         finally:
             LOG.debug("Bundle processing loop stopped")
@@ -297,7 +317,7 @@ class Node(ABC):
             replies = await self._handle_bundles(bundles=bundles)
             if replies:
                 await self._send_bundles_and_check(bundles=replies)
-        except Exception as err:
+        except (OSError, RecError, TypeError, ValueError) as err:
             LOG.exception("Error processing bundle push: %s", err)
 
     async def _send_raw(self, message: Message) -> None:
@@ -311,11 +331,11 @@ class Node(ABC):
             message (Message): The message to send.
 
         Raises:
-            ConnectionError: If not connected to dtnd.
+            NotConnectedToDtndError: If not connected to dtnd.
             ConnectionResetError: If the connection is closed by dtnd.
         """
         if self._socket is None:
-            raise ConnectionError("Not connected to dtnd")
+            raise NotConnectedToDtndError
         loop = asyncio.get_running_loop()
 
         # Serialize and send message
@@ -326,10 +346,13 @@ class Node(ABC):
             length=8, byteorder="big", signed=False
         )
 
-        await loop.sock_sendall(self._socket, message_length_bytes)
-        LOG.debug("Sent message length")
-        await loop.sock_sendall(self._socket, message_bytes)
-        LOG.debug("Sent message")
+        try:
+            await loop.sock_sendall(self._socket, message_length_bytes)
+            LOG.debug("Sent message length")
+            await loop.sock_sendall(self._socket, message_bytes)
+            LOG.debug("Sent message")
+        except OSError as err:
+            raise DtndSocketOperationError.for_send() from err
 
     async def _send_message(self, message: Message) -> Reply:
         """
@@ -351,7 +374,7 @@ class Node(ABC):
             try:
                 await self._ensure_connected()
                 await self._send_raw(message)
-            except (ConnectionError, BrokenPipeError, OSError) as err:
+            except NodeConnectionError as err:
                 # Connection failed, close and retry once
                 LOG.warning(f"Connection error, reconnecting: {err}")
                 await self._close_connection()
@@ -401,7 +424,7 @@ class Node(ABC):
             dtnd_response = await self._send_bundle(bundle=bundle)
             if not dtnd_response.success:
                 LOG.exception("dtnd sent error: %s", dtnd_response.error)
-        except Exception as err:
+        except NodeConnectionError as err:
             LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
     async def _send_bundles(self, bundles: list[BundleData]) -> list[Reply]:
@@ -419,7 +442,7 @@ class Node(ABC):
             for dtnd_response in dtnd_responses:
                 if not dtnd_response.success:
                     LOG.exception("dtnd sent error: %s", dtnd_response.error)
-        except Exception as err:
+        except NodeConnectionError as err:
             LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
     @abstractmethod
@@ -433,7 +456,6 @@ class Node(ABC):
         Returns:
             list[BundleData]: A list of response bundles to send back.
         """
-        pass
 
     async def _handle_bundles(self, bundles: list[BundleData]) -> list[BundleData]:
         """

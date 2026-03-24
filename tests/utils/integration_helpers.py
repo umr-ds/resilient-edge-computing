@@ -1,9 +1,9 @@
 import subprocess as sp
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 
@@ -37,9 +37,10 @@ def _check_docker_support() -> tuple[bool, str]:
             check=True,
             timeout=5,
         )
+    except (OSError, sp.SubprocessError) as err:
+        return False, f"Error checking Docker support: {err}"
+    else:
         return True, ""
-    except Exception as e:
-        return False, f"Error checking Docker support: {e}"
 
 
 _DOCKER_SUPPORTED, _DOCKER_SKIP_REASON = _check_docker_support()
@@ -77,6 +78,25 @@ class DtnTestEnvironment:
     daemon_processes: dict[str, sp.Popen[str]]
 
 
+class DaemonStartupError(RuntimeError):
+    """Raised when a DTN daemon process exits during startup."""
+
+    def __init__(
+        self,
+        node: str,
+        daemon_type: DaemonType,
+        returncode: int | None,
+        stdout: str,
+        stderr: str,
+    ) -> None:
+        super().__init__(
+            f"Daemon '{node}' ({daemon_type.value}) failed to start. "
+            f"Exit code: {returncode}, "
+            f"stdout: {stdout}, "
+            f"stderr: {stderr}"
+        )
+
+
 def create_dtnd_config_go(
     node_id: str,
     socket_dir: Path,
@@ -96,7 +116,7 @@ def create_dtnd_config_go(
     """
     socket_path = socket_dir / f"{node_id}.socket"
 
-    config_content = f"""node_id = "dtn://{node_id}/"
+    return f"""node_id = "dtn://{node_id}/"
 log_level = "Debug"
 
 [Store]
@@ -118,8 +138,6 @@ dispatch = "10s"
 gc = "1h15s"
 """
 
-    return config_content
-
 
 def create_dtnd_config_rs(
     node_id: str,
@@ -139,7 +157,7 @@ def create_dtnd_config_rs(
     """
     socket_path = socket_dir / f"{node_id}.socket"
 
-    config_content = f"""nodeid = "{node_id}"
+    return f"""nodeid = "{node_id}"
 debug = true
 beacon-period = true
 
@@ -164,8 +182,6 @@ peer-timeout = "20s"
 port = 3003
 """
 
-    return config_content
-
 
 def _create_dtnd_env(
     daemon_type: DaemonType,
@@ -178,6 +194,9 @@ def _create_dtnd_env(
 
     Yields:
         DtnTestEnvironment with the specified daemon running in each container.
+
+    Raises:
+        DaemonStartupError: If any of the DTN daemon processes fail to start.
     """
     nodes = ["broker", "datastore", "executor", "client"]
     service_mapping = {
@@ -247,11 +266,12 @@ def _create_dtnd_env(
         for node, proc in daemon_processes.items():
             if proc.poll() is not None:
                 stdout, stderr = proc.communicate()
-                raise RuntimeError(
-                    f"Daemon '{node}' ({daemon_type.value}) failed to start. "
-                    f"Exit code: {proc.returncode}, "
-                    f"stdout: {stdout}, "
-                    f"stderr: {stderr}"
+                raise DaemonStartupError(
+                    node=node,
+                    daemon_type=daemon_type,
+                    returncode=proc.returncode,
+                    stdout=stdout,
+                    stderr=stderr,
                 )
 
         yield DtnTestEnvironment(
@@ -360,7 +380,7 @@ def _start_bde_services(env: DtnTestEnvironment) -> None:
 
 
 @pytest.fixture
-def dtnd_bde_env(dtnd_env: DtnTestEnvironment) -> Iterator[DtnTestEnvironment]:
+def dtnd_bde_env(dtnd_env: DtnTestEnvironment) -> DtnTestEnvironment:
     """
     Parameterized fixture with broker, datastore, and executor already running.
 
@@ -368,38 +388,38 @@ def dtnd_bde_env(dtnd_env: DtnTestEnvironment) -> Iterator[DtnTestEnvironment]:
     the broker, datastore, and executor services, leaving the client available
     for test-specific use.
 
-    Yields:
+    Returns:
         DtnTestEnvironment with broker, datastore, and executor services running.
     """
     _start_bde_services(dtnd_env)
-    yield dtnd_env
+    return dtnd_env
 
 
 @pytest.fixture
-def dtnd_go_bde_env(dtnd_go_env: DtnTestEnvironment) -> Iterator[DtnTestEnvironment]:
+def dtnd_go_bde_env(dtnd_go_env: DtnTestEnvironment) -> DtnTestEnvironment:
     """
     Provides a Go DTN test environment with broker, datastore, and executor already running.
 
     This fixture extends dtnd_go_env by starting the broker, datastore, and executor services,
     leaving the client available for test-specific use.
 
-    Yields:
+    Returns:
         DtnTestEnvironment with Go daemon and broker, datastore, and executor services running.
     """
     _start_bde_services(dtnd_go_env)
-    yield dtnd_go_env
+    return dtnd_go_env
 
 
 @pytest.fixture
-def dtnd_rs_bde_env(dtnd_rs_env: DtnTestEnvironment) -> Iterator[DtnTestEnvironment]:
+def dtnd_rs_bde_env(dtnd_rs_env: DtnTestEnvironment) -> DtnTestEnvironment:
     """
     Provides a Rust DTN test environment with broker, datastore, and executor already running.
 
     This fixture extends dtnd_rs_env by starting the broker, datastore, and executor services,
     leaving the client available for test-specific use.
 
-    Yields:
+    Returns:
         DtnTestEnvironment with Rust daemon and broker, datastore, and executor services running.
     """
     _start_bde_services(dtnd_rs_env)
-    yield dtnd_rs_env
+    return dtnd_rs_env

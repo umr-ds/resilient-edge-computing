@@ -1,5 +1,8 @@
 import logging
 import sys
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import ClassVar
 
 
 class LogFormatter(logging.Formatter):
@@ -11,15 +14,17 @@ class LogFormatter(logging.Formatter):
     reset = "\x1b[0m"
     _format = "%(levelname)s: %(asctime)s: %(message)s"
 
-    FORMATS = {
-        logging.DEBUG: grey + _format + reset,
-        logging.INFO: green + _format + reset,
-        logging.WARNING: yellow + _format + reset,
-        logging.ERROR: red + _format + reset,
-        logging.CRITICAL: bold_red + _format + reset,
-    }
+    FORMATS: ClassVar[Mapping[int, str]] = MappingProxyType(
+        {
+            logging.DEBUG: grey + _format + reset,
+            logging.INFO: green + _format + reset,
+            logging.WARNING: yellow + _format + reset,
+            logging.ERROR: red + _format + reset,
+            logging.CRITICAL: bold_red + _format + reset,
+        }
+    )
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         if sys.stderr.isatty():
             log_fmt = self.FORMATS.get(record.levelno)
         else:
@@ -28,7 +33,7 @@ class LogFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-LOG = logging.Logger("rec_logger")
+LOG = logging.getLogger("rec_logger")
 if __name__ == "rec.log":
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(LogFormatter())

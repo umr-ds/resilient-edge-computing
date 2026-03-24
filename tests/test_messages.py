@@ -21,10 +21,7 @@ from tests.utils.helpers import dtn_eid
 @st.composite
 def randomized_discovery_bundle(draw: st.DrawFn) -> BundleData:
     success = draw(st.booleans())
-    if not success:
-        error = draw(st.text(min_size=1))
-    else:
-        error = ""
+    error = draw(st.text(min_size=1)) if not success else ""
     return BundleData(
         type=draw(
             st.sampled_from(
@@ -55,10 +52,7 @@ def randomized_discovery_bundle(draw: st.DrawFn) -> BundleData:
 @st.composite
 def randomized_job_bundle(draw: st.DrawFn) -> BundleData:
     success = draw(st.booleans())
-    if not success:
-        error = draw(st.text(min_size=1))
-    else:
-        error = ""
+    error = draw(st.text(min_size=1)) if not success else ""
     return BundleData(
         type=draw(
             st.sampled_from(
@@ -82,10 +76,7 @@ def randomized_job_bundle(draw: st.DrawFn) -> BundleData:
 @st.composite
 def randomized_data_bundle(draw: st.DrawFn) -> BundleData:
     success = draw(st.booleans())
-    if not success:
-        error = draw(st.text(min_size=1))
-    else:
-        error = ""
+    error = draw(st.text(min_size=1)) if not success else ""
     return BundleData(
         type=draw(
             st.sampled_from(
@@ -121,10 +112,7 @@ def randomized_bundle(draw: st.DrawFn) -> BundleData:
 @st.composite
 def randomized_reply(draw: st.DrawFn) -> Reply:
     success = draw(st.booleans())
-    if not success:
-        error = draw(st.text(min_size=1))
-    else:
-        error = ""
+    error = draw(st.text(min_size=1)) if not success else ""
     return Reply(
         type=MessageType.REPLY,
         success=success,

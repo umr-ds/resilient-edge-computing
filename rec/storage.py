@@ -1,36 +1,13 @@
 import shutil
-from dataclasses import dataclass
 from hashlib import sha1
 from pathlib import Path
-from typing import override
 
-from aiofiles import open
+from aiofiles import open as async_open
 from aiorwlock import RWLock
 from asynctinydb import Query, TinyDB
 
+from rec.errors import NameTakenError, NoSuchNameError
 from rec.log import LOG
-
-
-@dataclass
-class NameTakenError(Exception):
-    """Raised when trying to store data with a name that is already taken."""
-
-    name: str
-
-    @override
-    def __str__(self) -> str:
-        return f"name {self.name} already taken"
-
-
-@dataclass
-class NoSuchNameError(Exception):
-    """Raised when trying to access data with a name that does not exist."""
-
-    name: str
-
-    @override
-    def __str__(self) -> str:
-        return f"no such name: {self.name}"
 
 
 class Storage:
@@ -91,7 +68,7 @@ class Storage:
                 await self._db.insert({"name": name, "filename": filename})
                 return
 
-            async with open(self._blob_directory / filename, "wb") as f:
+            async with async_open(self._blob_directory / filename, "wb") as f:
                 await f.write(data)
             await self._db.insert({"name": name, "filename": filename})
 
@@ -126,7 +103,7 @@ class Storage:
             for entry in entries:
                 try:
                     filepath = self._blob_directory / entry["filename"]
-                    async with open(filepath, "rb") as f:
+                    async with async_open(filepath, "rb") as f:
                         data = await f.read()
                         all_data.append((entry["name"], data))
                 except FileNotFoundError as err:
@@ -177,7 +154,7 @@ class Storage:
             entries = await self._db.search(db_data.name == name)
 
             if not entries:
-                raise NoSuchNameError(name=name)
+                raise NoSuchNameError(name)
 
             filename = entries[0]["filename"]
             source_path = self._blob_directory / filename
@@ -190,7 +167,7 @@ class Storage:
 
         if missing_filename:
             await self._cleanup([missing_filename])
-            raise NoSuchNameError(name=name)
+            raise NoSuchNameError(name)
 
     async def _cleanup(self, names: list[str]) -> None:
         """

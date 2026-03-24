@@ -4,6 +4,7 @@ import os
 import shutil
 import zipfile
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 from typing import override
 
@@ -19,6 +20,19 @@ from wasmtime import (
 )
 
 from rec.eid import DATASTORE_MULTICAST_ADDRESS, EID
+from rec.errors import (
+    DataDirectoryEscapeError,
+    DataDirectoryNotDirectoryError,
+    MissingStartExportError,
+    NodeConnectionError,
+    OutputPathNotFileError,
+    RecError,
+    UnexpectedWasmRuntimeError,
+    WasmError,
+    WasmPathNotFoundError,
+    WasmSetupError,
+    WasmTrapError,
+)
 from rec.job import Capabilities, Job, JobInfo, JobResult
 from rec.log import LOG
 from rec.messages import (
@@ -32,14 +46,6 @@ from rec.node import Node
 from rec.storage import NameTakenError, Storage
 
 MISSING_DATA_FETCH_INTERVAL_SECONDS = 10
-
-
-class WasmSetupError(RuntimeError):
-    """Raised when Wasmtime/WASI setup or instantiation fails."""
-
-
-class WasmTrapError(RuntimeError):
-    """Raised when the module traps during execution (excluding proc_exit)."""
 
 
 class Executor(Node):
@@ -213,7 +219,7 @@ class Executor(Node):
                         )
                         if not dtnd_response.success:
                             LOG.error("dtnd sent error: %s", dtnd_response.error)
-                    except Exception as err:
+                    except NodeConnectionError as err:
                         LOG.exception(
                             "error communicating with dtnd: %s", err, exc_info=True
                         )
@@ -244,7 +250,7 @@ class Executor(Node):
                 await self._send_results(broker_eid, job_info, results)
                 await self._store_named_results(named_results)
                 await self._send_named_results(named_results)
-            except Exception:
+            except (OSError, RecError):
                 LOG.exception("Job failed: %s", job_info)
             finally:
                 # Allow new jobs to be scheduled
@@ -284,7 +290,7 @@ class Executor(Node):
             dtnd_response = await self._send_message(message)
             if not dtnd_response.success:
                 LOG.error("dtnd sent error: %s", dtnd_response.error)
-        except Exception as err:
+        except NodeConnectionError as err:
             LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
     async def _send_results_to_results_receiver(
@@ -305,7 +311,7 @@ class Executor(Node):
             dtnd_response = await self._send_message(message)
             if not dtnd_response.success:
                 LOG.error("dtnd sent error: %s", dtnd_response.error)
-        except Exception as err:
+        except NodeConnectionError as err:
             LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
     async def _store_named_results(self, results: dict[str, bytes]) -> None:
@@ -342,7 +348,7 @@ class Executor(Node):
                 dtnd_response = await self._send_message(message)
                 if not dtnd_response.success:
                     LOG.error("dtnd sent error: %s", dtnd_response.error)
-            except Exception as err:
+            except NodeConnectionError as err:
                 LOG.exception("error communicating with dtnd: %s", err, exc_info=True)
 
     async def _run_job(self, job: JobInfo) -> tuple[bytes | None, dict[str, bytes]]:
@@ -355,7 +361,7 @@ class Executor(Node):
             )
 
         try:
-            exit_code = await _run_wasi_module(
+            wasi_args = WASIArguments(
                 exec_file=wasm_file,
                 argv=job.argv,
                 env=job.env,
@@ -372,14 +378,16 @@ class Executor(Node):
                     else None
                 ),
             )
+            exit_code = await _run_wasi_module(args=wasi_args)
+        except (OSError, WasmError) as err:
+            LOG.exception("Job failed: %s", err)
+            return None, {}
+        else:
             LOG.info("Job exit code: %s", exit_code)
 
             results = await self._collect_results(job, job_dir)
             named_results = await self._collect_named_results(job, job_dir)
             return results, named_results
-        except Exception as e:
-            LOG.exception("Job failed: %s", e)
-            return None, {}
         finally:
             if job_dir and job_dir.exists():
                 shutil.rmtree(job_dir, ignore_errors=True)
@@ -400,7 +408,7 @@ class Executor(Node):
         Raises:
             NoSuchNameError: If any named data is missing.
             OSError: If directories or files cannot be created.
-            ValueError: If any paths are invalid.
+            DataDirectoryEscapeError: If any paths are invalid.
         """
         base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -422,14 +430,14 @@ class Executor(Node):
         for dir_path in job.dirs:
             abs_dir_path = (data_dir / dir_path.lstrip("/")).resolve()
             if not abs_dir_path.is_relative_to(data_dir):
-                raise ValueError(f"Directory path escapes data directory: {dir_path}")
+                raise DataDirectoryEscapeError(dir_path)
             abs_dir_path.mkdir(parents=True, exist_ok=True)
 
         # Write data files
         for file_path, data in job.data.items():
             abs_file_path = (data_dir / file_path.lstrip("/")).resolve()
             if not abs_file_path.is_relative_to(data_dir):
-                raise ValueError(f"Data file path escapes data directory: {file_path}")
+                raise DataDirectoryEscapeError(file_path)
             abs_file_path.parent.mkdir(parents=True, exist_ok=True)
 
             await self._storage.copy_to_file(data, abs_file_path)
@@ -438,18 +446,14 @@ class Executor(Node):
         if job.stdout_file:
             stdout_path = (data_dir / job.stdout_file.lstrip("/")).resolve()
             if not stdout_path.is_relative_to(data_dir):
-                raise ValueError(
-                    f"stdout_file path escapes data directory: {job.stdout_file}"
-                )
+                raise DataDirectoryEscapeError(job.stdout_file)
             stdout_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Prepare stderr parent directory if specified
         if job.stderr_file:
             stderr_path = (data_dir / job.stderr_file.lstrip("/")).resolve()
             if not stderr_path.is_relative_to(data_dir):
-                raise ValueError(
-                    f"stderr_file path escapes data directory: {job.stderr_file}"
-                )
+                raise DataDirectoryEscapeError(job.stderr_file)
             stderr_path.parent.mkdir(parents=True, exist_ok=True)
 
         return wasm_path, stdin_path, data_dir
@@ -459,7 +463,7 @@ class Executor(Node):
             return None
 
         data_dir = (base_dir / "data").resolve()
-        zip_path = (base_dir / f"{str(job.job_id)}_result.zip").resolve()
+        zip_path = (base_dir / f"{job.job_id!s}_result.zip").resolve()
 
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for path in job.results:
@@ -484,7 +488,7 @@ class Executor(Node):
                         f"Result path is neither file nor directory: {abs_path}, skipping"
                     )
 
-        with open(zip_path, "rb") as f:
+        with zip_path.open("rb") as f:
             return f.read()
 
     async def _collect_named_results(
@@ -503,7 +507,7 @@ class Executor(Node):
                 continue
 
             if abs_path.is_file():
-                with open(abs_path, "rb") as f:
+                with abs_path.open("rb") as f:
                     results[name] = f.read()
             elif abs_path.is_dir():
                 # Zip the directory
@@ -525,21 +529,11 @@ class Executor(Node):
         return results
 
 
-async def _run_wasi_module(
-    exec_file: Path,
-    argv: list[str],
-    env: dict[str, str],
-    stdin_file: Path | None = None,
-    data_dir: Path | None = None,
-    stdout_file: Path | None = None,
-    stderr_file: Path | None = None,
-) -> int:
-    """
-    Execute a WASI WebAssembly module asynchronously and return its exit code.
+@dataclass(frozen=True)
+class WASIArguments:
+    """Arguments necessary to run a WASI module.
 
-    This offloads blocking Wasmtime work to the default thread executor so the event loop stays responsive.
-
-    Args:
+    Attributes:
         exec_file (Path): Path to the `.wasm` binary.
         argv (list[str]): Program arguments (include argv[0] if your guest expects it).
         env (dict[str, str]): Environment variables for the guest.
@@ -547,53 +541,74 @@ async def _run_wasi_module(
         data_dir (Path | None): Optional host directory to preopen as "/" in WASI.
         stdout_file (Path | None): Optional file path to capture stdout.
         stderr_file (Path | None): Optional file path to capture stderr.
+    """
+
+    exec_file: Path
+    argv: list[str]
+    env: dict[str, str]
+    stdin_file: Path | None = None
+    data_dir: Path | None = None
+    stdout_file: Path | None = None
+    stderr_file: Path | None = None
+
+
+async def _run_wasi_module(args: WASIArguments) -> int:
+    """
+    Execute a WASI WebAssembly module asynchronously and return its exit code.
+
+    This offloads blocking Wasmtime work to the default thread executor so the event loop stays responsive.
+
+    Args:
+        args (WASIArguments): Arguments necessary to run module.
 
     Returns:
         int: The exit code of the program.
 
     Raises:
-        FileNotFoundError: If `exec_file` or `stdin_file` does not exist.
-        NotADirectoryError: If `data_dir` exists but is not a directory.
+        WasmPathNotFoundError: If `exec_file` or `stdin_file` does not exist.
+        DataDirectoryNotDirectoryError: If `data_dir` exists but is not a directory.
+        MissingStartExportError: If the module doesn't export a `_start` function.
         WasmSetupError: On compile/instantiate/WASI config failures.
         WasmTrapError: On runtime traps other than `proc_exit`.
+        UnexpectedWasmRuntimeError: On any other exceptions during module setup or execution.
         OSError: If output directories/files cannot be prepared.
-        ValueError: If output file paths exist but are not regular files, or on other invalid arguments.
+        OutputPathNotFileError: If output file paths exist but are not regular files.
     """
     # Resolve paths early
-    exec_file = exec_file.resolve()
-    data_dir = data_dir.resolve() if data_dir else None
-    stdin_file = stdin_file.resolve() if stdin_file else None
-    stdout_file = stdout_file.resolve() if stdout_file else None
-    stderr_file = stderr_file.resolve() if stderr_file else None
+    exec_file = args.exec_file.resolve()
+    data_dir = args.data_dir.resolve() if args.data_dir else None
+    stdin_file = args.stdin_file.resolve() if args.stdin_file else None
+    stdout_file = args.stdout_file.resolve() if args.stdout_file else None
+    stderr_file = args.stderr_file.resolve() if args.stderr_file else None
 
     # Validate exec_file
     if not exec_file.is_file():
-        raise FileNotFoundError(f"WASM binary not found: {exec_file}")
+        raise WasmPathNotFoundError.for_wasm_binary(exec_file)
 
     # Validate stdin_file
     if stdin_file and not stdin_file.is_file():
-        raise FileNotFoundError(f"stdin file not found: {stdin_file}")
+        raise WasmPathNotFoundError.for_stdin_file(stdin_file)
 
     # Validate data_dir
     if data_dir and not data_dir.exists():
         data_dir.mkdir(parents=True, exist_ok=True)
     if data_dir and not data_dir.is_dir():
-        raise NotADirectoryError(f"data_dir is not a directory: {data_dir}")
+        raise DataDirectoryNotDirectoryError(data_dir)
 
     # Validate stdout_file
     if stdout_file:
         stdout_file.parent.mkdir(parents=True, exist_ok=True)
         if stdout_file.exists() and not stdout_file.is_file():
-            raise ValueError(f"stdout_file is not a regular file: {stdout_file}")
+            raise OutputPathNotFileError.for_stdout(stdout_file)
 
     # Validate stderr_file
     if stderr_file:
         stderr_file.parent.mkdir(parents=True, exist_ok=True)
         if stderr_file.exists() and not stderr_file.is_file():
-            raise ValueError(f"stderr_file is not a regular file: {stderr_file}")
+            raise OutputPathNotFileError.for_stderr(stderr_file)
 
     # Read WASM bytes
-    with open(exec_file, "rb") as f:
+    with exec_file.open("rb") as f:
         wasm_bytes = f.read()
 
     LOG.debug("Launching WASI module: %s", exec_file)
@@ -603,12 +618,7 @@ async def _run_wasi_module(
         None,  # default thread pool
         _run_wasi_module_sync,
         wasm_bytes,
-        argv,
-        env,
-        stdin_file,
-        data_dir,
-        stdout_file,
-        stderr_file,
+        args,
     )
 
     LOG.debug(
@@ -620,51 +630,49 @@ async def _run_wasi_module(
     return exit_code
 
 
+def _require_start_export(start: object) -> Func:
+    if not isinstance(start, Func):
+        raise MissingStartExportError
+    return start
+
+
 def _run_wasi_module_sync(
     wasm_bytes: bytes,
-    argv: list[str],
-    env: dict[str, str],
-    stdin_file: Path | None = None,
-    data_dir: Path | None = None,
-    stdout_file: Path | None = None,
-    stderr_file: Path | None = None,
+    args: WASIArguments,
 ) -> int:
     """
     Run the module synchronously once and return its exit code.
 
     Args:
         wasm_bytes (bytes): The WebAssembly binary data.
-        argv (list[str]): Program arguments (include argv[0] if your guest expects it).
-        env (dict[str, str]): Environment variables for the guest.
-        stdin_file (Path | None): Optional file to wire to WASI stdin.
-        data_dir (Path | None): Optional host directory to preopen as "/" in WASI.
-        stdout_file (Path | None): Optional file path to capture stdout.
-        stderr_file (Path | None): Optional file path to capture stderr.
+        args (WASIArguments): Arguments necessary to run module.
 
     Returns:
         int: The exit code of the program.
 
     Raises:
+        MissingStartExportError: If the module doesn't export a `_start` function.
         WasmSetupError: On compile/instantiate/WASI config failures.
         WasmTrapError: On runtime traps other than `proc_exit`.
+        UnexpectedWasmRuntimeError: On any other exceptions during module setup or execution.
     """
     try:
         store = Store()
         wasi = WasiConfig()
 
         # Arguments & environment
-        wasi.argv = list(argv)
-        wasi.env = [(str(k), str(v)) for k, v in env.items()]
+        wasi.argv = list(args.argv)
+        wasi.env = [(str(k), str(v)) for k, v in args.env.items()]
 
-        # Preopen the given host directory as "/"
-        if data_dir:
-            wasi.preopen_dir(str(data_dir), "/")
+        # Pre-open the given host directory as "/"
+        if args.data_dir:
+            wasi.preopen_dir(str(args.data_dir), "/")
 
         # I/O redirection
-        if stdin_file:
-            wasi.stdin_file = str(stdin_file)
-        wasi.stdout_file = str(stdout_file) if stdout_file else os.devnull
-        wasi.stderr_file = str(stderr_file) if stderr_file else os.devnull
+        if args.stdin_file:
+            wasi.stdin_file = str(args.stdin_file)
+        wasi.stdout_file = str(args.stdout_file) if args.stdout_file else os.devnull
+        wasi.stderr_file = str(args.stderr_file) if args.stderr_file else os.devnull
 
         store.set_wasi(wasi)
 
@@ -674,20 +682,19 @@ def _run_wasi_module_sync(
         linker.define_wasi()
         instance = linker.instantiate(store, module)
 
-        exports = instance.exports(store)
-        start = exports.get("_start")
-        if not isinstance(start, Func):
-            raise WasmSetupError("The module does not export a `_start` function.")
+        start = _require_start_export(instance.exports(store).get("_start"))
 
         start(store)
-
-        # If the program returns normally, treat as success
-        return 0
     except ExitTrap as et:
         return et.code
     except Trap as t:
-        raise WasmTrapError(str(t)) from t
+        raise WasmTrapError from t
+    except MissingStartExportError:
+        raise
     except WasmtimeError as we:
-        raise WasmSetupError(str(we)) from we
+        raise WasmSetupError from we
     except Exception as e:
-        raise WasmTrapError(f"Unexpected error: {e}") from e
+        raise UnexpectedWasmRuntimeError from e
+    else:
+        # If the program returns normally, treat as success
+        return 0

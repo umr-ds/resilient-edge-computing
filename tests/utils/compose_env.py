@@ -1,9 +1,11 @@
+import contextlib
 import json
 import subprocess as sp
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
 from typing import Self
 
 
@@ -21,6 +23,41 @@ class ExecResult:
     exit_code: int
     stdout: str
     stderr: str
+
+
+class UnknownServicesError(ValueError):
+    """Raised when one or more requested services are not present in the compose file."""
+
+    def __init__(
+        self, unknown_services: set[str], available_services: set[str]
+    ) -> None:
+        super().__init__(
+            f"Unknown services: {unknown_services}. "
+            f"Available services in compose file: {available_services}"
+        )
+
+
+class EmptyServicesError(ValueError):
+    """Raised when no services are available or selected."""
+
+    def __init__(self) -> None:
+        super().__init__("Compose file must contain at least one service")
+
+
+class ComposeSetupError(RuntimeError):
+    """Raised when Docker Compose environment setup fails."""
+
+    def __init__(self, error_msg: str) -> None:
+        super().__init__(f"Failed to setup Docker Compose environment: {error_msg}")
+
+
+class UnknownServiceError(ValueError):
+    """Raised when a service name is not recognized."""
+
+    def __init__(self, service: str, available_services: set[str]) -> None:
+        super().__init__(
+            f"Unknown service: {service}. Available services: {available_services}"
+        )
 
 
 class ComposeEnvironment:
@@ -46,7 +83,8 @@ class ComposeEnvironment:
             compose_file: Path to the docker-compose.yml file.
 
         Raises:
-            ValueError: If services set is empty or contains services not defined in the compose file.
+            UnknownServicesError: If any requested services are not present in the compose file.
+            EmptyServicesError: If no services are available or selected.
         """
         self._compose_file = compose_file
         self._project_name = f"compose_env_{uuid.uuid4()}"
@@ -63,13 +101,10 @@ class ComposeEnvironment:
             unknown_services = self._services - available_services
 
             if unknown_services:
-                raise ValueError(
-                    f"Unknown services: {unknown_services}. "
-                    f"Available services in compose file: {available_services}"
-                )
+                raise UnknownServicesError(unknown_services, available_services)
 
         if len(self._services) == 0:
-            raise ValueError("Compose file must contain at least one service")
+            raise EmptyServicesError
 
         for service in self._services:
             service_config = config["services"][service]
@@ -125,7 +160,7 @@ class ComposeEnvironment:
             Self for use in with statement.
 
         Raises:
-            RuntimeError: If Docker Compose setup fails.
+            ComposeSetupError: If Docker Compose setup fails.
         """
         # Clean up any existing containers/networks from previous runs
         self._cleanup()
@@ -142,8 +177,8 @@ class ComposeEnvironment:
                     self._project_name,
                     "build",
                     "--pull",
-                ]
-                + list(self._services),
+                    *list(self._services),
+                ],
                 capture_output=True,
                 check=True,
             )
@@ -159,8 +194,8 @@ class ComposeEnvironment:
                     self._project_name,
                     "up",
                     "-d",
-                ]
-                + list(self._services),
+                    *list(self._services),
+                ],
                 capture_output=True,
                 check=True,
             )
@@ -170,13 +205,16 @@ class ComposeEnvironment:
 
         except sp.CalledProcessError as e:
             error_msg = e.stderr.decode() if e.stderr else str(e)
-            raise RuntimeError(
-                f"Failed to setup Docker Compose environment: {error_msg}"
-            )
+            raise ComposeSetupError(error_msg) from e
 
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self,
+        type_: type[BaseException] | None,
+        value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None:
         """
         Exit the context manager and clean up all resources.
 
@@ -188,7 +226,7 @@ class ComposeEnvironment:
         """
         Clean up Docker Compose resources.
         """
-        try:
+        with contextlib.suppress(OSError, sp.SubprocessError):
             sp.run(
                 [
                     "docker",
@@ -207,8 +245,6 @@ class ComposeEnvironment:
                 check=False,
                 timeout=10,
             )
-        except Exception:
-            pass
 
     def exec(self, service: str, cmd: str) -> ExecResult:
         """
@@ -222,10 +258,10 @@ class ComposeEnvironment:
             ExecResult containing exit code, stdout, and stderr.
 
         Raises:
-            ValueError: If the service name is not recognized.
+            UnknownServiceError: If the service name is not recognized.
         """
         if service not in self._services:
-            raise ValueError(f"Unknown service {service}")
+            raise UnknownServiceError(service, self._services)
 
         container_name = self._container_names[service]
 
@@ -233,6 +269,7 @@ class ComposeEnvironment:
             ["docker", "exec", container_name, "bash", "-c", cmd],
             capture_output=True,
             text=True,
+            check=False,
         )
 
         return ExecResult(
@@ -253,10 +290,10 @@ class ComposeEnvironment:
             Popen handle for the running process.
 
         Raises:
-            ValueError: If the service name is not recognized.
+            UnknownServiceError: If the service name is not recognized.
         """
         if service not in self._services:
-            raise ValueError(f"Unknown service {service}")
+            raise UnknownServiceError(service, self._services)
 
         container_name = self._container_names[service]
 

@@ -132,7 +132,7 @@ async def test_store_load_single(
 async def test_store_load_hierarchical(
     node_id: EID, other_node_id: EID, data: tuple[str, list[tuple[str, bytes]]]
 ) -> None:
-    data_dict = {name: datum for name, datum in data[1]}
+    data_dict = dict(data[1])
     with TemporaryDirectory(delete=True) as root_dir:
         root_path = Path(root_dir)
         dstore = Datastore(

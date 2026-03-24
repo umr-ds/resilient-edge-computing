@@ -57,7 +57,7 @@ def main() -> None:
     parser.add_argument(
         "-s",
         "--socket",
-        default="/tmp/rec_test_1.sock",
+        required=True,
         help="Path to the dtn application-agent's socket",
         type=Path,
     )

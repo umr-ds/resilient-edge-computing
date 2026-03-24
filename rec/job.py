@@ -6,11 +6,17 @@ from typing import Self
 from uuid import UUID, uuid4
 
 import psutil
-from aiofiles import open
+from aiofiles import open as async_open
 from ormsgpack import packb, unpackb
 from tomlkit import dumps, loads
 
 from rec.eid import EID
+from rec.errors import (
+    CapabilityValueTooLargeError,
+    InvalidCapabilityValueError,
+    MissingJobIdError,
+    MissingWasmModuleError,
+)
 from rec.messages import MSGPACK_MAXINT
 
 
@@ -34,20 +40,24 @@ class Capabilities:
 
     def __post_init__(self) -> None:
         if self.cpu_cores <= 0:
-            raise ValueError("Must have a positive number of CPU cores")
+            raise InvalidCapabilityValueError.for_cpu_cores(self.cpu_cores)
         if self.free_cpu_capacity < 0:
-            raise ValueError("Must have a non-negative amount of free CPU capacity")
+            raise InvalidCapabilityValueError.for_free_cpu_capacity(
+                self.free_cpu_capacity
+            )
         if self.free_memory < 0:
-            raise ValueError("Must have a non-negative amount of free memory")
+            raise InvalidCapabilityValueError.for_free_memory(self.free_memory)
         if self.free_disk_space < 0:
-            raise ValueError("Must have a non-negative amount of free disk space")
-        if (
-            self.cpu_cores > MSGPACK_MAXINT
-            or self.free_cpu_capacity > MSGPACK_MAXINT
-            or self.free_memory > MSGPACK_MAXINT
-            or self.free_disk_space > MSGPACK_MAXINT
+            raise InvalidCapabilityValueError.for_free_disk_space(self.free_disk_space)
+
+        for field_name, value in (
+            ("cpu_cores", self.cpu_cores),
+            ("free_cpu_capacity", self.free_cpu_capacity),
+            ("free_memory", self.free_memory),
+            ("free_disk_space", self.free_disk_space),
         ):
-            raise ValueError(f"Values may not be larger than {MSGPACK_MAXINT}")
+            if value > MSGPACK_MAXINT:
+                raise CapabilityValueTooLargeError(field_name, value, MSGPACK_MAXINT)
 
     @classmethod
     def from_system(cls) -> Self:
@@ -86,7 +96,7 @@ class Capabilities:
         return dumps(self.dictify())
 
     async def dump(self, filename: str) -> None:
-        async with open(filename, "w") as f:
+        async with async_open(filename, "w") as f:
             await f.write(self.dumps())
 
     @classmethod
@@ -95,7 +105,7 @@ class Capabilities:
 
     @classmethod
     async def load(cls, filename: str) -> Self:
-        async with open(filename, "r") as f:
+        async with async_open(filename) as f:
             data = await f.read()
             return cls.loads(data)
 
@@ -154,8 +164,8 @@ class JobInfo:
     job_id: UUID
     wasm_module: str
     capabilities: Capabilities
-    submitter: EID = EID.none()
-    results_receiver: EID = EID.none()
+    submitter: EID = field(default_factory=EID.none)
+    results_receiver: EID = field(default_factory=EID.none)
     argv: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     stdin_file: str | None = None
@@ -168,14 +178,14 @@ class JobInfo:
 
     def __post_init__(self) -> None:
         if not self.job_id:
-            raise ValueError("Job needs an ID")
+            raise MissingJobIdError
         if not self.wasm_module:
-            raise ValueError("Job needs a wasm module")
+            raise MissingWasmModuleError
 
     def __str__(self) -> str:
         return self.job_id.hex
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, JobInfo):
             return self.job_id == other.job_id
         return NotImplemented
@@ -203,7 +213,7 @@ class JobInfo:
         return dumps(self.dictify())
 
     async def dump(self, filename: str) -> None:
-        async with open(filename, "w") as f:
+        async with async_open(filename, "w") as f:
             await f.write(self.dumps())
 
     @classmethod
@@ -213,7 +223,7 @@ class JobInfo:
 
     @classmethod
     async def load(cls, filename: str) -> Self:
-        async with open(filename, "r") as f:
+        async with async_open(filename) as f:
             data = await f.read()
             return cls.loads(data)
 
@@ -388,7 +398,7 @@ class LazyJob:
         """
         loaded_data = {}
         for name, path in self.data.items():
-            async with open(path, "rb") as f:
+            async with async_open(path, "rb") as f:
                 loaded_data[name] = await f.read()
         return Job(metadata=self.metadata, data=loaded_data)
 
@@ -433,7 +443,7 @@ class ExecutionPlan:
         """
         base_dir = toml_path.parent
 
-        async with open(toml_path, "r") as f:
+        async with async_open(toml_path) as f:
             content = await f.read()
             data = loads(content).unwrap()
 

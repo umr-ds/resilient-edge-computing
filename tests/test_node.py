@@ -12,7 +12,7 @@ from tests.utils.helpers import dtn_eid
 
 
 class DummyNode(Node):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
     @override

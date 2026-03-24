@@ -10,17 +10,21 @@ from uuid import UUID, uuid4
 from ormsgpack import packb, unpackb
 
 from rec.eid import EID
+from rec.errors import (
+    EndpointMustNotBeNoneError,
+    InvalidBundleNodeTypeError,
+    MessageDeserializationFailedError,
+    MessageTypeMismatchError,
+    MissingBundleFieldError,
+    MissingErrorForFailureError,
+    MissingMessageConstructorError,
+    MissingMessageTypeError,
+    UnexpectedErrorForSuccessError,
+    UnknownMessageTypeIdError,
+)
 
 # (2^64)-1
 MSGPACK_MAXINT = 18446744073709551615
-
-
-class InvalidMessageError(ValueError):
-    """Raised when a message is malformed"""
-
-
-class InvalidBundleError(ValueError):
-    """Raised when a bundle is malformed"""
 
 
 class NodeType(IntEnum):
@@ -51,7 +55,7 @@ class Message:
         return data
 
     @classmethod
-    def from_dict(cls, data) -> Self:
+    def from_dict(cls, data: dict) -> Self:
         return cls(**data)
 
 
@@ -62,24 +66,18 @@ class Reply(Message):
 
     def __post_init__(self) -> None:
         if self.type != MessageType.REPLY:
-            raise InvalidMessageError(
-                f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
-            )
+            raise MessageTypeMismatchError(MessageType.REPLY, self.type)
         if not self.success and not self.error:
-            raise InvalidMessageError(
-                "If operation was unsuccessful, there should be an error"
-            )
+            raise MissingErrorForFailureError
         if self.success and self.error:
-            raise InvalidMessageError(
-                "If operation was successful, there should be no error"
-            )
+            raise UnexpectedErrorForSuccessError
 
     @override
     def dictify(self) -> dict:
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data) -> Self:
+    def from_dict(cls, data: dict) -> Self:
         return cls(**data)
 
 
@@ -89,18 +87,16 @@ class Register(Message):
 
     def __post_init__(self) -> None:
         if self.type != MessageType.REGISTER:
-            raise InvalidMessageError(
-                f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
-            )
+            raise MessageTypeMismatchError(MessageType.REGISTER, self.type)
         if not self.endpoint_id:
-            raise InvalidMessageError("EndpointID must not be dtn:none")
+            raise EndpointMustNotBeNoneError
 
     @override
     def dictify(self) -> dict:
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data) -> Self:
+    def from_dict(cls, data: dict) -> Self:
         return cls(**data)
 
 
@@ -110,9 +106,7 @@ class BundleCreate(Message):
 
     def __post_init__(self) -> None:
         if self.type != MessageType.BUNDLE_CREATE:
-            raise InvalidMessageError(
-                f"Message needs MessageType {MessageType.REPLY}, but has {self.type}"
-            )
+            raise MessageTypeMismatchError(MessageType.BUNDLE_CREATE, self.type)
 
     @override
     def dictify(self) -> dict:
@@ -120,7 +114,7 @@ class BundleCreate(Message):
         return self.__dict__ | super().dictify() | own_dict
 
     @classmethod
-    def from_dict(cls, data) -> Self:
+    def from_dict(cls, data: dict) -> Self:
         data["bundle"] = BundleData.from_dict(data["bundle"])
         return cls(**data)
 
@@ -129,16 +123,14 @@ class BundleCreate(Message):
 class BundlePushStart(Message):
     def __post_init__(self) -> None:
         if self.type != MessageType.BUNDLE_PUSH_START:
-            raise InvalidMessageError(
-                f"Message needs MessageType {MessageType.BUNDLE_PUSH_START}, but has {self.type}"
-            )
+            raise MessageTypeMismatchError(MessageType.BUNDLE_PUSH_START, self.type)
 
     @override
     def dictify(self) -> dict:
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data) -> Self:
+    def from_dict(cls, data: dict) -> Self:
         return cls(**data)
 
 
@@ -146,16 +138,14 @@ class BundlePushStart(Message):
 class BundlePushStop(Message):
     def __post_init__(self) -> None:
         if self.type != MessageType.BUNDLE_PUSH_STOP:
-            raise InvalidMessageError(
-                f"Message needs MessageType {MessageType.BUNDLE_PUSH_STOP}, but has {self.type}"
-            )
+            raise MessageTypeMismatchError(MessageType.BUNDLE_PUSH_STOP, self.type)
 
     @override
     def dictify(self) -> dict:
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data) -> Self:
+    def from_dict(cls, data: dict) -> Self:
         return cls(**data)
 
 
@@ -165,9 +155,7 @@ class BundlePush(Message):
 
     def __post_init__(self) -> None:
         if self.type != MessageType.BUNDLE_PUSH:
-            raise InvalidMessageError(
-                f"Message needs MessageType {MessageType.BUNDLE_PUSH}, but has {self.type}"
-            )
+            raise MessageTypeMismatchError(MessageType.BUNDLE_PUSH, self.type)
 
     @override
     def dictify(self) -> dict:
@@ -175,7 +163,7 @@ class BundlePush(Message):
         return self.__dict__ | super().dictify() | own_dict
 
     @classmethod
-    def from_dict(cls, data) -> Self:
+    def from_dict(cls, data: dict) -> Self:
         data["bundles"] = [
             BundleData.from_dict(bundle_data) for bundle_data in data["bundles"]
         ]
@@ -211,43 +199,38 @@ class BundleData:
     # used by broker discovery
     node_type: NodeType = NodeType.NONE
     # used by job query/list
-    submitter: EID = EID.none()
+    submitter: EID = field(default_factory=EID.none)
     # used by named data
     named_data: str = ""
 
     def __post_init__(self) -> None:
         # general validity checks
         if not self.source:
-            raise InvalidBundleError("Bundles must be sent by someone")
+            raise MissingBundleFieldError.for_source()
         if not self.destination:
-            raise InvalidBundleError("Bundles must be addressed to someone")
+            raise MissingBundleFieldError.for_destination()
         if not self.success and not self.error:
-            raise InvalidBundleError(
-                "If operation was unsuccessful, there should be an error"
-            )
+            raise MissingErrorForFailureError
         if self.success and self.error:
-            raise InvalidBundleError(
-                "If operation was successful, there should be no error"
-            )
+            raise UnexpectedErrorForSuccessError
 
         # checks for discovery bundles
-        if BundleType.BROKER_ANNOUNCE <= self.type <= BundleType.BROKER_ACK:
-            if self.node_type < NodeType.BROKER or self.node_type > NodeType.CLIENT:
-                raise InvalidBundleError(f"Invalid node type: {self.node_type}")
+        if (BundleType.BROKER_ANNOUNCE <= self.type <= BundleType.BROKER_ACK) and (
+            self.node_type < NodeType.BROKER or self.node_type > NodeType.CLIENT
+        ):
+            raise InvalidBundleNodeTypeError(self.node_type)
 
         # checks for job query/list
-        if self.type == BundleType.JOB_QUERY or self.type == BundleType.JOB_LIST:
-            if not self.submitter:
-                raise InvalidBundleError(
-                    "Job query/list bundles must have a submitter set"
-                )
+        if (
+            self.type in (BundleType.JOB_QUERY, BundleType.JOB_LIST)
+        ) and not self.submitter:
+            raise MissingBundleFieldError.for_submitter()
 
         # checks for named data
-        if BundleType.NDATA_PUT <= self.type <= BundleType.NDATA_DEL:
-            if not self.named_data:
-                raise InvalidBundleError(
-                    "Named data bundles need to have a data name set"
-                )
+        if (
+            BundleType.NDATA_PUT <= self.type <= BundleType.NDATA_DEL
+        ) and not self.named_data:
+            raise MissingBundleFieldError.for_named_data()
 
     def dictify(self) -> dict:
         data = {key: value for key, value in self.__dict__.items() if value}
@@ -279,25 +262,33 @@ MESSAGE_CONSTRUCTORS: dict[MessageType, Callable[[dict], Message]] = {
 }
 
 
+def _extract_message_type(data_dict: dict) -> MessageType:
+    if "type" not in data_dict:
+        raise MissingMessageTypeError
+
+    try:
+        return MessageType(data_dict["type"])
+    except ValueError as err:
+        raise UnknownMessageTypeIdError(data_dict["type"]) from err
+
+
+def _get_constructor(msg_type: MessageType) -> Callable[[dict], Message]:
+    if msg_type not in MESSAGE_CONSTRUCTORS:
+        raise MissingMessageConstructorError(msg_type)
+    return MESSAGE_CONSTRUCTORS[msg_type]
+
+
 def deserialize(serialized: bytes) -> Message:
     try:
         data_dict: dict = unpackb(serialized)
 
-        if "type" not in data_dict:
-            raise InvalidMessageError("Message missing 'type' field")
-
-        try:
-            msg_type = MessageType(data_dict["type"])
-        except ValueError:
-            raise InvalidMessageError(f"Unknown MessageType ID: {data_dict['type']}")
-
-        if msg_type not in MESSAGE_CONSTRUCTORS:
-            raise InvalidMessageError(f"No constructor defined for {msg_type}")
+        msg_type = _extract_message_type(data_dict)
+        constructor = _get_constructor(msg_type)
 
         if "message_id" in data_dict:
             data_dict["message_id"] = UUID(bytes=data_dict["message_id"])
 
-        return MESSAGE_CONSTRUCTORS[msg_type](data_dict)
+        return constructor(data_dict)
 
     except Exception as err:
         # Write the serialized data to a temp file for debugging
@@ -309,6 +300,4 @@ def deserialize(serialized: bytes) -> Message:
             tmp_file.write(serialized)
             tmp_filename = tmp_file.name
 
-        raise InvalidMessageError(
-            f"Deserialization failed: {err}. Raw data dumped to {tmp_filename}"
-        ) from err
+        raise MessageDeserializationFailedError(tmp_filename, err) from err

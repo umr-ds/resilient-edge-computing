@@ -7,6 +7,12 @@ from ormsgpack import packb, unpackb
 from tomlkit import dump, load
 
 from rec.eid import DATASTORE_MULTICAST_ADDRESS, EID
+from rec.errors import (
+    BrokerNotAssociatedError,
+    InvalidContextError,
+    MissingDataError,
+    RecError,
+)
 from rec.job import ExecutionPlan, Job, JobResult
 from rec.log import LOG
 from rec.messages import BundleCreate, BundleData, BundleType, MessageType, NodeType
@@ -44,10 +50,11 @@ class Client(Node):
         if self._context_file.is_file():
             with self._context_file.open("r") as f:
                 self._context_data = load(f)
-                assert "broker" in self._context_data, (
-                    "context file must contain broker address"
-                )
-                assert self._context_data["broker"], "broker address must be a value"
+                if (
+                    "broker" not in self._context_data
+                    or not self._context_data["broker"]
+                ):
+                    raise InvalidContextError(field="broker")
                 self._broker = EID(str(self._context_data["broker"]))
         else:
             self._context_data = {}
@@ -60,9 +67,9 @@ class Client(Node):
         if self._broker is not None:
             LOG.info("Already associated with broker")
             return
-        else:
-            LOG.info("Not associated with broker")
-            await self._wait_for_broker()
+
+        LOG.info("Not associated with broker")
+        await self._wait_for_broker()
 
     @override
     async def stop(self) -> None:
@@ -90,11 +97,11 @@ class Client(Node):
 
         if bundle.type == BundleType.JOB_RESULT:
             await self._handle_job_result(bundle=bundle)
-        elif bundle.type == BundleType.JOB_LIST:
-            await self._cache_response(bundle=bundle)
-        elif bundle.type == BundleType.NDATA_GET:
-            await self._cache_response(bundle=bundle)
-        elif bundle.type == BundleType.NDATA_PUT:
+        elif bundle.type in (
+            BundleType.JOB_LIST,
+            BundleType.NDATA_GET,
+            BundleType.NDATA_PUT,
+        ):
             await self._cache_response(bundle=bundle)
         elif BundleType.BROKER_ANNOUNCE <= bundle.type <= BundleType.BROKER_ACK:
             replies = await self._handle_discovery(bundle=bundle)
@@ -147,10 +154,7 @@ class Client(Node):
         async with self._response_cv:
             while self._running:
                 # Check if we have the response cached
-                if (
-                    wait_for in self._pending_responses
-                    and self._pending_responses[wait_for]
-                ):
+                if self._pending_responses.get(wait_for):
                     return self._pending_responses[wait_for].pop(0)
 
                 # Wait for notification from the background receive loop
@@ -167,14 +171,12 @@ class Client(Node):
             submitter (str): The EndpointID of the job submitter to query for.
 
         Raises:
-            RuntimeError: If no broker is associated.
+            BrokerNotAssociatedError: If no broker is associated.
         """
         LOG.info("Performing job query")
 
         if self._broker is None:
-            raise RuntimeError(
-                "No broker associated. This should not be the case at this point."
-            )
+            raise BrokerNotAssociatedError
 
         query_bundle = BundleData(
             type=BundleType.JOB_QUERY,
@@ -240,14 +242,12 @@ class Client(Node):
             bool: True if successful, False otherwise.
 
         Raises:
-            RuntimeError: If no broker is associated.
+            BrokerNotAssociatedError: If no broker is associated.
         """
         LOG.info(f"Performing data PUT: Name: {name}")
 
         if self._broker is None:
-            raise RuntimeError(
-                "No broker associated. This should not be the case at this point."
-            )
+            raise BrokerNotAssociatedError
 
         with data_file.open("rb") as f:
             data = f.read()
@@ -272,14 +272,10 @@ class Client(Node):
                 LOG.warning(f"DataStore already has {name}, skipping PUT")
                 LOG.info(f"Successfully published {name}")
                 return True
-            else:
-                LOG.error(
-                    f"DataStore rejected {name}: {store_rply.error}", exc_info=False
-                )
-                return False
-        else:
-            LOG.info(f"Successfully published {name}")
-            return True
+            LOG.error(f"DataStore rejected {name}: {store_rply.error}", exc_info=False)
+            return False
+        LOG.info(f"Successfully published {name}")
+        return True
 
     async def execute_plan(self, plan_path: Path) -> None:
         """
@@ -289,7 +285,8 @@ class Client(Node):
             plan_path (Path): The path to the execution plan file.
 
         Raises:
-            ValueError: If broker is not known or if paths are missing.
+            BrokerNotAssociatedError: If no broker is associated.
+            MissingDataError: If any required data files are missing.
         """
         LOG.info("Starting execution plan")
 
@@ -297,7 +294,7 @@ class Client(Node):
 
         missing_paths = plan.validate_all_paths()
         if missing_paths:
-            raise ValueError(f"Missing data files: {missing_paths}")
+            raise MissingDataError(missing_paths)
 
         if plan.named_data:
             await self._publish_all_named_data(named_data=plan.named_data)
@@ -315,6 +312,9 @@ class Client(Node):
 
         Args:
             named_data (dict[str, Path]): Mapping of named identifiers to file paths.
+
+        Raises:
+            BrokerNotAssociatedError: If no broker is associated.
         """
         LOG.info(f"Publishing {len(named_data)} named data items")
 
@@ -329,14 +329,12 @@ class Client(Node):
             job: Job instance to submit.
 
         Raises:
-            RuntimeError: If no broker is associated.
+            BrokerNotAssociatedError: If no broker is associated.
         """
         LOG.debug(f"Submitting job: {job.metadata.wasm_module}")
 
         if self._broker is None:
-            raise RuntimeError(
-                "No broker associated. This should not be the case at this point."
-            )
+            raise BrokerNotAssociatedError
 
         # Dictify the job and set the submitter
         job_dict = job.dictify()
@@ -405,8 +403,8 @@ async def async_main(args: Namespace) -> None:
                 case "exec":
                     try:
                         await client.execute_plan(plan_path=args.plan_file)
-                    except Exception as e:
-                        LOG.error(f"Failed to execute plan: {e}", exc_info=True)
+                    except (KeyError, OSError, RecError, ValueError) as err:
+                        LOG.error(f"Failed to execute plan: {err}", exc_info=True)
                 case "check":
                     await client.check_for_bundles()
                 case "listen":

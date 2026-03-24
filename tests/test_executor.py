@@ -10,7 +10,8 @@ import pytest
 from hypothesis import given
 
 from rec.eid import BROADCAST_ADDRESS, EID
-from rec.executor import Executor, WasmTrapError, _run_wasi_module
+from rec.errors import DataDirectoryEscapeError
+from rec.executor import Executor, WASIArguments, WasmTrapError, _run_wasi_module
 from rec.job import Capabilities, Job, JobInfo
 from rec.messages import BundleData, BundleType, NodeType
 from rec.storage import NoSuchNameError
@@ -34,12 +35,11 @@ def test_eid() -> EID:
 @pytest.fixture
 def executor(test_eid: EID, tmp_path: Path) -> Executor:
     with patch.object(Executor, "_register", new_callable=AsyncMock):
-        executor = Executor(
+        return Executor(
             node_id=test_eid,
             dtn_agent_socket=Path("/tmp/executor_test.sock"),
             root_directory=tmp_path / "executor_root",
         )
-        return executor
 
 
 async def populate_cache(executor: Executor, data: dict[str, bytes]) -> None:
@@ -67,7 +67,7 @@ def minimal_job_info() -> JobInfo:
 
 @pytest.fixture
 def sample_job(wasm_path: Path) -> Job:
-    with open(wasm_path, "rb") as f:
+    with wasm_path.open("rb") as f:
         wasm_data = f.read()
 
     job_info = JobInfo(
@@ -146,7 +146,7 @@ async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
 
 class TestExecutorWasmModule:
     @pytest.mark.asyncio
-    async def test_full_io_and_exit(self, wasm_path: Path, tmp_path: Path):
+    async def test_full_io_and_exit(self, wasm_path: Path, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"
         data_dir.mkdir()
         (data_dir / "infile.txt").write_text("hello-from-host")
@@ -158,7 +158,7 @@ class TestExecutorWasmModule:
         stdout_file = out_dir / "stdout.txt"
         stderr_file = out_dir / "stderr.txt"
 
-        exit_code = await _run_wasi_module(
+        wasi_args = WASIArguments(
             exec_file=wasm_path,
             argv=["a", "b", "c"],
             env={"FOO": "bar", "EXIT": "7"},
@@ -167,6 +167,7 @@ class TestExecutorWasmModule:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
         )
+        exit_code = await _run_wasi_module(args=wasi_args)
 
         assert exit_code == 7
 
@@ -184,11 +185,13 @@ class TestExecutorWasmModule:
         assert "TO_STDERR" in stderr_file.read_text()
 
     @pytest.mark.asyncio
-    async def test_minimal_execution_no_io_files(self, wasm_path: Path, tmp_path: Path):
+    async def test_minimal_execution_no_io_files(
+        self, wasm_path: Path, tmp_path: Path
+    ) -> None:
         data_dir = tmp_path / "data"
         data_dir.mkdir()
 
-        exit_code = await _run_wasi_module(
+        wasi_args = WASIArguments(
             exec_file=wasm_path,
             argv=[],
             env={},
@@ -197,6 +200,7 @@ class TestExecutorWasmModule:
             stdout_file=None,
             stderr_file=None,
         )
+        exit_code = await _run_wasi_module(args=wasi_args)
 
         assert exit_code == 0
 
@@ -204,24 +208,27 @@ class TestExecutorWasmModule:
         assert (data_dir / "out.txt").read_text() == "hello-from-wasi"
 
     @pytest.mark.asyncio
-    async def test_no_data_directory_raises_wasm_trap_error(self, wasm_path: Path):
+    async def test_no_data_directory_raises_wasm_trap_error(
+        self, wasm_path: Path
+    ) -> None:
+        wasi_args = WASIArguments(
+            exec_file=wasm_path,
+            argv=[],
+            env={},
+            stdin_file=None,
+            data_dir=None,
+            stdout_file=None,
+            stderr_file=None,
+        )
         with pytest.raises(WasmTrapError):
-            await _run_wasi_module(
-                exec_file=wasm_path,
-                argv=[],
-                env={},
-                stdin_file=None,
-                data_dir=None,
-                stdout_file=None,
-                stderr_file=None,
-            )
+            await _run_wasi_module(args=wasi_args)
 
 
 class TestExecutorPrepareWasiEnvironment:
     @pytest.mark.asyncio
     async def test_prepare_wasm_environment(
         self, executor: Executor, job_dirs: tuple[Path, Path], sample_job: Job
-    ):
+    ) -> None:
         job_dir, _data_dir = job_dirs
 
         await populate_cache(executor, sample_job.data)
@@ -251,7 +258,7 @@ class TestExecutorPrepareWasiEnvironment:
     @pytest.mark.asyncio
     async def test_prepare_missing_named_data_raises_error(
         self, executor: Executor, job_dirs: tuple[Path, Path], sample_job: Job
-    ):
+    ) -> None:
         job_dir, _data_dir = job_dirs
 
         # Don't populate the cache
@@ -261,7 +268,7 @@ class TestExecutorPrepareWasiEnvironment:
     @pytest.mark.asyncio
     async def test_prepare_path_escape_security(
         self, executor: Executor, job_dirs: tuple[Path, Path], sample_job: Job
-    ):
+    ) -> None:
         job_dir, _data_dir = job_dirs
 
         malicious_job = replace(
@@ -271,13 +278,13 @@ class TestExecutorPrepareWasiEnvironment:
 
         await populate_cache(executor, sample_job.data)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(DataDirectoryEscapeError):
             await executor._prepare_wasi_environment(malicious_job, job_dir)
 
     @pytest.mark.asyncio
     async def test_prepare_stdout_stderr_directories(
         self, executor: Executor, job_dirs: tuple[Path, Path], sample_job: Job
-    ):
+    ) -> None:
         job_dir, _data_dir = job_dirs
 
         job = replace(
@@ -298,7 +305,7 @@ class TestExecutorCollectResults:
     @pytest.mark.asyncio
     async def test_collect_empty(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
-    ):
+    ) -> None:
         job_dir, _data_dir = job_dirs
 
         job = replace(
@@ -317,7 +324,7 @@ class TestExecutorCollectResults:
     @pytest.mark.asyncio
     async def test_collect_no_receiver(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
-    ):
+    ) -> None:
         job_dir, _data_dir = job_dirs
 
         job = replace(
@@ -332,7 +339,7 @@ class TestExecutorCollectResults:
     @pytest.mark.asyncio
     async def test_collect_missing_results_skipped(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
-    ):
+    ) -> None:
         job_dir, _data_dir = job_dirs
 
         job = replace(
@@ -351,7 +358,7 @@ class TestExecutorCollectResults:
     @pytest.mark.asyncio
     async def test_collect_path_escape_security(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
-    ):
+    ) -> None:
         job_dir, data_dir = job_dirs
 
         # Create a file outside data directory
@@ -373,7 +380,7 @@ class TestExecutorCollectResults:
     @pytest.mark.asyncio
     async def test_collect(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
-    ):
+    ) -> None:
         job_dir, data_dir = job_dirs
 
         # Create test output files and directories
@@ -412,7 +419,7 @@ class TestExecutorCollectNamedResults:
     @pytest.mark.asyncio
     async def test_collect_empty(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
-    ):
+    ) -> None:
         job_dir, _data_dir = job_dirs
 
         job = replace(
@@ -427,7 +434,7 @@ class TestExecutorCollectNamedResults:
     @pytest.mark.asyncio
     async def test_collect_missing_results_skipped(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
-    ):
+    ) -> None:
         job_dir, _data_dir = job_dirs
 
         job = replace(
@@ -442,7 +449,7 @@ class TestExecutorCollectNamedResults:
     @pytest.mark.asyncio
     async def test_collect_path_escape_security(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
-    ):
+    ) -> None:
         job_dir, data_dir = job_dirs
 
         # Create a file outside data directory
@@ -460,7 +467,7 @@ class TestExecutorCollectNamedResults:
     @pytest.mark.asyncio
     async def test_collect(
         self, executor: Executor, job_dirs: tuple[Path, Path], minimal_job_info: JobInfo
-    ):
+    ) -> None:
         job_dir, data_dir = job_dirs
 
         # Create test output files and directories
@@ -500,7 +507,7 @@ class TestExecutorCollectNamedResults:
 
 class TestExecutorRunJob:
     @pytest.mark.asyncio
-    async def test_run_job(self, executor: Executor, sample_job: Job):
+    async def test_run_job(self, executor: Executor, sample_job: Job) -> None:
         await populate_cache(executor, sample_job.data)
 
         results_zip, named_results = await executor._run_job(sample_job.metadata)

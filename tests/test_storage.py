@@ -32,7 +32,7 @@ async def test_store_dedup(data_name: str, other_name: str, data: bytes) -> None
 
         await storage.store_data(name=data_name, data=data)
         await storage.store_data(name=other_name, data=data)
-        files = [filename for filename in blobs_path.iterdir()]
+        files = list(blobs_path.iterdir())
         assert len(files) == 1, "there should only be 1 file due to dedup"
 
 
