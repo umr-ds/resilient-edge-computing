@@ -43,9 +43,9 @@ def _dtn_eid(draw: st.DrawFn, singleton: bool = True) -> EID:
 @st.composite
 def dtn_eid(draw: st.DrawFn, singleton: bool = True, not_none: bool = False) -> EID:
     if not_none:
-        return draw(_dtn_eid(singleton=singleton))
+        return draw(_dtn_eid(singleton=singleton))  # ty: ignore[missing-argument]
 
-    return draw(st.one_of(_dtn_eid(singleton=singleton), st.just(EID.none())))
+    return draw(st.one_of(_dtn_eid(singleton=singleton), st.just(EID.none())))  # ty: ignore[missing-argument]
 
 
 @st.composite
@@ -74,13 +74,13 @@ def randomized_capabilities(draw: st.DrawFn) -> Capabilities:
 @st.composite
 def randomized_job_info(draw: st.DrawFn, submitter: EID | None = None) -> JobInfo:
     if submitter is None:
-        submitter = draw(dtn_eid())
+        submitter = draw(dtn_eid())  # ty: ignore[missing-argument]
 
     return JobInfo(
         job_id=draw(st.uuids()),
         submitter=submitter,
         wasm_module=draw(st.text(min_size=1)),
-        capabilities=draw(randomized_capabilities()),
+        capabilities=draw(randomized_capabilities()),  # ty: ignore[missing-argument]
         argv=draw(st.lists(elements=st.text())),
         env=draw(st.dictionaries(keys=st.text(), values=st.text())),
         stdin_file=draw(st.one_of(st.text(), st.none())),
@@ -90,5 +90,5 @@ def randomized_job_info(draw: st.DrawFn, submitter: EID | None = None) -> JobInf
         stderr_file=draw(st.one_of(st.text(), st.none())),
         results=draw(st.lists(elements=st.text())),
         named_results=draw(st.dictionaries(keys=st.text(), values=st.text())),
-        results_receiver=draw(dtn_eid()),
+        results_receiver=draw(dtn_eid()),  # ty: ignore[missing-argument]
     )

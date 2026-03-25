@@ -32,8 +32,8 @@ def randomized_discovery_bundle(draw: st.DrawFn) -> BundleData:
                 )
             )
         ),
-        source=draw(dtn_eid(not_none=True)),
-        destination=draw(dtn_eid(not_none=True)),
+        source=draw(dtn_eid(not_none=True)),  # ty: ignore[missing-argument]
+        destination=draw(dtn_eid(not_none=True)),  # ty: ignore[missing-argument]
         success=success,
         error=error,
         node_type=draw(
@@ -64,12 +64,12 @@ def randomized_job_bundle(draw: st.DrawFn) -> BundleData:
                 )
             )
         ),
-        source=draw(dtn_eid(not_none=True)),
-        destination=draw(dtn_eid(not_none=True)),
+        source=draw(dtn_eid(not_none=True)),  # ty: ignore[missing-argument]
+        destination=draw(dtn_eid(not_none=True)),  # ty: ignore[missing-argument]
         success=success,
         error=error,
         payload=draw(st.binary()),
-        submitter=draw(dtn_eid(not_none=True)),
+        submitter=draw(dtn_eid(not_none=True)),  # ty: ignore[missing-argument]
     )
 
 
@@ -87,8 +87,8 @@ def randomized_data_bundle(draw: st.DrawFn) -> BundleData:
                 )
             )
         ),
-        source=draw(dtn_eid(not_none=True)),
-        destination=draw(dtn_eid(not_none=True)),
+        source=draw(dtn_eid(not_none=True)),  # ty: ignore[missing-argument]
+        destination=draw(dtn_eid(not_none=True)),  # ty: ignore[missing-argument]
         success=success,
         error=error,
         payload=draw(st.binary()),
@@ -101,9 +101,9 @@ def randomized_bundle(draw: st.DrawFn) -> BundleData:
     return draw(
         st.one_of(
             (
-                randomized_discovery_bundle(),
-                randomized_job_bundle(),
-                randomized_data_bundle(),
+                randomized_discovery_bundle(),  # ty: ignore[missing-argument]
+                randomized_job_bundle(),  # ty: ignore[missing-argument]
+                randomized_data_bundle(),  # ty: ignore[missing-argument]
             )
         )
     )
@@ -124,7 +124,7 @@ def randomized_reply(draw: st.DrawFn) -> Reply:
 def randomized_register(draw: st.DrawFn) -> Register:
     return Register(
         type=MessageType.REGISTER,
-        endpoint_id=draw(dtn_eid(singleton=draw(st.booleans()), not_none=True)),
+        endpoint_id=draw(dtn_eid(singleton=draw(st.booleans()), not_none=True)),  # ty: ignore[missing-argument]
     )
 
 
@@ -132,7 +132,7 @@ def randomized_register(draw: st.DrawFn) -> Register:
 def randomized_bundle_create(draw: st.DrawFn) -> BundleCreate:
     return BundleCreate(
         type=MessageType.BUNDLE_CREATE,
-        bundle=draw(randomized_bundle()),
+        bundle=draw(randomized_bundle()),  # ty: ignore[missing-argument]
     )
 
 
@@ -140,25 +140,25 @@ def randomized_bundle_create(draw: st.DrawFn) -> BundleCreate:
 def randomized_bundle_push(draw: st.DrawFn) -> BundlePush:
     return BundlePush(
         type=MessageType.BUNDLE_PUSH,
-        bundles=draw(st.lists(elements=randomized_bundle())),
+        bundles=draw(st.lists(elements=randomized_bundle())),  # ty: ignore[missing-argument]
     )
 
 
-@given(message=randomized_reply())
+@given(message=randomized_reply())  # ty: ignore[missing-argument]
 def test_reply_serialize(message: Reply) -> None:
     serialized = serialize(message)
     deserialized = deserialize(serialized)
     assert deserialized == message
 
 
-@given(message=randomized_register())
+@given(message=randomized_register())  # ty: ignore[missing-argument]
 def test_register_serialize(message: Register) -> None:
     serialized = serialize(message)
     deserialized = deserialize(serialized)
     assert deserialized == message
 
 
-@given(message=randomized_bundle_create())
+@given(message=randomized_bundle_create())  # ty: ignore[missing-argument]
 def test_bundle_create_serialize(message: BundleCreate) -> None:
     serialized = serialize(message)
     deserialized = deserialize(serialized)
@@ -179,7 +179,7 @@ def test_bundle_push_stop_serialize() -> None:
     assert deserialized == message
 
 
-@given(message=randomized_bundle_push())
+@given(message=randomized_bundle_push())  # ty: ignore[missing-argument]
 def test_bundle_push_serialize(message: BundlePush) -> None:
     serialized = serialize(message)
     deserialized = deserialize(serialized)

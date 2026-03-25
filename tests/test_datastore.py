@@ -14,8 +14,8 @@ from tests.utils.helpers import dtn_eid, hierarchical_data
 
 @pytest.mark.asyncio
 @given(
-    node_id=dtn_eid(not_none=True),
-    broker_id=dtn_eid(not_none=True),
+    node_id=dtn_eid(not_none=True),  # ty: ignore[missing-argument]
+    broker_id=dtn_eid(not_none=True),  # ty: ignore[missing-argument]
 )
 async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
     with TemporaryDirectory(delete=True) as root_dir:
@@ -59,8 +59,8 @@ async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
 
 @pytest.mark.asyncio
 @given(
-    node_id=dtn_eid(not_none=True),
-    other_node_id=dtn_eid(not_none=True),
+    node_id=dtn_eid(not_none=True),  # ty: ignore[missing-argument]
+    other_node_id=dtn_eid(not_none=True),  # ty: ignore[missing-argument]
     data_name=st.text(min_size=1),
     false_data_name=st.text(min_size=1),
     data=st.binary(),
@@ -125,9 +125,9 @@ async def test_store_load_single(
 
 @pytest.mark.asyncio
 @given(
-    node_id=dtn_eid(not_none=True),
-    other_node_id=dtn_eid(not_none=True),
-    data=hierarchical_data(),
+    node_id=dtn_eid(not_none=True),  # ty: ignore[missing-argument]
+    other_node_id=dtn_eid(not_none=True),  # ty: ignore[missing-argument]
+    data=hierarchical_data(),  # ty: ignore[missing-argument]
 )
 async def test_store_load_hierarchical(
     node_id: EID, other_node_id: EID, data: tuple[str, list[tuple[str, bytes]]]

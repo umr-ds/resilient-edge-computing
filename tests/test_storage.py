@@ -85,7 +85,7 @@ async def test_wrong_lookup_name(
 
 
 @pytest.mark.asyncio
-@given(data=hierarchical_data())
+@given(data=hierarchical_data())  # ty: ignore[missing-argument]
 async def test_prefixing(data: tuple[str, list[tuple[str, bytes]]]) -> None:
     with TemporaryDirectory(delete=True) as tmp_dir:
         tmp_path = Path(tmp_dir)

@@ -83,7 +83,7 @@ class TestDTNEIDs:
         assert str(eid) == "dtn:none"
         assert eid.node() is None
 
-    @given(eid=dtn_eid())
+    @given(eid=dtn_eid())  # ty: ignore[missing-argument]
     def test_dtn_valid_all(self, eid: EID) -> None:
         # everything is happening as part of the generator
         pass

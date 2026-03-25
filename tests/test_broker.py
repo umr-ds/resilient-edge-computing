@@ -16,8 +16,8 @@ from tests.utils.helpers import dtn_eid, randomized_job_info
 
 @pytest.mark.asyncio
 @given(
-    broker_id=dtn_eid(not_none=True),
-    node_id=dtn_eid(not_none=True),
+    broker_id=dtn_eid(not_none=True),  # ty: ignore[missing-argument]
+    node_id=dtn_eid(not_none=True),  # ty: ignore[missing-argument]
     node_type=st.integers(min_value=2, max_value=4),
 )
 async def test_broker_discovery(broker_id: EID, node_id: EID, node_type: int) -> None:
@@ -55,11 +55,11 @@ async def test_broker_discovery(broker_id: EID, node_id: EID, node_type: int) ->
 
 @pytest.mark.asyncio
 @given(
-    broker_id=dtn_eid(not_none=True),
+    broker_id=dtn_eid(not_none=True),  # ty: ignore[missing-argument]
     queued_job_infos=st.lists(
-        elements=randomized_job_info(submitter=EID.dtn("client"))
+        elements=randomized_job_info(submitter=EID.dtn("client"))  # ty: ignore[missing-argument]
     ),
-    completed_jobs=st.sets(elements=randomized_job_info(submitter=EID.dtn("client"))),
+    completed_jobs=st.sets(elements=randomized_job_info(submitter=EID.dtn("client"))),  # ty: ignore[missing-argument]
 )
 async def test_broker_job_query(
     broker_id: EID, queued_job_infos: list[JobInfo], completed_jobs: set[JobInfo]

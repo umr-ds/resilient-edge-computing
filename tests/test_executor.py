@@ -105,7 +105,7 @@ def sample_job(wasm_path: Path) -> Job:
 
 
 @pytest.mark.asyncio
-@given(node_id=dtn_eid(not_none=True), broker_id=dtn_eid(not_none=True))
+@given(node_id=dtn_eid(not_none=True), broker_id=dtn_eid(not_none=True))  # ty: ignore[missing-argument]
 async def test_broker_discovery(node_id: EID, broker_id: EID) -> None:
     with TemporaryDirectory(delete=True) as root_dir:
         root_path = Path(root_dir)
