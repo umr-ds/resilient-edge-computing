@@ -350,7 +350,6 @@ dependencies = [
     { name = "ormsgpack" },
     { name = "psutil" },
     { name = "tomlkit" },
-    { name = "vermin" },
     { name = "wasmtime" },
 ]
 
@@ -363,6 +362,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "ty" },
+    { name = "vermin" },
 ]
 
 [package.metadata]
@@ -372,7 +372,6 @@ requires-dist = [
     { name = "ormsgpack", specifier = ">=1.12.2" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "tomlkit", specifier = ">=0.14.0" },
-    { name = "vermin", specifier = ">=1.8.0" },
     { name = "wasmtime", specifier = ">=42.0.0" },
 ]
 
@@ -385,6 +384,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "ruff", specifier = ">=0.15.6" },
     { name = "ty", specifier = "==0.0.25" },
+    { name = "vermin", specifier = ">=1.8.0" },
 ]
 
 [[package]]
