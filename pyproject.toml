@@ -33,7 +33,6 @@ dependencies = [
     # Datastore
     "async-tinydb>=1.7.3",
     "aiofiles>=25.1.0",
-    "aiorwlock>=1.5.1",
     # System monitoring
     "psutil>=7.2.2",
     # Misc
@@ -165,4 +164,4 @@ ignore = [
 "rec/eid.py" = ["PLC0415"] # avoiding circular import
 
 [tool.ty.rules]
-invalid-context-manager = "ignore" # aiorwlock doen't implement __aenter__/__aexit__ correctly
+all = "error"

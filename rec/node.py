@@ -3,14 +3,13 @@ import contextlib
 import signal
 import sys
 from abc import ABC, abstractmethod
+from asyncio import Lock
 from dataclasses import dataclass, field
 from pathlib import Path
 from socket import AF_UNIX, SOCK_STREAM, socket
 from types import TracebackType
 from typing import Self
 from uuid import UUID
-
-from aiorwlock import RWLock
 
 from rec.eid import EID, get_multicast_address
 from rec.errors import (
@@ -48,14 +47,14 @@ class Node(ABC):
     _dtn_agent_socket: Path
     _node_type: NodeType
 
-    _state_mutex: RWLock = field(default_factory=RWLock)
+    _state_mutex: Lock = field(default_factory=Lock)
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event)
 
     _broker_pending: EID | None = None
     _broker: EID | None = None
 
     _socket: socket | None = None
-    _socket_lock: RWLock = field(default_factory=RWLock)
+    _socket_lock: Lock = field(default_factory=Lock)
 
     _bundle_queue: asyncio.Queue[BundlePush] = field(default_factory=asyncio.Queue)
     _bundle_processing_task: asyncio.Task | None = None
@@ -87,7 +86,7 @@ class Node(ABC):
         """Stop the node and wait for background tasks to finish."""
         self._stop_event.set()
 
-        async with self._socket_lock.writer_lock:
+        async with self._socket_lock:
             await self._close_connection()
 
         if self._bundle_processing_task:
@@ -251,7 +250,7 @@ class Node(ABC):
             LOG.debug("Message receive loop cancelled")
         except (MessageError, NodeConnectionError) as err:
             LOG.exception("Error in message receive loop: %s", err)
-            async with self._socket_lock.writer_lock:
+            async with self._socket_lock:
                 await self._close_connection()
         finally:
             LOG.debug("Message receive loop stopped")
@@ -285,7 +284,7 @@ class Node(ABC):
                     success=True,
                     error="",
                 )
-                async with self._socket_lock.writer_lock:
+                async with self._socket_lock:
                     await self._send_raw(ack)
 
                 # Queue bundles for processing
@@ -370,7 +369,7 @@ class Node(ABC):
         future: asyncio.Future[Reply] = loop.create_future()
         self._pending_requests[message.message_id] = future
 
-        async with self._socket_lock.writer_lock:
+        async with self._socket_lock:
             try:
                 await self._ensure_connected()
                 await self._send_raw(message)
@@ -481,7 +480,7 @@ class Node(ABC):
         match bundle.type:
             case BundleType.BROKER_ANNOUNCE:
                 LOG.debug("Broker announcement")
-                async with self._state_mutex.writer_lock:
+                async with self._state_mutex:
                     if self._broker_pending is None and self._broker is None:
                         self._broker_pending = bundle.source
                         LOG.info(
@@ -497,7 +496,7 @@ class Node(ABC):
 
             case BundleType.BROKER_ACK:
                 LOG.debug("Broker ACK")
-                async with self._state_mutex.writer_lock:
+                async with self._state_mutex:
                     if self._broker_pending == bundle.source:
                         self._broker = bundle.source
                         self._broker_pending = None

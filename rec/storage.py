@@ -1,9 +1,9 @@
 import shutil
+from asyncio import Lock
 from hashlib import sha1
 from pathlib import Path
 
 from aiofiles import open as async_open
-from aiorwlock import RWLock
 from asynctinydb import Query, TinyDB
 
 from rec.errors import NameTakenError, NoSuchNameError
@@ -20,7 +20,7 @@ class Storage:
 
     _db: TinyDB
     _blob_directory: Path
-    _state_mutex: RWLock
+    _state_mutex: Lock
 
     def __init__(self, db_path: Path, blob_directory: Path) -> None:
         """
@@ -35,7 +35,7 @@ class Storage:
         self._blob_directory = blob_directory
         self._blob_directory.mkdir(parents=True, exist_ok=True)
 
-        self._state_mutex = RWLock()
+        self._state_mutex = Lock()
 
     async def store_data(self, name: str, data: bytes) -> None:
         """
@@ -53,7 +53,7 @@ class Storage:
         Raises:
             NameTakenError: If there already exists stored data with the exact same name.
         """
-        async with self._state_mutex.writer_lock:
+        async with self._state_mutex:
             db_data = Query()
             test = await self._db.search(db_data.name == name)
             if test:
@@ -85,7 +85,7 @@ class Storage:
         Returns:
             list(tuple(str, bytes)): List of (name, data) of all data with names that started with `name`.
         """
-        async with self._state_mutex.reader_lock:
+        async with self._state_mutex:
             db_data = Query()
 
             # TODO: this has linear complexity with the number of stored data. Might be more efficient to build a tree-structure.
@@ -128,7 +128,7 @@ class Storage:
         if not names:
             return set()
 
-        async with self._state_mutex.reader_lock:
+        async with self._state_mutex:
             missing = set()
             db_data = Query()
             for name in names:
@@ -149,7 +149,7 @@ class Storage:
         Raises:
             NoSuchNameError: If the named data doesn't exist.
         """
-        async with self._state_mutex.reader_lock:
+        async with self._state_mutex:
             db_data = Query()
             entries = await self._db.search(db_data.name == name)
 
@@ -176,7 +176,7 @@ class Storage:
         Args:
             names: List of data names whose blob files are missing.
         """
-        async with self._state_mutex.writer_lock:
+        async with self._state_mutex:
             for name in names:
                 db_data = Query()
                 await self._db.remove(db_data.name == name)

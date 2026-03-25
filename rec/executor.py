@@ -124,7 +124,7 @@ class Executor(Node):
             except NameTakenError:
                 LOG.warning(f"Job data name {name} is already taken. Ignoring.")
 
-        async with self._state_mutex.writer_lock:
+        async with self._state_mutex:
             self._pending_jobs.append((bundle.source, job.metadata))
         async with self._job_ready_cv:
             self._job_ready_cv.notify_all()
@@ -172,7 +172,7 @@ class Executor(Node):
         return current.is_capable_of(job.capabilities)
 
     async def _has_runnable_job(self) -> bool:
-        async with self._state_mutex.reader_lock:
+        async with self._state_mutex:
             for _, job_info in self._pending_jobs:
                 if await self._job_has_all_inputs(job_info) and self._system_can_run(
                     job_info
@@ -181,7 +181,7 @@ class Executor(Node):
             return False
 
     async def _pop_next_runnable_job(self) -> tuple[EID, JobInfo] | None:
-        async with self._state_mutex.writer_lock:
+        async with self._state_mutex:
             for _ in range(len(self._pending_jobs)):
                 broker_eid, job_info = self._pending_jobs.popleft()
                 if await self._job_has_all_inputs(job_info) and self._system_can_run(
@@ -197,7 +197,7 @@ class Executor(Node):
 
         while self._running:
             missing = set()
-            async with self._state_mutex.reader_lock:
+            async with self._state_mutex:
                 for _, job_info in self._pending_jobs:
                     missing.update(
                         await self._storage.find_missing(job_info.required_named_data())
@@ -353,7 +353,7 @@ class Executor(Node):
 
     async def _run_job(self, job: JobInfo) -> tuple[bytes | None, dict[str, bytes]]:
         LOG.info("Starting job: %s", job)
-        async with self._state_mutex.writer_lock:
+        async with self._state_mutex:
             job_dir = (self._root_directory / f"job-{id(job)}").resolve()
             job_dir.mkdir(parents=True, exist_ok=True)
             wasm_file, stdin_path, data_dir = await self._prepare_wasi_environment(

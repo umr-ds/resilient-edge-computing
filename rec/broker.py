@@ -113,12 +113,12 @@ class Broker(Node):
 
         job = Job.deserialize(bundle.payload)
 
-        async with self._state_mutex.reader_lock:
+        async with self._state_mutex:
             executors = self._discovered_nodes.get(NodeType.EXECUTOR, set())
 
         if not executors:
             LOG.debug("No executors available to schedule job on. Queuing.")
-            async with self._state_mutex.writer_lock:
+            async with self._state_mutex:
                 self._queued_jobs.append(job)
                 return
 
@@ -136,14 +136,14 @@ class Broker(Node):
 
         job_result = JobResult.deserialize(bundle.payload)
 
-        async with self._state_mutex.writer_lock:
+        async with self._state_mutex:
             self._completed_jobs.add(job_result.metadata)
 
         LOG.info(f"Stored completed job: {job_result.metadata.job_id}")
 
     async def _handle_job_query(self, bundle: BundleData) -> BundleData:
         LOG.debug("Handling jobs query")
-        async with self._state_mutex.reader_lock:
+        async with self._state_mutex:
             queued_job_infos = [job.metadata for job in self._queued_jobs]
             jobs = {
                 "completed": dictify_job_infos(self._completed_jobs),
@@ -165,12 +165,12 @@ class Broker(Node):
     async def _handle_ndata_put(self, bundle: BundleData) -> None:
         LOG.debug("Handling named data PUT")
 
-        async with self._state_mutex.reader_lock:
+        async with self._state_mutex:
             datastores = self._discovered_nodes.get(NodeType.DATASTORE, set())
 
         if not datastores:
             LOG.debug("No datastores available to forward named data to. Queuing.")
-            async with self._state_mutex.writer_lock:
+            async with self._state_mutex:
                 self._queued_ndata.append(bundle)
                 return
 
@@ -181,7 +181,7 @@ class Broker(Node):
     async def _handle_discovery(self, bundle: BundleData) -> list[BundleData]:
         LOG.debug("Handling discovery")
 
-        async with self._state_mutex.writer_lock:
+        async with self._state_mutex:
             match bundle.type:
                 case BundleType.BROKER_ANNOUNCE:
                     if bundle.source != self._node_id:
@@ -235,7 +235,7 @@ class Broker(Node):
             available_executors: list[EID] = []
             available_datastores: list[EID] = []
 
-            async with self._state_mutex.writer_lock:
+            async with self._state_mutex:
                 # Check for Executors + Jobs
                 executors = self._discovered_nodes.get(NodeType.EXECUTOR, set())
                 if executors and self._queued_jobs:

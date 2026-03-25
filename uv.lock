@@ -12,15 +12,6 @@ wheels = [
 ]
 
 [[package]]
-name = "aiorwlock"
-version = "1.5.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6b/65/316cdc82c1b92953235ced1c71a3763f0cd9273c3bec5db60bdb5ad59bfe/aiorwlock-1.5.1.tar.gz", hash = "sha256:2729c77ec736c8d85ec305aa3827a50394fd8c6d823f4404d301cc8c59a4b7f5", size = 7288, upload-time = "2026-02-20T17:42:17.164Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/23/dc60c00fb9178e356d7f5fb009aabae4625ce79c3e63ed4ef3bcc73d949c/aiorwlock-1.5.1-py3-none-any.whl", hash = "sha256:a28e534a5fce4dabe437055db141369a0803c69fe61c406b6fc5cdfa8f3dda13", size = 8016, upload-time = "2026-02-20T17:42:18.095Z" },
-]
-
-[[package]]
 name = "async-tinydb"
 version = "1.7.3"
 source = { registry = "https://pypi.org/simple" }
@@ -355,7 +346,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
-    { name = "aiorwlock" },
     { name = "async-tinydb" },
     { name = "ormsgpack" },
     { name = "psutil" },
@@ -378,7 +368,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=25.1.0" },
-    { name = "aiorwlock", specifier = ">=1.5.1" },
     { name = "async-tinydb", specifier = ">=1.7.3" },
     { name = "ormsgpack", specifier = ">=1.12.2" },
     { name = "psutil", specifier = ">=7.2.2" },
