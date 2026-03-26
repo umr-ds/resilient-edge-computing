@@ -41,12 +41,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "prek>=0.3.5",
-    "ruff>=0.15.6",
+    "prek>=0.3.8",
+    "ruff>=0.15.7",
     "ty==0.0.25",
     "vermin>=1.8.0",
     "pytest>=9.0.2",
-    "pytest-cov>=7.0.0",
+    "pytest-cov>=7.1.0",
     "pytest-asyncio>=1.3.0",
     "hypothesis>=6.151.9",
 ]
@@ -56,7 +56,7 @@ Repository = "https://github.com/umr-ds/resilient-edge-computing"
 Issues = "https://github.com/umr-ds/resilient-edge-computing/issues"
 
 [build-system]
-requires = ["uv_build>=0.10.10,<0.11.0"]
+requires = ["uv_build>=0.11.1,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
