@@ -108,7 +108,7 @@ class Storage:
                         all_data.append((entry["name"], data))
                 except FileNotFoundError as err:
                     LOG.exception("Error loading blob: %s", err, exc_info=True)
-                    disappeared.append(entry["filename"])
+                    disappeared.append(entry["name"])
 
         if disappeared:
             await self._cleanup(disappeared)
@@ -160,14 +160,12 @@ class Storage:
             source_path = self._blob_directory / filename
 
             if source_path.exists():
-                missing_filename = None
                 shutil.copyfile(source_path, destination)
-            else:
-                missing_filename = filename
+                return
 
-        if missing_filename:
-            await self._cleanup([missing_filename])
-            raise NoSuchNameError(name)
+        # Missing blob file
+        await self._cleanup([name])
+        raise NoSuchNameError(name)
 
     async def _cleanup(self, names: list[str]) -> None:
         """

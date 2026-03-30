@@ -5,6 +5,7 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
+from rec.errors import NoSuchNameError
 from rec.storage import Storage
 from tests.utils.helpers import hierarchical_data
 
@@ -137,3 +138,42 @@ async def test_copy_to_file(data_name: str, data: bytes) -> None:
 
         assert dest_file.exists()
         assert dest_file.read_bytes() == data
+
+
+@pytest.mark.asyncio
+@given(data_name=st.text(min_size=1), data=st.binary())
+async def test_load_data_cleans_up_missing_blob(data_name: str, data: bytes) -> None:
+    with TemporaryDirectory(delete=True) as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        blobs_path = tmp_path / "blobs"
+        storage = Storage(db_path=tmp_path / "database.db", blob_directory=blobs_path)
+
+        await storage.store_data(name=data_name, data=data)
+        blob_files = list(blobs_path.iterdir())
+        assert len(blob_files) == 1
+        blob_files[0].unlink()
+
+        retrieved = await storage.load_data(name=data_name)
+        assert retrieved == []
+        missing = await storage.find_missing({data_name})
+        assert missing == {data_name}
+
+
+@pytest.mark.asyncio
+@given(data_name=st.text(min_size=1), data=st.binary())
+async def test_copy_to_file_cleans_up_missing_blob(data_name: str, data: bytes) -> None:
+    with TemporaryDirectory(delete=True) as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        blobs_path = tmp_path / "blobs"
+        storage = Storage(db_path=tmp_path / "database.db", blob_directory=blobs_path)
+
+        await storage.store_data(name=data_name, data=data)
+        blob_files = list(blobs_path.iterdir())
+        assert len(blob_files) == 1
+        blob_files[0].unlink()
+
+        with pytest.raises(NoSuchNameError):
+            await storage.copy_to_file(data_name, tmp_path / "dest.bin")
+
+        missing = await storage.find_missing({data_name})
+        assert missing == {data_name}
