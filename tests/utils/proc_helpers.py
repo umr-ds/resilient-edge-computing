@@ -108,7 +108,7 @@ def _stream_reader(
     node_id: str,
     stream_name: str,
     pipe: IO[str],
-    q: queue.Queue,
+    q: queue.Queue[tuple[str, str, str]],
 ) -> None:
     """
     Reads lines from a process stream and puts them into a queue.

@@ -4,7 +4,7 @@ from hashlib import sha1
 from pathlib import Path
 
 from aiofiles import open as async_open
-from asynctinydb import Query, TinyDB
+from asynctinydb import JSONStorage, Query, TinyDB
 
 from rec.errors import NameTakenError, NoSuchNameError
 from rec.log import LOG
@@ -18,7 +18,7 @@ class Storage:
     It uses SHA1 hashing to deduplicate identical data and a TinyDB database to maintain name-to-hash mappings.
     """
 
-    _db: TinyDB
+    _db: TinyDB[JSONStorage]
     _blob_directory: Path
     _state_mutex: Lock
 
@@ -93,7 +93,7 @@ class Storage:
             def prefix_finder(s: str) -> bool:
                 return s.startswith(name)
 
-            entries: list[dict] = await self._db.search(
+            entries: list[dict[str, str]] = await self._db.search(
                 db_data.name.test(prefix_finder)
             )
 

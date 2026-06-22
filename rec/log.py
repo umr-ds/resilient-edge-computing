@@ -2,7 +2,7 @@ import logging
 import sys
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import ClassVar
+from typing import ClassVar, override
 
 
 class LogFormatter(logging.Formatter):
@@ -24,6 +24,7 @@ class LogFormatter(logging.Formatter):
         }
     )
 
+    @override
     def format(self, record: logging.LogRecord) -> str:
         if sys.stderr.isatty():
             log_fmt = self.FORMATS.get(record.levelno)

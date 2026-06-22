@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Self
+from typing import Any, Self
 
 
 @dataclass
@@ -125,7 +125,7 @@ class ComposeEnvironment:
         """
         return self._services
 
-    def _get_compose_config(self) -> dict:
+    def _get_compose_config(self) -> dict[str, Any]:
         """
         Get the parsed compose configuration.
 

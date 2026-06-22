@@ -57,9 +57,9 @@ class Node(ABC):
     _socket_lock: Lock = field(default_factory=Lock)
 
     _bundle_queue: asyncio.Queue[BundlePush] = field(default_factory=asyncio.Queue)
-    _bundle_processing_task: asyncio.Task | None = None
+    _bundle_processing_task: asyncio.Task[None] | None = None
 
-    _message_receive_task: asyncio.Task | None = None
+    _message_receive_task: asyncio.Task[None] | None = None
     _pending_requests: dict[UUID, asyncio.Future[Reply]] = field(default_factory=dict)
 
     def __enter__(self) -> Self:

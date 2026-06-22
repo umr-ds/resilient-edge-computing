@@ -4,7 +4,7 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Self, override
+from typing import Any, Self, override
 from uuid import UUID, uuid4
 
 from ormsgpack import packb, unpackb
@@ -49,13 +49,13 @@ class Message:
     type: MessageType
     message_id: UUID = field(default_factory=uuid4)
 
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         data = dict(self.__dict__)
         data["message_id"] = self.message_id.bytes
         return data
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         return cls(**data)
 
 
@@ -73,11 +73,12 @@ class Reply(Message):
             raise UnexpectedErrorForSuccessError
 
     @override
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    @override
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         return cls(**data)
 
 
@@ -92,11 +93,12 @@ class Register(Message):
             raise EndpointMustNotBeNoneError
 
     @override
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    @override
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         return cls(**data)
 
 
@@ -109,12 +111,13 @@ class BundleCreate(Message):
             raise MessageTypeMismatchError(MessageType.BUNDLE_CREATE, self.type)
 
     @override
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         own_dict = {"bundle": self.bundle.dictify()}
         return self.__dict__ | super().dictify() | own_dict
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    @override
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         data["bundle"] = BundleData.from_dict(data["bundle"])
         return cls(**data)
 
@@ -126,11 +129,12 @@ class BundlePushStart(Message):
             raise MessageTypeMismatchError(MessageType.BUNDLE_PUSH_START, self.type)
 
     @override
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    @override
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         return cls(**data)
 
 
@@ -141,11 +145,12 @@ class BundlePushStop(Message):
             raise MessageTypeMismatchError(MessageType.BUNDLE_PUSH_STOP, self.type)
 
     @override
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         return self.__dict__ | super().dictify()
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    @override
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         return cls(**data)
 
 
@@ -158,12 +163,13 @@ class BundlePush(Message):
             raise MessageTypeMismatchError(MessageType.BUNDLE_PUSH, self.type)
 
     @override
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         own_dict = {"bundles": [bundle.dictify() for bundle in self.bundles]}
         return self.__dict__ | super().dictify() | own_dict
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    @override
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         data["bundles"] = [
             BundleData.from_dict(bundle_data) for bundle_data in data["bundles"]
         ]
@@ -232,13 +238,13 @@ class BundleData:
         ) and not self.named_data:
             raise MissingBundleFieldError.for_named_data()
 
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         data = {key: value for key, value in self.__dict__.items() if value}
         data["success"] = self.success
         return data
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         data["source"] = EID(data["source"])
         data["destination"] = EID(data["destination"])
         if "submitter" in data:
@@ -252,7 +258,7 @@ def serialize(message: Message) -> bytes:
     return packb(data)
 
 
-MESSAGE_CONSTRUCTORS: dict[MessageType, Callable[[dict], Message]] = {
+MESSAGE_CONSTRUCTORS: dict[MessageType, Callable[[dict[str, Any]], Message]] = {
     MessageType.REPLY: Reply.from_dict,
     MessageType.REGISTER: Register.from_dict,
     MessageType.BUNDLE_CREATE: BundleCreate.from_dict,
@@ -262,7 +268,7 @@ MESSAGE_CONSTRUCTORS: dict[MessageType, Callable[[dict], Message]] = {
 }
 
 
-def _extract_message_type(data_dict: dict) -> MessageType:
+def _extract_message_type(data_dict: dict[str, Any]) -> MessageType:
     if "type" not in data_dict:
         raise MissingMessageTypeError
 
@@ -272,7 +278,7 @@ def _extract_message_type(data_dict: dict) -> MessageType:
         raise UnknownMessageTypeIdError(data_dict["type"]) from err
 
 
-def _get_constructor(msg_type: MessageType) -> Callable[[dict], Message]:
+def _get_constructor(msg_type: MessageType) -> Callable[[dict[str, Any]], Message]:
     if msg_type not in MESSAGE_CONSTRUCTORS:
         raise MissingMessageConstructorError(msg_type)
     return MESSAGE_CONSTRUCTORS[msg_type]
@@ -280,7 +286,7 @@ def _get_constructor(msg_type: MessageType) -> Callable[[dict], Message]:
 
 def deserialize(serialized: bytes) -> Message:
     try:
-        data_dict: dict = unpackb(serialized)
+        data_dict: dict[str, Any] = unpackb(serialized)
 
         msg_type = _extract_message_type(data_dict)
         constructor = _get_constructor(msg_type)

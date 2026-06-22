@@ -1,7 +1,7 @@
 import asyncio
 from argparse import Namespace
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 from ormsgpack import packb, unpackb
 from tomlkit import dump, load
@@ -21,7 +21,7 @@ from rec.node import Node
 
 class Client(Node):
     _context_file: Path
-    _context_data: dict
+    _context_data: dict[str, Any]
     _results_directory: Path
 
     _pending_responses: dict[BundleType, list[BundleData]]

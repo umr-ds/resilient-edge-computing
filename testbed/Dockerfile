@@ -2,6 +2,7 @@ FROM golang:1 AS dtnd-go-builder
 RUN git clone https://gitlab.uni-marburg.de/fb12/ag-freisleben/projects/dtn7-go.git && \
     cd dtn7-go && \
     git switch rec && \
+    git switch --detach a3d54508e70714f407e19fbb6692388e08b3635c && \
     go build -race -o /dtnd-go ./cmd/dtnd
 
 
@@ -21,7 +22,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Zellij
-ARG ZELLIJ_VERSION=0.43.1
+ARG ZELLIJ_VERSION=0.44.3
 RUN curl -fsSL -o /tmp/zellij.tar.gz \
     https://github.com/zellij-org/zellij/releases/download/v${ZELLIJ_VERSION}/zellij-x86_64-unknown-linux-musl.tar.gz && \
     tar -xzf /tmp/zellij.tar.gz -C /usr/local/bin && \

@@ -2,6 +2,7 @@ FROM golang:1 AS dtnd-go-builder
 RUN git clone https://gitlab.uni-marburg.de/fb12/ag-freisleben/projects/dtn7-go.git && \
     cd dtn7-go && \
     git switch rec && \
+    git switch --detach a3d54508e70714f407e19fbb6692388e08b3635c && \
     go build -race -o /dtnd-go ./cmd/dtnd
 
 

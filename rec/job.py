@@ -2,7 +2,7 @@ import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Self
+from typing import Any, Self, override
 from uuid import UUID, uuid4
 
 import psutil
@@ -85,11 +85,11 @@ class Capabilities:
             free_disk_space=free_disk_space,
         )
 
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         return {key: value for key, value in self.__dict__.items() if value}
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         return cls(**data)
 
     def dumps(self) -> str:
@@ -182,25 +182,28 @@ class JobInfo:
         if not self.wasm_module:
             raise MissingWasmModuleError
 
+    @override
     def __str__(self) -> str:
         return self.job_id.hex
 
+    @override
     def __eq__(self, other: object) -> bool:
         if isinstance(other, JobInfo):
             return self.job_id == other.job_id
         return NotImplemented
 
+    @override
     def __hash__(self) -> int:
         return hash(self.job_id)
 
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         data = {key: value for key, value in self.__dict__.items() if value}
         data["job_id"] = str(self.job_id)
         data["capabilities"] = self.capabilities.dictify()
         return data
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         data["job_id"] = UUID(data["job_id"])
         data["capabilities"] = Capabilities.from_dict(data["capabilities"])
         if "submitter" in data and not isinstance(data["submitter"], EID):
@@ -249,11 +252,11 @@ class JobInfo:
         return set(required_names)
 
 
-def dictify_job_infos(jobs: Iterable[JobInfo]) -> list[dict]:
+def dictify_job_infos(jobs: Iterable[JobInfo]) -> list[dict[str, Any]]:
     return [job.dictify() for job in jobs]
 
 
-def job_infos_from_dicts(job_dicts: Iterable[dict]) -> list[JobInfo]:
+def job_infos_from_dicts(job_dicts: Iterable[dict[str, Any]]) -> list[JobInfo]:
     return [JobInfo.from_dict(job_dict) for job_dict in job_dicts]
 
 
@@ -276,14 +279,14 @@ class Job:
     metadata: JobInfo
     data: dict[str, bytes]
 
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         return {
             "metadata": self.metadata.dictify(),
             "data": self.data,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         data["metadata"] = JobInfo.from_dict(data["metadata"])
         return cls(**data)
 
@@ -329,14 +332,14 @@ class JobResult:
     metadata: JobInfo
     results_data: bytes = b""
 
-    def dictify(self) -> dict:
+    def dictify(self) -> dict[str, Any]:
         return {
             "metadata": self.metadata.dictify(),
             "results_data": self.results_data,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> Self:
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         data["metadata"] = JobInfo.from_dict(data["metadata"])
         return cls(**data)
 

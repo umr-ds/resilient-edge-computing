@@ -2,7 +2,7 @@
 
 [[repos]]
 repo = "https://github.com/astral-sh/uv-pre-commit"
-rev = "0.11.3"
+rev = "0.11.23"
 hooks = [
   # Ensure that the lockfile is up to date
   { id = "uv-lock" },
@@ -10,7 +10,7 @@ hooks = [
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.15.8"
+rev = "v0.15.18"
 hooks = [
   # Check code and apply automatic fixes where possible
   { id = "ruff-check", args = ["--fix"] },
@@ -19,13 +19,11 @@ hooks = [
 ]
 
 [[repos]]
-repo = "local"
+repo = "https://github.com/astral-sh/ty-pre-commit"
+rev = "v0.0.51"
 hooks = [
-  # Run `uvx ty check` to perform type checking
-  # A pre-commit hook isn't available yet: https://github.com/astral-sh/ty/issues/269
-  { id = "ty-check", name = "ty check", language = "system", entry = "uv run ty check", pass_filenames = false, types = [
-    "python",
-  ] },
+  # Perform type checking
+  { id = "ty" },
 ]
 
 [[repos]]
